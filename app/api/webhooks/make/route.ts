@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
         transaction: b.transaction_id ?? b.transacao,
         order_date: b.order_date ?? Date.now(),
         price: { value: b.valor_total ?? b.valor ?? 0, currency_value: b.moeda ?? 'BRL' },
+        price_liquido: b.valor_liquido ?? null,
         origin: { sck: b.sck ?? null },
         payment: { type: b.metodo_pagamento ?? null },
         status: b.status ?? 'COMPLETE',
@@ -91,12 +92,14 @@ export async function POST(request: NextRequest) {
 
     const valorBruto = purchase.original_offer_price?.value ?? purchase.price?.value ?? 0
     const valorCentavos = Math.round(valorBruto * 100)
+    const valorLiquido = purchase.price_liquido != null ? Number(purchase.price_liquido) : null
 
     const novaVenda = {
       transaction_id: purchase.transaction,
       data: new Date(purchase.approved_date ?? purchase.order_date).toISOString(),
       valor: valorCentavos / 100,
       valor_centavos: valorCentavos,
+      valor_liquido: valorLiquido,
       moeda: purchase.original_offer_price?.currency_value ?? purchase.price?.currency_value ?? 'BRL',
       produto: product.name ?? 'Desconhecido',
       tipo,

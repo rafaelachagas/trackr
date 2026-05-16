@@ -71,7 +71,7 @@ export default function VendasPage() {
 
   const receitaTotal = vendasFiltradas
     .filter((v) => v.status === 'approved')
-    .reduce((acc, v) => acc + (v.valor || 0), 0)
+    .reduce((acc, v) => acc + (v.valor_liquido ?? v.valor ?? 0), 0)
 
   const blur = isPrivate ? 'blur-sm select-none' : ''
 
@@ -133,7 +133,18 @@ export default function VendasPage() {
       {/* Tabela */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed min-w-[1000px]">
+            <colgroup>
+              <col className="w-[130px]" />
+              <col className="w-[140px]" />
+              <col className="w-[200px]" />
+              <col className="w-[80px]" />
+              <col className="w-[100px]" />
+              <col className="w-[110px]" />
+              <col className="w-[180px]" />
+              <col className="w-[90px]" />
+              <col className="w-[180px]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wider">
                 <th className="text-left px-4 py-3 font-semibold">Data</th>
@@ -141,7 +152,7 @@ export default function VendasPage() {
                 <th className="text-left px-4 py-3 font-semibold">Produto</th>
                 <th className="text-left px-4 py-3 font-semibold">Tipo</th>
                 <th className="text-left px-4 py-3 font-semibold">Status</th>
-                <th className="text-right px-4 py-3 font-semibold">Valor</th>
+                <th className="text-right px-4 py-3 font-semibold">Líquido</th>
                 <th className="text-left px-4 py-3 font-semibold">Email</th>
                 <th className="text-left px-4 py-3 font-semibold">Criativo</th>
                 <th className="text-left px-4 py-3 font-semibold">SCK</th>
@@ -185,8 +196,8 @@ export default function VendasPage() {
                           {statusInfo.label}
                         </span>
                       </td>
-                      <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${v.status === 'approved' ? 'text-emerald-400' : 'text-muted-foreground'} ${blur}`}>
-                        R$ {(v.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      <td className={`px-4 py-3 text-right font-semibold ${v.status === 'approved' ? 'text-emerald-400' : 'text-muted-foreground'} ${blur}`}>
+                        R$ {(v.valor_liquido ?? v.valor ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
                       <td className={`px-4 py-3 text-muted-foreground text-xs max-w-[160px] truncate ${blur}`} title={v.buyer_email}>
                         {v.buyer_email ?? '—'}

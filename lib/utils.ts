@@ -14,7 +14,10 @@ const TIMEZONE = 'America/Sao_Paulo'
  */
 export function extrairCriativo(texto: string | null | undefined): string | null {
   if (!texto) return null
-  const match = texto.match(/^(ad\d+)/i)
+  // SCK format: "iz-adv-vendas-f-fase02|cj01|ad12-nome-do-ad" — extract from 3rd pipe segment
+  const partes = texto.split('|')
+  const alvo = partes.length >= 3 ? partes[2] : texto
+  const match = alvo.match(/^(ad\d+)/i)
   return match ? match[1].toLowerCase() : null
 }
 
