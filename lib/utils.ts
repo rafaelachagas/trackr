@@ -1,0 +1,149 @@
+import { AcaoOtimizacao, PeriodoDashboard } from '@/types'
+import { subDays, format, startOfDay, endOfDay } from 'date-fns'
+import { toZonedTime } from 'date-fns-tz'
+
+const TIMEZONE = 'America/Sao_Paulo'
+
+// ============================================================
+// Extração de Criativo
+// ============================================================
+
+/**
+ * Extrai o código do criativo do SCK ou nome do anúncio
+ * Ex: "ad01-video-voce-quer-fazer-uma-grana" → "ad01"
+ */
+export function extrairCriativo(texto: string | null | undefined): string | null {
+  if (!texto) return null
+  const match = texto.match(/^(ad\d+)/i)
+  return match ? match[1].toLowerCase() : null
+}
+
+// ============================================================
+// Cálculo de ROAS
+// ============================================================
+
+export function calcularRoas(receita: number, gasto: number): number {
+  if (gasto === 0) return 0
+  return Number((receita / gasto).toFixed(2))
+}
+
+// ============================================================
+// Framework de Otimização
+// ============================================================
+
+export function calcularAcao(
+  roas7d: number | null,
+  roas3d: number | null,
+  roas1d: number | null,
+  roasMinimo = 1.0
+): AcaoOtimizacao {
+  const p7 = roas7d !== null && roas7d >= roasMinimo
+  const p3 = roas3d !== null && roas3d >= roasMinimo
+  const p1 = roas1d !== null && roas1d >= roasMinimo
+
+  if (p7 && p3 && p1) return '+20% orçamento'
+  if (p7 && p3 && !p1) return 'Manter'
+  if (p7 && !p3 && !p1) return '-20% ou pausar'
+  if (!p7 && p3 && p1) return '+20% orçamento'
+  if (!p7 && !p3 && p1) return 'Manter'
+  if (!p7 && !p3 && !p1) return 'Pausar'
+
+  return 'Manter'
+}
+
+// ============================================================
+// Período de datas
+// ============================================================
+
+export function getPeriodoDatas(periodo: PeriodoDashboard, dataInicio?: string, dataFim?: string) {
+  const agora = toZonedTime(new Date(), TIMEZONE)
+
+  if (periodo === 'custom' && dataInicio && dataFim) {
+    return {
+      inicio: startOfDay(new Date(dataInicio)).toISOString(),
+      fim: endOfDay(new Date(dataFim)).toISOString(),
+    }
+  }
+
+  const dias: Record<string, number> = {
+    '1d': 1,
+    '3d': 3,
+    '7d': 7,
+    '14d': 14,
+    '30d': 30,
+  }
+
+  const numDias = dias[periodo] ?? 7
+  const inicio = startOfDay(subDays(agora, numDias - 1))
+  const fim = endOfDay(agora)
+
+  return {
+    inicio: inicio.toISOString(),
+    fim: fim.toISOString(),
+  }
+}
+
+// ============================================================
+// Formatação
+// ============================================================
+
+export function formatarMoeda(valor: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(valor)
+}
+
+export function formatarRoas(roas: number): string {
+  return roas.toFixed(2)
+}
+
+export function formatarPercentual(valor: number): string {
+  return `${valor.toFixed(1)}%`
+}
+
+export function formatarData(data: string): string {
+  return format(new Date(data), 'dd/MM')
+}
+
+// ============================================================
+// Cor do ROAS
+// ============================================================
+
+export function corDoRoas(roas: number, roasMinimo = 1.0): string {
+  if (roas >= roasMinimo * 2) return 'text-green-600'
+  if (roas >= roasMinimo) return 'text-yellow-600'
+  return 'text-red-600'
+}
+
+export function bgCorDoRoas(roas: number, roasMinimo = 1.0): string {
+  if (roas >= roasMinimo * 2) return 'bg-green-100 text-green-800'
+  if (roas >= roasMinimo) return 'bg-yellow-100 text-yellow-800'
+  return 'bg-red-100 text-red-800'
+}
+
+export function corDaAcao(acao: AcaoOtimizacao): string {
+  switch (acao) {
+    case '+20% orçamento':
+      return 'bg-green-100 text-green-800'
+    case 'Manter':
+      return 'bg-yellow-100 text-yellow-800'
+    case '-20% ou pausar':
+      return 'bg-orange-100 text-orange-800'
+    case 'Pausar':
+      return 'bg-red-100 text-red-800'
+  }
+}
+
+export function iconeAcao(acao: AcaoOtimizacao): string {
+  switch (acao) {
+    case '+20% orçamento':
+      return '▲'
+    case 'Manter':
+      return '→'
+    case '-20% ou pausar':
+      return '▼'
+    case 'Pausar':
+      return '⚠'
+  }
+}

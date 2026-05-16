@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=838912155464928&client_secret=9fb76ed2d89c514caa7beecd0fdd86a2&fb_exchange_token=EAAL6ZCHUGNOABRdZBZB8nbfZCeHNKHuudfTWAqYeYlZCV5fqC9bIhAvBVUFdAAUTIgls91klM0NOx8o9h9cBqioakS2p9CwctXpaNuk8AymZCqi8Ns00HHPklwweRk8mXGglqmNnkvnUcXHRiNivUE4CW58Ev9sSw2ZCSi4nFsvRIxwzhRUdTXh1UiVq4GMsv30cSGZAAP1HAsZCrYVAbTPs21e1ZAuLmQ7XCSsWoW8NP31jej8v4pZBRTMZAhCbtglWI8xdxUZBLzZBNZB4QkY6kwJEZCDr3Uqh\")"
+    ]
+  }
+}

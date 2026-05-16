@@ -1,0 +1,120 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import {
+  LayoutDashboard,
+  TrendingUp,
+  Settings,
+  Zap,
+  RefreshCw,
+  LogOut,
+  ShoppingBag
+} from 'lucide-react'
+import { useDashboard } from '@/context/DashboardContext'
+
+const navigation = [
+  { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
+  { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
+  { href: '/framework', label: 'Framework', icon: TrendingUp },
+]
+
+const configuracoes = [
+  { href: '/configuracoes', label: 'Integrações e Setup', icon: Settings },
+]
+
+export default function Sidebar() {
+  const pathname = usePathname()
+  const { sincronizarTudo, isRefreshing: sincronizando } = useDashboard()
+
+  const NavItem = ({ href, label, icon: Icon }: any) => {
+    const active = pathname === href || (href === '/overview' && pathname === '/')
+    return (
+      <Link
+        href={href}
+        className={`flex items-center justify-between px-4 py-3 text-sm font-medium transition-all ${
+          active
+            ? 'bg-primary text-white rounded-xl shadow-lg shadow-primary/20'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <Icon className={`w-5 h-5 ${active ? 'text-white' : 'text-primary'}`} />
+          {label}
+        </div>
+      </Link>
+    )
+  }
+
+  const NavGroup = ({ title, items, defaultOpen = true }: any) => {
+    return (
+      <div className="mb-2">
+        <div className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center gap-2">
+            {title}
+          </div>
+        </div>
+        <div className="mt-1 space-y-1">
+          {items.map((item: any) => <NavItem key={item.href} {...item} />)}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <aside className="w-64 bg-card border-r border-border text-foreground flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar">
+      {/* Logo */}
+      <div className="px-6 pt-8 pb-8 flex flex-col items-center text-center border-b border-border">
+        <div className="w-16 h-16 rounded-3xl bg-card border border-border flex items-center justify-center shadow-lg shadow-black/5 flex-shrink-0 relative overflow-hidden">
+           <div className="absolute inset-0 bg-primary/10" />
+           <Zap className="w-8 h-8 text-primary relative z-10" strokeWidth={2.5} />
+        </div>
+        <h1 className="text-3xl font-black italic uppercase tracking-tighter text-foreground">
+          TRACKR
+        </h1>
+        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-2">
+          Painel de Gestão de Performance
+        </p>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 px-3 space-y-4 pb-8">
+        
+        <div className="space-y-1">
+          {navigation.map((item) => <NavItem key={item.href} {...item} />)}
+        </div>
+
+        <NavGroup title="Sistema" items={configuracoes} />
+        
+      </nav>
+
+      {/* Sincronização e Perfil */}
+      <div className="p-4 m-3 mt-auto bg-background border border-border rounded-xl space-y-4">
+        
+        <button
+          onClick={sincronizarTudo}
+          disabled={sincronizando}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all bg-primary/10 text-primary hover:bg-primary hover:text-white border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCw className={`w-4 h-4 ${sincronizando ? 'animate-spin' : ''}`} />
+          {sincronizando ? 'Sincronizando...' : 'Sincronizar Dados'}
+        </button>
+
+        <div className="pt-3 border-t border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-muted-foreground shadow-md">
+              RC
+            </div>
+            <div className="overflow-hidden flex-1">
+              <p className="text-xs font-semibold text-foreground truncate">Sua Conta</p>
+              <p className="text-[10px] text-muted-foreground font-medium tracking-wide">Administrador</p>
+            </div>
+            <button className="text-muted-foreground hover:text-rose-400 transition-colors">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  )
+}
