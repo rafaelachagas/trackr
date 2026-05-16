@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
       data: new Date(purchase.approved_date ?? purchase.order_date).toISOString(),
       valor: valorCentavos / 100,
       valor_centavos: valorCentavos,
+      moeda: purchase.original_offer_price?.currency_value ?? purchase.price?.currency_value ?? 'BRL',
       produto: product.name ?? 'Desconhecido',
       tipo,
       status,
