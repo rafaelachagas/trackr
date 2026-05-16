@@ -32,9 +32,18 @@ const COR_ACAO: Record<AcaoOtimizacao, string> = {
   'Pausar': 'text-red-400',
 }
 
+type Plataforma = 'hotmart'
+
+const PLATAFORMAS = [
+  { id: 'hotmart' as Plataforma, label: 'Hotmart', cor: 'orange', letra: 'H' },
+  // { id: 'kiwify', label: 'Kiwify', cor: 'violet', letra: 'K' },
+  // { id: 'kirvano', label: 'Kirvano', cor: 'blue', letra: 'Ki' },
+]
+
 export default function ConfiguracoesPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [plataformaSelecionada, setPlataformaSelecionada] = useState<Plataforma>('hotmart')
 
   const [hotmartClientId, setHotmartClientId] = useState('')
   const [hotmartClientSecret, setHotmartClientSecret] = useState('')

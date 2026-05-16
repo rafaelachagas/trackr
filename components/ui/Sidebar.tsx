@@ -9,12 +9,14 @@ import {
   Zap,
   RefreshCw,
   LogOut,
-  ShoppingBag
+  ShoppingBag,
+  ShoppingCart
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
+  { href: '/vendas', label: 'Vendas', icon: ShoppingCart },
   { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
   { href: '/framework', label: 'Framework', icon: TrendingUp },
 ]
