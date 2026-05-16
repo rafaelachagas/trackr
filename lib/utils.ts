@@ -12,13 +12,25 @@ const TIMEZONE = 'America/Sao_Paulo'
  * Extrai o código do criativo do SCK ou nome do anúncio
  * Ex: "ad01-video-voce-quer-fazer-uma-grana" → "ad01"
  */
+// SCK format: "iz-adv-vendas-f-fase02-pre-escala|cj01|ad12-nome-do-ad"
+
 export function extrairCriativo(texto: string | null | undefined): string | null {
   if (!texto) return null
-  // SCK format: "iz-adv-vendas-f-fase02|cj01|ad12-nome-do-ad" — extract from 3rd pipe segment
   const partes = texto.split('|')
   const alvo = partes.length >= 3 ? partes[2] : texto
   const match = alvo.match(/^(ad\d+)/i)
   return match ? match[1].toLowerCase() : null
+}
+
+export function extrairFase(sck: string | null | undefined): string | null {
+  if (!sck) return null
+  const match = sck.split('|')[0].match(/(fase\d+)/i)
+  return match ? match[1].toUpperCase() : null
+}
+
+export function extrairCampanha(sck: string | null | undefined): string | null {
+  if (!sck) return null
+  return sck.split('|')[0] ?? null
 }
 
 // ============================================================

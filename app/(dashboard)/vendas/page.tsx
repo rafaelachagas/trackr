@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Search, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { getVendas } from '@/app/actions/vendas'
+import { extrairFase, extrairCampanha } from '@/lib/utils'
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   approved:   { label: 'Aprovado',    className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
@@ -138,13 +139,14 @@ export default function VendasPage() {
               <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wider">
                 <th className="text-left px-4 py-3 font-semibold" style={{ width: 130 }}>Data</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ width: 130 }}>Transação</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ width: 200 }}>Produto</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ width: 80 }}>Tipo</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ width: 100 }}>Status</th>
-                <th className="text-right px-4 py-3 font-semibold" style={{ width: 110 }}>Líquido</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ width: 180 }}>Email</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ width: 90 }}>Criativo</th>
-                <th className="text-left px-4 py-3 font-semibold">SCK</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 180 }}>Produto</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 75 }}>Tipo</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 95 }}>Status</th>
+                <th className="text-right px-4 py-3 font-semibold" style={{ width: 105 }}>Líquido</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 170 }}>Email</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 75 }}>Criativo</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 75 }}>Fase</th>
+                <th className="text-left px-4 py-3 font-semibold">Campanha</th>
               </tr>
             </thead>
             <tbody>
@@ -191,11 +193,21 @@ export default function VendasPage() {
                       <td className={`px-4 py-3 text-muted-foreground text-xs overflow-hidden ${blur}`} style={{ width: 180, maxWidth: 180 }} title={v.buyer_email}>
                         <span className="block truncate">{v.buyer_email ?? '—'}</span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-primary font-medium overflow-hidden" style={{ width: 90, maxWidth: 90 }} title={v.criativo}>
+                      <td className="px-4 py-3 text-xs text-primary font-medium overflow-hidden" style={{ width: 75, maxWidth: 75 }} title={v.criativo}>
                         <span className="block truncate">{v.criativo ?? '—'}</span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground overflow-hidden" title={v.sck}>
-                        <span className="block truncate">{v.sck ?? '—'}</span>
+                      <td className="px-4 py-3" style={{ width: 75 }}>
+                        {(() => {
+                          const fase = v.fase ?? extrairFase(v.sck)
+                          if (!fase) return <span className="text-muted-foreground text-xs">—</span>
+                          const cor = fase.includes('01') ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            : fase.includes('02') ? 'bg-violet-500/10 text-violet-400 border-violet-500/20'
+                            : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cor}`}>{fase}</span>
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground overflow-hidden" title={v.campanha ?? v.sck ?? ''}>
+                        <span className="block truncate">{v.campanha ?? extrairCampanha(v.sck) ?? '—'}</span>
                       </td>
                     </tr>
                   )

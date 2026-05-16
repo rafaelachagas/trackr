@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { extrairCriativo } from '@/lib/utils'
+import { extrairCriativo, extrairFase, extrairCampanha } from '@/lib/utils'
 
 const STATUS_MAP: Record<string, string> = {
   PURCHASE_COMPLETE: 'approved',
@@ -89,6 +89,8 @@ export async function POST(request: NextRequest) {
     // SCK → criativo
     const sck = purchase.sckPaymentLink ?? purchase.origin?.sck ?? null
     const criativo = extrairCriativo(sck)
+    const fase = extrairFase(sck)
+    const campanha = extrairCampanha(sck)
 
     const valorBruto = purchase.original_offer_price?.value ?? purchase.price?.value ?? 0
     const valorCentavos = Math.round(valorBruto * 100)
@@ -107,6 +109,8 @@ export async function POST(request: NextRequest) {
       buyer_email: buyer?.email ?? null,
       sck,
       criativo,
+      fase,
+      campanha,
       vsl: null as string | null,
     }
 
