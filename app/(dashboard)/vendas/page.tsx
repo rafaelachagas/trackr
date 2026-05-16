@@ -133,28 +133,17 @@ export default function VendasPage() {
       {/* Tabela */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm table-fixed min-w-[1000px]">
-            <colgroup>
-              <col className="w-[130px]" />
-              <col className="w-[140px]" />
-              <col className="w-[200px]" />
-              <col className="w-[80px]" />
-              <col className="w-[100px]" />
-              <col className="w-[110px]" />
-              <col className="w-[180px]" />
-              <col className="w-[90px]" />
-              <col className="w-[180px]" />
-            </colgroup>
+          <table className="text-sm" style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1100 }}>
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wider">
-                <th className="text-left px-4 py-3 font-semibold">Data</th>
-                <th className="text-left px-4 py-3 font-semibold">Transação</th>
-                <th className="text-left px-4 py-3 font-semibold">Produto</th>
-                <th className="text-left px-4 py-3 font-semibold">Tipo</th>
-                <th className="text-left px-4 py-3 font-semibold">Status</th>
-                <th className="text-right px-4 py-3 font-semibold">Líquido</th>
-                <th className="text-left px-4 py-3 font-semibold">Email</th>
-                <th className="text-left px-4 py-3 font-semibold">Criativo</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 130 }}>Data</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 130 }}>Transação</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 200 }}>Produto</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 80 }}>Tipo</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 100 }}>Status</th>
+                <th className="text-right px-4 py-3 font-semibold" style={{ width: 110 }}>Líquido</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 180 }}>Email</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ width: 90 }}>Criativo</th>
                 <th className="text-left px-4 py-3 font-semibold">SCK</th>
               </tr>
             </thead>
@@ -177,36 +166,36 @@ export default function VendasPage() {
                   const tipoInfo = TIPO_LABEL[v.tipo] ?? { label: v.tipo, className: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' }
                   return (
                     <tr key={v.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap" style={{ width: 130 }}>
                         {v.data ? format(new Date(v.data), 'dd/MM/yy HH:mm', { locale: ptBR }) : '—'}
                       </td>
-                      <td className={`px-4 py-3 font-mono text-xs text-foreground ${blur}`}>
-                        {v.transaction_id ?? '—'}
+                      <td className={`px-4 py-3 font-mono text-xs text-foreground overflow-hidden`} style={{ width: 130, maxWidth: 130 }}>
+                        <span className={`block truncate ${blur}`} title={v.transaction_id}>{v.transaction_id ?? '—'}</span>
                       </td>
-                      <td className="px-4 py-3 text-foreground max-w-[180px] truncate" title={v.produto}>
-                        {v.produto ?? '—'}
+                      <td className="px-4 py-3 text-foreground overflow-hidden" style={{ width: 200, maxWidth: 200 }} title={v.produto}>
+                        <span className="block truncate">{v.produto ?? '—'}</span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" style={{ width: 80 }}>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${tipoInfo.className}`}>
                           {tipoInfo.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" style={{ width: 100 }}>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusInfo.className}`}>
                           {statusInfo.label}
                         </span>
                       </td>
-                      <td className={`px-4 py-3 text-right font-semibold ${v.status === 'approved' ? 'text-emerald-400' : 'text-muted-foreground'} ${blur}`}>
+                      <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${v.status === 'approved' ? 'text-emerald-400' : 'text-muted-foreground'} ${blur}`} style={{ width: 110 }}>
                         R$ {(v.valor_liquido ?? v.valor ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
-                      <td className={`px-4 py-3 text-muted-foreground text-xs max-w-[160px] truncate ${blur}`} title={v.buyer_email}>
-                        {v.buyer_email ?? '—'}
+                      <td className={`px-4 py-3 text-muted-foreground text-xs overflow-hidden ${blur}`} style={{ width: 180, maxWidth: 180 }} title={v.buyer_email}>
+                        <span className="block truncate">{v.buyer_email ?? '—'}</span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-primary font-medium max-w-[120px] truncate" title={v.criativo}>
-                        {v.criativo ?? '—'}
+                      <td className="px-4 py-3 text-xs text-primary font-medium overflow-hidden" style={{ width: 90, maxWidth: 90 }} title={v.criativo}>
+                        <span className="block truncate">{v.criativo ?? '—'}</span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate" title={v.sck}>
-                        {v.sck ?? '—'}
+                      <td className="px-4 py-3 text-xs text-muted-foreground overflow-hidden" title={v.sck}>
+                        <span className="block truncate">{v.sck ?? '—'}</span>
                       </td>
                     </tr>
                   )
