@@ -105,7 +105,6 @@ export async function POST(request: NextRequest) {
       sck,
       criativo,
       vsl: null as string | null,
-      raw_payload: body as Record<string, unknown>,
     }
 
     const { data: vendaSalva, error: erroInsert } = await supabaseAdmin
