@@ -13,7 +13,7 @@ export default function DashboardLayout({
         <Sidebar />
         <main className="flex-1 ml-64 min-h-screen flex flex-col transition-colors duration-400">
           <Topbar />
-          <div className="flex-1 py-8 overflow-auto">
+          <div className="flex-1 py-8 px-10 overflow-auto">
             {children}
           </div>
         </main>

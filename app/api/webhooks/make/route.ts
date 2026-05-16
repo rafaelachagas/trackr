@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    console.log('[Make] Payload recebido:', JSON.stringify(body, null, 2))
 
     // Suporta dois formatos:
     // 1. Payload bruto Hotmart: { event, data: { purchase, product, buyer } }
@@ -94,7 +95,21 @@ export async function POST(request: NextRequest) {
 
     const valorBruto = purchase.original_offer_price?.value ?? purchase.price?.value ?? 0
     const valorCentavos = Math.round(valorBruto * 100)
-    const valorLiquido = purchase.price_liquido != null ? Number(purchase.price_liquido) : null
+
+    // Tabela de conversão: parte inteira do valor bruto → líquido
+    const LIQUIDO_MAP: Record<number, number> = {
+      196: 174.60, 197: 174.60,
+      265: 234.58, 266: 234.58,
+      296: 261.31, 297: 261.31,
+      396: 352.82, 397: 352.82,
+      596: 531.01, 597: 531.01,
+    }
+    const valorInteiro = Math.floor(valorBruto)
+
+    const valorLiquido =
+      purchase.price_liquido != null ? Number(purchase.price_liquido)
+      : purchase.price?.base_value != null ? Number(purchase.price.base_value)
+      : LIQUIDO_MAP[valorInteiro] ?? null
 
     const novaVenda = {
       transaction_id: purchase.transaction,
