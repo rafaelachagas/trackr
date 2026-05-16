@@ -94,11 +94,17 @@ export async function GET(request: NextRequest) {
 
     resultado.push({
       criativo,
+      ad_name: criativo,
+      campaign_name: null,
+      fase: null,
       vendas: vendasFront,
       upsells: vendasUpsell,
       receita,
       gasto,
       roas: r7d,
+      roas_7d: r7d,
+      roas_3d: r3d,
+      roas_1d: r1d,
       acao: calcularAcao(r7d, r3d, r1d),
     })
   }
