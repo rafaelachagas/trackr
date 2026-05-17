@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { calcularRoas } from '@/lib/utils'
-import { subDays, format } from 'date-fns'
+import { subDays, addDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 import { AcaoOtimizacao } from '@/types'
 
@@ -78,6 +78,7 @@ export async function GET(request: Request) {
     const agora = toZonedTime(new Date(), TIMEZONE)
 
     const hoje = format(agora, 'yyyy-MM-dd')
+    const amanha = format(addDays(agora, 1), 'yyyy-MM-dd')
     const d7 = format(subDays(agora, 6), 'yyyy-MM-dd')
     const d3 = format(subDays(agora, 2), 'yyyy-MM-dd')
     const d1 = hoje // 1d = a partir de 00:00 de hoje, alinhado com reset do Meta
@@ -109,7 +110,7 @@ export async function GET(request: Request) {
         .from('gastos')
         .select('criativo, campaign_name, ad_name, valor_gasto, data')
         .gte('data', d7)
-        .lte('data', hoje),
+        .lte('data', amanha),
       supabaseAdmin
         .from('gastos')
         .select('criativo, ad_name, campaign_name, valor_gasto')
