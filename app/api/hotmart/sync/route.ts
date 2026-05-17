@@ -126,6 +126,9 @@ export async function POST() {
       const json = await res.json()
       const items: any[] = json.items ?? []
 
+      const batch: any[] = []
+      const upsellsParaVincular: { email: string; orderDate: number }[] = []
+
       for (const item of items) {
         const { purchase, product, buyer } = item
         if (!purchase?.transaction) continue
@@ -150,7 +153,7 @@ export async function POST() {
         const valorBruto = purchase.original_offer_price?.value ?? purchase.price?.value ?? 0
         const valorCentavos = Math.round(valorBruto * 100)
 
-        const venda = {
+        batch.push({
           transaction_id: purchase.transaction,
           data: new Date(purchase.approved_date ?? purchase.order_date).toISOString(),
           valor: valorCentavos / 100,
@@ -163,30 +166,29 @@ export async function POST() {
           sck,
           criativo,
           vsl: null as string | null,
-          raw_payload: item as Record<string, unknown>,
-        }
+        })
 
-        const { data: vendaSalva, error } = await supabaseAdmin
+        if (tipo === 'upsell' && buyer?.email && !criativo) {
+          upsellsParaVincular.push({ email: buyer.email, orderDate: purchase.approved_date ?? purchase.order_date })
+        }
+      }
+
+      if (batch.length > 0) {
+        const { error } = await supabaseAdmin
           .from('vendas')
-          .upsert(venda, { onConflict: 'transaction_id' })
-          .select()
-          .single()
+          .upsert(batch, { onConflict: 'transaction_id' })
 
         if (error) {
-          console.error('[Hotmart Sync] Erro ao salvar venda:', error, purchase.transaction)
-          continue
+          console.error('[Hotmart Sync] Erro ao salvar batch:', error)
+        } else {
+          totalProcessed += batch.length
         }
-
-        if (tipo === 'upsell' && buyer?.email && vendaSalva && !criativo) {
-          await vincularUpsell(
-            vendaSalva.id,
-            buyer.email,
-            purchase.approved_date ?? purchase.order_date
-          )
-        }
-
-        totalProcessed++
       }
+
+      // Vincular upsells em paralelo
+      await Promise.allSettled(
+        upsellsParaVincular.map(({ email, orderDate }) => vincularUpsell('', email, orderDate))
+      )
 
       pageToken = json.page_info?.next_page_token ?? null
       page++
