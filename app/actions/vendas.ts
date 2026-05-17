@@ -4,12 +4,13 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 // Busca upsells sem criativo e tenta vincular ao front do mesmo email (janela 48h)
 export async function reprocessarUpsellsSemCriativo() {
+  // Busca upsells sem criativo OU sem fase (para completar atribuição parcial)
   const { data: upsells } = await supabaseAdmin
     .from('vendas')
     .select('id, buyer_email, data')
     .eq('tipo', 'upsell')
-    .is('criativo', null)
     .not('buyer_email', 'is', null)
+    .or('criativo.is.null,fase.is.null')
 
   if (!upsells || upsells.length === 0) return
 

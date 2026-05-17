@@ -1,12 +1,20 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { format } from 'date-fns'
+import { format, subDays, startOfDay, endOfDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { getVendas, reprocessarUpsellsSemCriativo } from '@/app/actions/vendas'
 import { extrairFase, extrairCampanha } from '@/lib/utils'
+
+const PERIODOS = [
+  { label: 'Hoje', dias: 0 },
+  { label: '7d', dias: 7 },
+  { label: '14d', dias: 14 },
+  { label: '30d', dias: 30 },
+  { label: 'Tudo', dias: 365 },
+]
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   approved:   { label: 'Aprovado',    className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
@@ -24,23 +32,34 @@ const TIPO_LABEL: Record<string, { label: string; className: string }> = {
 const PAGE_SIZE = 50
 
 export default function VendasPage() {
-  const { dateRange, product, isPrivate } = useDashboard()
+  const { product, isPrivate } = useDashboard()
   const [vendas, setVendas] = useState<any[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [busca, setBusca] = useState('')
   const [statusFiltro, setStatusFiltro] = useState('todos')
+  const [periodoSelecionado, setPeriodoSelecionado] = useState(7)
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
+  const getDateRange = () => {
+    if (periodoSelecionado === 0) {
+      return { start: startOfDay(new Date()).toISOString(), end: endOfDay(new Date()).toISOString() }
+    }
+    return {
+      start: startOfDay(subDays(new Date(), periodoSelecionado - 1)).toISOString(),
+      end: endOfDay(new Date()).toISOString(),
+    }
+  }
+
   const carregar = async (p = 1) => {
-    if (!dateRange.start || !dateRange.end) return
     setLoading(true)
+    const { start, end } = getDateRange()
     try {
       const res = await getVendas(
-        dateRange.start.toISOString(),
-        dateRange.end.toISOString(),
+        start,
+        end,
         product,
         statusFiltro,
         p,
@@ -59,7 +78,7 @@ export default function VendasPage() {
     reprocessarUpsellsSemCriativo()
     setPage(1)
     carregar(1)
-  }, [dateRange, product, statusFiltro])
+  }, [periodoSelecionado, product, statusFiltro])
 
   const vendasFiltradas = busca.trim()
     ? vendas.filter(
@@ -104,6 +123,23 @@ export default function VendasPage() {
             R$ {receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
         </div>
+      </div>
+
+      {/* Filtro de período */}
+      <div className="flex gap-2">
+        {PERIODOS.map((p) => (
+          <button
+            key={p.dias}
+            onClick={() => { setPeriodoSelecionado(p.dias); setPage(1) }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+              periodoSelecionado === p.dias
+                ? 'bg-primary text-white border-primary'
+                : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-primary/50'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
 
       {/* Filtros */}
