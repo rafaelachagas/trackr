@@ -2,6 +2,47 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 
+// Busca upsells sem criativo e tenta vincular ao front do mesmo email (janela 48h)
+export async function reprocessarUpsellsSemCriativo() {
+  const { data: upsells } = await supabaseAdmin
+    .from('vendas')
+    .select('id, buyer_email, data')
+    .eq('tipo', 'upsell')
+    .is('criativo', null)
+    .not('buyer_email', 'is', null)
+
+  if (!upsells || upsells.length === 0) return
+
+  for (const upsell of upsells) {
+    const janela = new Date(new Date(upsell.data).getTime() - 48 * 60 * 60 * 1000).toISOString()
+
+    const { data: front } = await supabaseAdmin
+      .from('vendas')
+      .select('id, criativo, fase, campanha, sck, vsl')
+      .eq('buyer_email', upsell.buyer_email)
+      .eq('tipo', 'front')
+      .gte('data', janela)
+      .order('data', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (front?.criativo) {
+      await supabaseAdmin
+        .from('vendas')
+        .update({
+          venda_front_id: front.id,
+          criativo: front.criativo,
+          fase: front.fase,
+          campanha: front.campanha,
+          sck: front.sck,
+          vsl: front.vsl,
+          atribuicao_manual: true,
+        })
+        .eq('id', upsell.id)
+    }
+  }
+}
+
 export async function getVendas(
   startDate: string,
   endDate: string,

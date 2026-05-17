@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
-import { getVendas } from '@/app/actions/vendas'
+import { getVendas, reprocessarUpsellsSemCriativo } from '@/app/actions/vendas'
 import { extrairFase, extrairCampanha } from '@/lib/utils'
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
@@ -56,6 +56,7 @@ export default function VendasPage() {
   }
 
   useEffect(() => {
+    reprocessarUpsellsSemCriativo()
     setPage(1)
     carregar(1)
   }, [dateRange, product, statusFiltro])
@@ -194,7 +195,10 @@ export default function VendasPage() {
                         <span className="block truncate">{v.buyer_email ?? '—'}</span>
                       </td>
                       <td className="px-4 py-3 text-xs text-primary font-medium overflow-hidden" style={{ width: 75, maxWidth: 75 }} title={v.criativo}>
-                        <span className="block truncate">{v.criativo ?? '—'}</span>
+                        <span className="block truncate">
+                          {v.criativo ?? '—'}
+                          {v.atribuicao_manual && <span className="text-amber-400 ml-0.5">*</span>}
+                        </span>
                       </td>
                       <td className="px-4 py-3" style={{ width: 75 }}>
                         {(() => {
