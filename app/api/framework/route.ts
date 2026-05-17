@@ -117,7 +117,7 @@ export async function GET(request: Request) {
         .lte('data', dFim),
       supabaseAdmin
         .from('vendas')
-        .select('criativo, valor, data')
+        .select('criativo, fase, campanha, valor, data')
         .eq('status', 'approved')
         .gte('data', `${d7}T00:00:00`)
         .lte('data', `${hoje}T23:59:59`),
@@ -155,11 +155,15 @@ export async function GET(request: Request) {
 
     for (const v of vendas7d) {
       if (!v.criativo) continue
-      // Distribui venda para todas as entradas que correspondem ao criativo
+      const faseDaVenda = (v as any).fase as string | null
       for (const [key, dados] of criativoMap.entries()) {
-        if (key.startsWith(`${v.criativo}__`)) {
-          dados.vendas.push({ valor: Number(v.valor), data: v.data })
+        if (!key.startsWith(`${v.criativo}__`)) continue
+        // Se a venda tem fase definida, só atribui à campanha da mesma fase
+        if (faseDaVenda && dados.campaign_name) {
+          const faseCampanha = detectarFase(dados.campaign_name)
+          if (faseCampanha && faseCampanha !== faseDaVenda) continue
         }
+        dados.vendas.push({ valor: Number(v.valor), data: v.data })
       }
     }
 
