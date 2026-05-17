@@ -84,7 +84,7 @@ export default function FiltrosDashboard() {
               <input 
                 type="datetime-local" 
                 value={formatDateTimeLocal(dateRange.start)}
-                onChange={(e) => setDateRange({ ...dateRange, start: new Date(e.target.value) })}
+                onChange={(e) => { const d = new Date(e.target.value); if (!isNaN(d.getTime())) setDateRange({ ...dateRange, start: d }) }}
                 className="w-full h-11 bg-card border border-border rounded-xl px-4 text-[11px] font-bold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer dark:[color-scheme:dark]"
               />
             </div>
@@ -98,7 +98,7 @@ export default function FiltrosDashboard() {
               <input 
                 type="datetime-local" 
                 value={formatDateTimeLocal(dateRange.end)}
-                onChange={(e) => setDateRange({ ...dateRange, end: new Date(e.target.value) })}
+                onChange={(e) => { const d = new Date(e.target.value); if (!isNaN(d.getTime())) setDateRange({ ...dateRange, end: d }) }}
                 className="w-full h-11 bg-card border border-border rounded-xl px-4 text-[11px] font-bold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer dark:[color-scheme:dark]"
               />
             </div>

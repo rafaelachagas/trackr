@@ -186,7 +186,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetchProductsList();
     refreshData();
-  }, [period, product]);
+  }, [period, product, dateRange]);
 
   return (
     <DashboardContext.Provider

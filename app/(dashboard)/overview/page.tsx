@@ -15,8 +15,12 @@ export default function OverviewPage() {
 
   useEffect(() => {
     const params = new URLSearchParams()
-    if (dateRange.start) params.set('d_inicio', dateRange.start.toISOString().split('T')[0])
-    if (dateRange.end) params.set('d_fim', dateRange.end.toISOString().split('T')[0])
+    try {
+      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', dateRange.start.toISOString().split('T')[0])
+      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', dateRange.end.toISOString().split('T')[0])
+    } catch {
+      return
+    }
 
     fetch(`/api/framework?${params}`)
       .then(r => r.json())
