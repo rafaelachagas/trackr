@@ -77,10 +77,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const agora = toZonedTime(new Date(), TIMEZONE)
 
-    const d7 = format(subDays(agora, 7), 'yyyy-MM-dd')
-    const d3 = format(subDays(agora, 3), 'yyyy-MM-dd')
-    const d1 = format(subDays(agora, 1), 'yyyy-MM-dd')
     const hoje = format(agora, 'yyyy-MM-dd')
+    const d7 = format(subDays(agora, 6), 'yyyy-MM-dd')
+    const d3 = format(subDays(agora, 2), 'yyyy-MM-dd')
+    const d1 = hoje // 1d = a partir de 00:00 de hoje, alinhado com reset do Meta
 
     // Período customizado para a coluna de gasto
     const dInicio = searchParams.get('d_inicio') ?? d7
@@ -210,7 +210,7 @@ export async function GET(request: Request) {
         gasto_7d: gasto7d,
         gasto_3d: gasto3d,
         gasto_1d: gasto1d,
-        gasto_periodo: gastoPeriodoMap.get(nome) ?? gasto7d,
+        gasto_periodo: gastoPeriodoMap.get(nome) ?? 0,
 
         vendas_7d: dados.vendas.length,
       })
