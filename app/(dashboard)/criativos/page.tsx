@@ -11,7 +11,7 @@ import {
 } from '@/app/actions/criativos'
 
 const PREFIXO_PADRAO = 'IZ'
-const TIPOS_CAMPANHA = ['CBO', 'ADV']
+const TIPOS_CAMPANHA = ['CBO', 'ABO', 'ADV']
 const OBJETIVOS = ['VENDAS', 'TRAFEGO', 'ENGAJAMENTO', 'LEADS']
 const FASES = ['FASE01', 'FASE02', 'FASE03']
 
