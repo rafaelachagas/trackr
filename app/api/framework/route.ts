@@ -107,73 +107,80 @@ export async function GET(request: Request) {
       }
     }
 
-    const [{ data: gastos7d }, { data: gastosPeriodo }, { data: vendas7d }] = await Promise.all([
+    const [{ data: criativosRegistrados }, { data: gastos7d }, { data: gastosPeriodo }, { data: vendas7d }] = await Promise.all([
+      supabaseAdmin
+        .from('criativos')
+        .select('nome, campaign_name, fase, status')
+        .order('nome'),
       supabaseAdmin
         .from('gastos')
         .select('criativo, campaign_name, ad_name, valor_gasto, data')
+        .is('ad_id', null)
         .gte('data', d7)
         .lte('data', amanha),
       supabaseAdmin
         .from('gastos')
         .select('criativo, ad_name, campaign_name, valor_gasto')
+        .is('ad_id', null)
         .gte('data', dInicio)
         .lte('data', dFim),
       supabaseAdmin
         .from('vendas')
         .select('criativo, fase, campanha, valor, data')
         .eq('status', 'approved')
+        .like('transaction_id', 'manual_%')
         .gte('data', `${d7}T00:00:00`)
         .lte('data', `${ontem}T23:59:59`),
     ])
 
-    if (!gastos7d || !vendas7d) {
+    if (!criativosRegistrados) {
       return NextResponse.json({ criativos: [], roasMinimo: ROAS_MINIMO })
     }
 
-    // Mapa de gasto por período selecionado: "adKey__campaign" -> total
+    // Mapa de gasto por período selecionado: "nome" -> total
     const gastoPeriodoMap = new Map<string, number>()
     for (const g of (gastosPeriodo ?? [])) {
-      const adKey = g.criativo || g.ad_name || 'Sem Nome'
-      const key = `${adKey}__${(g as any).campaign_name ?? ''}`
+      const key = g.criativo ?? ''
       gastoPeriodoMap.set(key, (gastoPeriodoMap.get(key) ?? 0) + Number(g.valor_gasto))
     }
 
     type EntradaCriativo = {
-      ad_name: string
       campaign_name: string | null
+      fase: string | null
+      status: string
       gastos: { valor: number; data: string }[]
       vendas: { valor: number; data: string }[]
     }
 
+    // Seed map from registered creatives (shows all, even with zero data)
     const criativoMap = new Map<string, EntradaCriativo>()
-
-    for (const g of gastos7d) {
-      const adKey = g.criativo || g.ad_name || 'Sem Nome'
-      const key = `${adKey}__${g.campaign_name ?? ''}`
-      if (!criativoMap.has(key)) {
-        criativoMap.set(key, { ad_name: g.ad_name || adKey, campaign_name: g.campaign_name, gastos: [], vendas: [] })
-      }
-      criativoMap.get(key)!.gastos.push({ valor: Number(g.valor_gasto), data: g.data })
+    for (const c of criativosRegistrados) {
+      criativoMap.set(c.nome, {
+        campaign_name: c.campaign_name,
+        fase: c.fase,
+        status: c.status,
+        gastos: [],
+        vendas: [],
+      })
     }
 
-    for (const v of vendas7d) {
+    // Attach manual gastos
+    for (const g of (gastos7d ?? [])) {
+      const nome = g.criativo ?? ''
+      if (!criativoMap.has(nome)) continue
+      criativoMap.get(nome)!.gastos.push({ valor: Number(g.valor_gasto), data: g.data })
+    }
+
+    // Attach manual vendas
+    for (const v of (vendas7d ?? [])) {
       if (!v.criativo) continue
-      const faseDaVenda = (v as any).fase as string | null
-      for (const [key, dados] of criativoMap.entries()) {
-        if (!key.startsWith(`${v.criativo}__`)) continue
-        // Se a venda tem fase definida, só atribui à campanha da mesma fase
-        if (faseDaVenda && dados.campaign_name) {
-          const faseCampanha = detectarFase(dados.campaign_name)
-          if (faseCampanha && faseCampanha !== faseDaVenda) continue
-        }
-        dados.vendas.push({ valor: Number(v.valor), data: v.data })
-      }
+      if (!criativoMap.has(v.criativo)) continue
+      criativoMap.get(v.criativo)!.vendas.push({ valor: Number(v.valor), data: v.data })
     }
 
     const criativos: FrameworkData[] = []
 
     for (const [nome, dados] of criativoMap.entries()) {
-      // All windows use complete days only (≤ ontem)
       const gasto7d = dados.gastos.filter((g) => g.data <= ontem).reduce((a, g) => a + g.valor, 0)
       const gasto3d = dados.gastos
         .filter((g) => g.data >= d3 && g.data <= ontem)
@@ -182,7 +189,6 @@ export async function GET(request: Request) {
         .filter((g) => g.data === d1)
         .reduce((a, g) => a + g.valor, 0)
 
-      // vendas query already bounded by ontem
       const receita7d = dados.vendas.reduce((a, v) => a + v.valor, 0)
       const receita3d = dados.vendas
         .filter((v) => v.data.substring(0, 10) >= d3)
@@ -196,12 +202,11 @@ export async function GET(request: Request) {
       const roas1d = gasto1d > 0 ? calcularRoas(receita1d, gasto1d) : null
 
       const acao = aplicarRegras(roas7d, roas3d, roas1d, ROAS_MINIMO, regras)
-      const fase = detectarFase(dados.campaign_name)
+      const fase = detectarFase(dados.campaign_name) ?? (dados.fase as FaseCampanha)
 
-      const adKey = nome.split('__')[0]
       criativos.push({
-        criativo: adKey,
-        ad_name: dados.ad_name,
+        criativo: nome,
+        ad_name: nome,
         campaign_name: dados.campaign_name,
         fase,
         roas_7d: roas7d,
@@ -216,7 +221,6 @@ export async function GET(request: Request) {
         gasto_3d: gasto3d,
         gasto_1d: gasto1d,
         gasto_periodo: gastoPeriodoMap.get(nome) ?? 0,
-
         vendas_7d: dados.vendas.length,
       })
     }
