@@ -53,6 +53,7 @@ export default function ConfiguracoesPage() {
   const [roasMinimo, setRoasMinimo] = useState('1.0')
   const [syncing, setSyncing] = useState(false)
   const [syncingHotmart, setSyncingHotmart] = useState(false)
+  const [diasSync, setDiasSync] = useState('7')
   const [showToken, setShowToken] = useState(false)
   const [showHotmartSecrets, setShowHotmartSecrets] = useState(false)
   const [produtosFront, setProdutosFront] = useState('')
@@ -153,10 +154,10 @@ export default function ConfiguracoesPage() {
   async function sincronizarMeta() {
     setSyncing(true)
     try {
-      const res = await fetch('/api/meta/sync', { method: 'POST' })
+      const res = await fetch(`/api/meta/sync?dias=${diasSync}`, { method: 'POST' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido')
-      alert(`Sincronização concluída! ${json.total_registros} registros importados.`)
+      alert(`Sincronização concluída! ${json.total_registros} registros importados (${diasSync} dias).`)
     } catch (e: any) {
       alert(`Erro na sincronização: ${e.message}`)
     } finally {
@@ -316,6 +317,21 @@ export default function ConfiguracoesPage() {
                 placeholder="1147900723247431"
               />
               <p className="text-[10px] text-slate-500 mt-1">Somente os números, sem "act_".</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">Período:</label>
+              <select
+                value={diasSync}
+                onChange={e => setDiasSync(e.target.value)}
+                className="flex-1 bg-[#0b1121] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition"
+              >
+                <option value="7">Últimos 7 dias</option>
+                <option value="14">Últimos 14 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="60">Últimos 60 dias</option>
+                <option value="90">Últimos 90 dias</option>
+              </select>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-800/30 border border-slate-800 rounded-xl">
