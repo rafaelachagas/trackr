@@ -30,7 +30,7 @@ export async function adicionarGasto(payload: {
   campanha?: string
   valor_gasto: number
 }) {
-  const { error } = await supabaseAdmin.from('gastos').upsert({
+  const { error } = await supabaseAdmin.from('gastos').insert({
     data: payload.data,
     criativo: payload.criativo,
     ad_name: `${payload.criativo}_manual_${Date.now()}`,
@@ -38,7 +38,7 @@ export async function adicionarGasto(payload: {
     valor_gasto: payload.valor_gasto,
     impressions: 0,
     clicks: 0,
-  }, { onConflict: 'ad_name' })
+  })
   if (error) return { success: false, error: error.message }
   revalidatePath('/lancamento')
   return { success: true }
