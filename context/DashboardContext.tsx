@@ -188,6 +188,13 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     refreshData();
   }, [period, product, dateRange]);
 
+  // Auto-sync on mount and every 5 minutes
+  useEffect(() => {
+    sincronizarTudo();
+    const interval = setInterval(sincronizarTudo, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <DashboardContext.Provider
       value={{
