@@ -80,9 +80,10 @@ export async function GET(request: Request) {
     const hoje = format(agora, 'yyyy-MM-dd')
     const amanha = format(addDays(agora, 1), 'yyyy-MM-dd')
     const ontem = format(subDays(agora, 1), 'yyyy-MM-dd')
-    const d7 = format(subDays(agora, 6), 'yyyy-MM-dd')
-    const d3 = format(subDays(agora, 2), 'yyyy-MM-dd')
-    const d1 = ontem // 1d = dia anterior completo (hoje está incompleto)
+    // All ROAS windows end at yesterday (complete days only — today is incomplete)
+    const d7 = format(subDays(agora, 7), 'yyyy-MM-dd') // 7 complete days ending yesterday
+    const d3 = format(subDays(agora, 3), 'yyyy-MM-dd') // 3 complete days ending yesterday
+    const d1 = ontem
 
     // Período customizado para a coluna de gasto
     const dInicio = searchParams.get('d_inicio') ?? d7
@@ -122,7 +123,7 @@ export async function GET(request: Request) {
         .select('criativo, fase, campanha, valor, data')
         .eq('status', 'approved')
         .gte('data', `${d7}T00:00:00`)
-        .lte('data', `${hoje}T23:59:59`),
+        .lte('data', `${ontem}T23:59:59`),
     ])
 
     if (!gastos7d || !vendas7d) {
@@ -172,14 +173,16 @@ export async function GET(request: Request) {
     const criativos: FrameworkData[] = []
 
     for (const [nome, dados] of criativoMap.entries()) {
-      const gasto7d = dados.gastos.reduce((a, g) => a + g.valor, 0)
+      // All windows use complete days only (≤ ontem)
+      const gasto7d = dados.gastos.filter((g) => g.data <= ontem).reduce((a, g) => a + g.valor, 0)
       const gasto3d = dados.gastos
-        .filter((g) => g.data >= d3)
+        .filter((g) => g.data >= d3 && g.data <= ontem)
         .reduce((a, g) => a + g.valor, 0)
       const gasto1d = dados.gastos
         .filter((g) => g.data === d1)
         .reduce((a, g) => a + g.valor, 0)
 
+      // vendas query already bounded by ontem
       const receita7d = dados.vendas.reduce((a, v) => a + v.valor, 0)
       const receita3d = dados.vendas
         .filter((v) => v.data.substring(0, 10) >= d3)

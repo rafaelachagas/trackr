@@ -10,7 +10,8 @@ import {
   RefreshCw,
   LogOut,
   ShoppingBag,
-  ShoppingCart
+  ShoppingCart,
+  PlusCircle
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 
@@ -19,6 +20,7 @@ const navigation = [
   { href: '/vendas', label: 'Sales', icon: ShoppingCart },
   { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
   { href: '/framework', label: 'Framework', icon: TrendingUp },
+  { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
 ]
 
 const configuracoes = [
