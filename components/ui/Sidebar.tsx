@@ -11,7 +11,8 @@ import {
   LogOut,
   ShoppingBag,
   ShoppingCart,
-  PlusCircle
+  PlusCircle,
+  Film
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 
@@ -20,6 +21,7 @@ const navigation = [
   { href: '/vendas', label: 'Sales', icon: ShoppingCart },
   { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
   { href: '/framework', label: 'Framework', icon: TrendingUp },
+  { href: '/criativos', label: 'Criativos', icon: Film },
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
 ]
 

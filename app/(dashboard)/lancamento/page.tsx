@@ -15,6 +15,7 @@ import {
   limparTodosGastos,
   getProdutos,
 } from '@/app/actions/lancamento'
+import { listarCriativosAtivos } from '@/app/actions/criativos'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
@@ -23,6 +24,7 @@ type Tab = 'vendas' | 'gastos'
 
 export default function LancamentoPage() {
   const [produtos, setProdutos] = useState<string[]>([])
+  const [criativosAtivos, setCriativosAtivos] = useState<{ nome: string; campaign_name: string; fase: string | null }[]>([])
   const [vendasList, setVendasList] = useState<any[]>([])
   const [gastosList, setGastosList] = useState<any[]>([])
   const [modal, setModal] = useState<ModalType>(null)
@@ -48,12 +50,14 @@ export default function LancamentoPage() {
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
-    const [prods, vendas, gastos] = await Promise.all([
+    const [prods, vendas, gastos, criativos] = await Promise.all([
       getProdutos(),
       listarVendasManuais(),
       listarGastosManuais(),
+      listarCriativosAtivos(),
     ])
     setProdutos(prods)
+    setCriativosAtivos(criativos)
     if (prods.length > 0 && !vProduto) setVProduto(prods[0])
     setVendasList(vendas.data)
     setGastosList(gastos.data)
@@ -390,7 +394,10 @@ export default function LancamentoPage() {
                   </div>
                   <div>
                     <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Criativo</label>
-                    <input type="text" value={vCriativo} onChange={e => setVCriativo(e.target.value)} placeholder="ad03-entrevista-..." className={inputClass} required />
+                    <select value={vCriativo} onChange={e => setVCriativo(e.target.value)} className={inputClass} required>
+                      <option value="">Selecione um criativo...</option>
+                      {criativosAtivos.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Produto</label>
@@ -418,11 +425,24 @@ export default function LancamentoPage() {
                   </div>
                   <div>
                     <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Criativo</label>
-                    <input type="text" value={gCriativo} onChange={e => setGCriativo(e.target.value)} placeholder="ad03-entrevista-..." className={inputClass} required />
+                    <select
+                      value={gCriativo}
+                      onChange={e => {
+                        const nome = e.target.value
+                        setGCriativo(nome)
+                        const c = criativosAtivos.find(x => x.nome === nome)
+                        if (c) setGCampanha(c.campaign_name)
+                      }}
+                      className={inputClass}
+                      required
+                    >
+                      <option value="">Selecione um criativo...</option>
+                      {criativosAtivos.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+                    </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Campanha (opcional)</label>
-                    <input type="text" value={gCampanha} onChange={e => setGCampanha(e.target.value)} placeholder="FASE01 - CBO..." className={inputClass} />
+                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Campanha</label>
+                    <input type="text" value={gCampanha} onChange={e => setGCampanha(e.target.value)} placeholder="Preenchida automaticamente..." className={inputClass} />
                   </div>
                   <button type="submit" disabled={savingGasto} className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50">
                     <Plus className="w-4 h-4" />
