@@ -44,6 +44,36 @@ export async function reprocessarUpsellsSemCriativo() {
   }
 }
 
+export async function getVendasStats(
+  startDate: string,
+  endDate: string,
+  produto?: string
+) {
+  try {
+    let query = supabaseAdmin
+      .from('vendas')
+      .select('valor, valor_liquido', { count: 'exact' })
+      .eq('status', 'approved')
+      .gte('data', startDate)
+      .lte('data', endDate)
+
+    if (produto && produto !== 'Qualquer') {
+      query = query.ilike('produto', `%${produto}%`)
+    }
+
+    const { data, error, count } = await query
+    if (error) return { success: false, error: error.message }
+
+    const totalRevenue = (data ?? []).reduce(
+      (acc, v) => acc + (v.valor_liquido ?? v.valor ?? 0),
+      0
+    )
+    return { success: true, approvedCount: count ?? 0, totalRevenue }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+}
+
 export async function getVendas(
   startDate: string,
   endDate: string,

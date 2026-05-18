@@ -7,7 +7,7 @@ import { useDashboard } from '@/context/DashboardContext'
 
 export default function Topbar() {
   const pathname = usePathname()
-  const isOverview = pathname === '/overview' || pathname === '/'
+  const isOverview = pathname === '/overview' || pathname === '/' || pathname === '/vendas'
   const { theme, setTheme, isPrivate, setIsPrivate } = useDashboard()
 
   const toggleTheme = () => {

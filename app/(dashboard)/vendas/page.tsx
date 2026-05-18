@@ -1,20 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { format, subDays, startOfDay, endOfDay } from 'date-fns'
+import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
-import { getVendas, reprocessarUpsellsSemCriativo } from '@/app/actions/vendas'
+import { getVendas, getVendasStats, reprocessarUpsellsSemCriativo } from '@/app/actions/vendas'
 import { extrairFase, extrairCampanha } from '@/lib/utils'
-
-const PERIODOS = [
-  { label: 'Hoje', dias: 0 },
-  { label: '7d', dias: 7 },
-  { label: '14d', dias: 14 },
-  { label: '30d', dias: 30 },
-  { label: 'Tudo', dias: 365 },
-]
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   approved:   { label: 'Aprovado',    className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
@@ -32,42 +24,36 @@ const TIPO_LABEL: Record<string, { label: string; className: string }> = {
 const PAGE_SIZE = 50
 
 export default function VendasPage() {
-  const { product, isPrivate } = useDashboard()
+  const { product, isPrivate, dateRange, lastUpdate } = useDashboard()
   const [vendas, setVendas] = useState<any[]>([])
   const [total, setTotal] = useState(0)
+  const [stats, setStats] = useState({ approvedCount: 0, totalRevenue: 0 })
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [busca, setBusca] = useState('')
   const [statusFiltro, setStatusFiltro] = useState('todos')
-  const [periodoSelecionado, setPeriodoSelecionado] = useState(7)
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
-  const getDateRange = () => {
-    if (periodoSelecionado === 0) {
-      return { start: startOfDay(new Date()).toISOString(), end: endOfDay(new Date()).toISOString() }
-    }
-    return {
-      start: startOfDay(subDays(new Date(), periodoSelecionado - 1)).toISOString(),
-      end: endOfDay(new Date()).toISOString(),
-    }
-  }
+  const getRange = () => ({
+    start: dateRange.start?.toISOString() ?? new Date().toISOString(),
+    end: dateRange.end?.toISOString() ?? new Date().toISOString(),
+  })
 
   const carregar = async (p = 1) => {
     setLoading(true)
-    const { start, end } = getDateRange()
+    const { start, end } = getRange()
     try {
-      const res = await getVendas(
-        start,
-        end,
-        product,
-        statusFiltro,
-        p,
-        PAGE_SIZE
-      )
+      const [res, statsRes] = await Promise.all([
+        getVendas(start, end, product, statusFiltro, p, PAGE_SIZE),
+        getVendasStats(start, end, product),
+      ])
       if (res.success) {
         setVendas(res.data ?? [])
         setTotal(res.count ?? 0)
+      }
+      if (statsRes.success) {
+        setStats({ approvedCount: statsRes.approvedCount ?? 0, totalRevenue: statsRes.totalRevenue ?? 0 })
       }
     } finally {
       setLoading(false)
@@ -78,7 +64,7 @@ export default function VendasPage() {
     reprocessarUpsellsSemCriativo()
     setPage(1)
     carregar(1)
-  }, [periodoSelecionado, product, statusFiltro])
+  }, [product, statusFiltro, dateRange, lastUpdate])
 
   const vendasFiltradas = busca.trim()
     ? vendas.filter(
@@ -90,16 +76,12 @@ export default function VendasPage() {
       )
     : vendas
 
-  const receitaTotal = vendasFiltradas
-    .filter((v) => v.status === 'approved')
-    .reduce((acc, v) => acc + (v.valor_liquido ?? v.valor ?? 0), 0)
-
   const blur = isPrivate ? 'blur-sm select-none' : ''
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Vendas</h1>
+        <h1 className="text-2xl font-bold text-foreground">Sales</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Histórico completo de transações
         </p>
@@ -113,33 +95,14 @@ export default function VendasPage() {
         </div>
         <div className="bg-card border border-border rounded-xl p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Aprovadas</p>
-          <p className={`text-2xl font-bold text-emerald-400 ${blur}`}>
-            {vendas.filter((v) => v.status === 'approved').length}
-          </p>
+          <p className={`text-2xl font-bold text-emerald-400 ${blur}`}>{stats.approvedCount}</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Receita</p>
           <p className={`text-2xl font-bold text-primary ${blur}`}>
-            R$ {receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            R$ {stats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
         </div>
-      </div>
-
-      {/* Filtro de período */}
-      <div className="flex gap-2">
-        {PERIODOS.map((p) => (
-          <button
-            key={p.dias}
-            onClick={() => { setPeriodoSelecionado(p.dias); setPage(1) }}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-              periodoSelecionado === p.dias
-                ? 'bg-primary text-white border-primary'
-                : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-primary/50'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
       </div>
 
       {/* Filtros */}
@@ -189,13 +152,13 @@ export default function VendasPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-16 text-muted-foreground">
+                  <td colSpan={10} className="text-center py-16 text-muted-foreground">
                     Carregando...
                   </td>
                 </tr>
               ) : vendasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-16 text-muted-foreground">
+                  <td colSpan={10} className="text-center py-16 text-muted-foreground">
                     Nenhuma venda encontrada
                   </td>
                 </tr>
@@ -208,7 +171,7 @@ export default function VendasPage() {
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap" style={{ width: 130 }}>
                         {v.data ? format(new Date(v.data), 'dd/MM/yy HH:mm', { locale: ptBR }) : '—'}
                       </td>
-                      <td className={`px-4 py-3 font-mono text-xs text-foreground overflow-hidden`} style={{ width: 130, maxWidth: 130 }}>
+                      <td className="px-4 py-3 font-mono text-xs text-foreground overflow-hidden" style={{ width: 130, maxWidth: 130 }}>
                         <span className={`block truncate ${blur}`} title={v.transaction_id}>{v.transaction_id ?? '—'}</span>
                       </td>
                       <td className="px-4 py-3 text-foreground overflow-hidden" style={{ width: 200, maxWidth: 200 }} title={v.produto}>
