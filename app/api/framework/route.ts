@@ -79,9 +79,10 @@ export async function GET(request: Request) {
 
     const hoje = format(agora, 'yyyy-MM-dd')
     const amanha = format(addDays(agora, 1), 'yyyy-MM-dd')
+    const ontem = format(subDays(agora, 1), 'yyyy-MM-dd')
     const d7 = format(subDays(agora, 6), 'yyyy-MM-dd')
     const d3 = format(subDays(agora, 2), 'yyyy-MM-dd')
-    const d1 = hoje // 1d = a partir de 00:00 de hoje, alinhado com reset do Meta
+    const d1 = ontem // 1d = dia anterior completo (hoje está incompleto)
 
     // Período customizado para a coluna de gasto
     const dInicio = searchParams.get('d_inicio') ?? d7
@@ -176,7 +177,7 @@ export async function GET(request: Request) {
         .filter((g) => g.data >= d3)
         .reduce((a, g) => a + g.valor, 0)
       const gasto1d = dados.gastos
-        .filter((g) => g.data >= d1)
+        .filter((g) => g.data === d1)
         .reduce((a, g) => a + g.valor, 0)
 
       const receita7d = dados.vendas.reduce((a, v) => a + v.valor, 0)
@@ -184,7 +185,7 @@ export async function GET(request: Request) {
         .filter((v) => v.data.substring(0, 10) >= d3)
         .reduce((a, v) => a + v.valor, 0)
       const receita1d = dados.vendas
-        .filter((v) => v.data.substring(0, 10) >= d1)
+        .filter((v) => v.data.substring(0, 10) === d1)
         .reduce((a, v) => a + v.valor, 0)
 
       const roas7d = gasto7d > 0 ? calcularRoas(receita7d, gasto7d) : null
