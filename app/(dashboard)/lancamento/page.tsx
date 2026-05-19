@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Plus, Trash2, AlertTriangle, X, ShoppingCart, TrendingDown, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Plus, Trash2, X, ShoppingCart, TrendingDown, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import {
   adicionarVenda,
   adicionarGasto,
@@ -11,8 +11,6 @@ import {
   listarGastosManuais,
   deletarVenda,
   deletarGasto,
-  limparTodasVendas,
-  limparTodosGastos,
   getProdutos,
 } from '@/app/actions/lancamento'
 import { listarCriativosAtivos } from '@/app/actions/criativos'
@@ -31,7 +29,7 @@ export default function LancamentoPage() {
   const [tab, setTab] = useState<Tab>('vendas')
   const [busca, setBusca] = useState('')
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set())
-  const [confirmLimpar, setConfirmLimpar] = useState<Tab | null>(null)
+
 
   // Venda form
   const [vData, setVData] = useState(hoje)
@@ -144,7 +142,7 @@ export default function LancamentoPage() {
   const isEmpty = activeList.length === 0
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -231,30 +229,6 @@ export default function LancamentoPage() {
             </div>
           </div>
 
-          {(tab === 'vendas' ? vendasList.length > 0 : gastosList.length > 0) && (
-            confirmLimpar === tab ? (
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-                <span className="text-xs text-red-400 font-medium whitespace-nowrap">Apagar tudo?</span>
-                <button
-                  onClick={async () => {
-                    if (tab === 'vendas') { await limparTodasVendas(); setVendasList([]) }
-                    else { await limparTodosGastos(); setGastosList([]) }
-                    setConfirmLimpar(null)
-                  }}
-                  className="text-xs bg-red-500 text-white px-2.5 py-1 rounded-lg font-semibold hover:bg-red-400 transition"
-                >Sim</button>
-                <button onClick={() => setConfirmLimpar(null)} className="text-xs bg-muted text-muted-foreground px-2.5 py-1 rounded-lg hover:text-foreground transition">Não</button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirmLimpar(tab)}
-                className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition px-2.5 py-1.5 bg-red-500/10 rounded-lg border border-red-500/20 whitespace-nowrap"
-              >
-                <Trash2 className="w-3 h-3" /> Limpar tudo
-              </button>
-            )
-          )}
         </div>
 
         {/* Content */}

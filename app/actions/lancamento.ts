@@ -50,7 +50,7 @@ export async function listarVendasManuais() {
     .select('id, data, criativo, produto, valor')
     .like('transaction_id', 'manual_%')
     .order('data', { ascending: false })
-    .limit(200)
+    .limit(5000)
   if (error) return { success: false, data: [] }
   return { success: true, data: data ?? [] }
 }
@@ -61,7 +61,7 @@ export async function listarGastosManuais() {
     .select('id, data, criativo, campaign_name, valor_gasto')
     .is('ad_id', null)
     .order('data', { ascending: false })
-    .limit(200)
+    .limit(5000)
   if (error) return { success: false, data: [] }
   return { success: true, data: data ?? [] }
 }
