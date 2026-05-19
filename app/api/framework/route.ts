@@ -155,6 +155,7 @@ export async function GET(request: Request) {
     // Seed map from registered creatives (shows all, even with zero data)
     const criativoMap = new Map<string, EntradaCriativo>()
     for (const c of criativosRegistrados) {
+      if (c.status !== 'ativo') continue
       criativoMap.set(c.nome, {
         campaign_name: c.campaign_name,
         fase: c.fase,
