@@ -54,6 +54,7 @@ export async function getVendasStats(
       .from('vendas')
       .select('valor, valor_liquido', { count: 'exact' })
       .eq('status', 'approved')
+      .like('transaction_id', 'manual_%')
       .gte('data', startDate)
       .lte('data', endDate)
 
@@ -86,6 +87,7 @@ export async function getVendas(
     let query = supabaseAdmin
       .from('vendas')
       .select('*', { count: 'exact' })
+      .like('transaction_id', 'manual_%')
       .gte('data', startDate)
       .lte('data', endDate)
       .order('data', { ascending: false })

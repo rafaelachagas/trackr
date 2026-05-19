@@ -5,8 +5,8 @@ import { startOfDay, endOfDay, subDays, format } from 'date-fns'
 
 export async function getDashboardData(product: string, startDate: string, endDate: string) {
   try {
-    let queryVendas = supabaseAdmin.from('vendas').select('valor, data, tipo')
-    let queryGastos = supabaseAdmin.from('gastos').select('valor_gasto, data')
+    let queryVendas = supabaseAdmin.from('vendas').select('valor, data, tipo').like('transaction_id', 'manual_%')
+    let queryGastos = supabaseAdmin.from('gastos').select('valor_gasto, data').is('ad_id', null)
 
     if (product !== 'Qualquer') {
       queryVendas = queryVendas.eq('produto', product)
