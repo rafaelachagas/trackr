@@ -246,6 +246,7 @@ export default function FrameworkPage() {
   const [criativos, setCriativos] = useState<FrameworkData[]>([])
   const [loading, setLoading] = useState(true)
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState<Date | null>(null)
+  const [filtroAcao, setFiltroAcao] = useState<AcaoOtimizacao | null>(null)
 
   async function carregar() {
     setLoading(true)
@@ -266,6 +267,7 @@ export default function FrameworkPage() {
   }, [])
 
   const contagem = contarAcoes(criativos)
+  const criativosFiltrados = filtroAcao ? criativos.filter(c => c.acao === filtroAcao) : criativos
 
   const fases: FaseCampanha[] = ['FASE01', 'FASE02', 'FASE03', null]
   const labelFase: Record<string, string> = {
@@ -298,32 +300,47 @@ export default function FrameworkPage() {
         </button>
       </div>
 
-      {/* Barra de resumo */}
+      {/* Barra de resumo + filtros */}
       {!loading && criativos.length > 0 && (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-muted-foreground font-medium">
-            {criativos.length} criativo{criativos.length !== 1 ? 's' : ''} analisado{criativos.length !== 1 ? 's' : ''}
-          </span>
+          <button
+            onClick={() => setFiltroAcao(null)}
+            className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-all ${filtroAcao === null ? 'bg-primary/20 text-primary border-primary/40' : 'bg-muted/30 text-muted-foreground border-border hover:border-primary/30'}`}
+          >
+            Todos · {criativos.length}
+          </button>
           <span className="text-muted-foreground/30">·</span>
           {contagem.escalar > 0 && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            <button
+              onClick={() => setFiltroAcao(filtroAcao === '+20% orçamento' ? null : '+20% orçamento')}
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-all ${filtroAcao === '+20% orçamento' ? 'bg-emerald-500/40 text-emerald-200 border-emerald-400/60 ring-1 ring-emerald-400/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'}`}
+            >
               ▲ {contagem.escalar} escalar
-            </span>
+            </button>
           )}
           {contagem.manter > 0 && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+            <button
+              onClick={() => setFiltroAcao(filtroAcao === 'Manter' ? null : 'Manter')}
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-all ${filtroAcao === 'Manter' ? 'bg-amber-500/40 text-amber-200 border-amber-400/60 ring-1 ring-amber-400/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30'}`}
+            >
               → {contagem.manter} manter
-            </span>
+            </button>
           )}
           {contagem.reduzir > 0 && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">
+            <button
+              onClick={() => setFiltroAcao(filtroAcao === '-20% ou pausar' ? null : '-20% ou pausar')}
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-all ${filtroAcao === '-20% ou pausar' ? 'bg-orange-500/40 text-orange-200 border-orange-400/60 ring-1 ring-orange-400/30' : 'bg-orange-500/20 text-orange-300 border-orange-500/30 hover:bg-orange-500/30'}`}
+            >
               ▼ {contagem.reduzir} reduzir
-            </span>
+            </button>
           )}
           {contagem.pausar > 0 && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+            <button
+              onClick={() => setFiltroAcao(filtroAcao === 'Pausar' ? null : 'Pausar')}
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-all ${filtroAcao === 'Pausar' ? 'bg-red-500/40 text-red-200 border-red-400/60 ring-1 ring-red-400/30' : 'bg-red-500/20 text-red-300 border-red-500/30 hover:bg-red-500/30'}`}
+            >
               ✕ {contagem.pausar} pausar
-            </span>
+            </button>
           )}
           {ultimaAtualizacao && (
             <>
@@ -357,9 +374,9 @@ export default function FrameworkPage() {
 
       {/* Cards agrupados por fase */}
       {!loading &&
-        criativos.length > 0 &&
+        criativosFiltrados.length > 0 &&
         fases.map((fase) => {
-          const grupo = criativos.filter((c) => c.fase === fase)
+          const grupo = criativosFiltrados.filter((c) => c.fase === fase)
           if (grupo.length === 0) return null
           const labelKey = fase ?? 'sem'
           return (
