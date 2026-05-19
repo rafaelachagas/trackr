@@ -1,6 +1,7 @@
 'use client'
 
-import { RoasPorCriativo } from '@/types'
+import { useState } from 'react'
+import { RoasPorCriativo, AcaoOtimizacao } from '@/types'
 import { formatarMoeda, corDaAcao, iconeAcao } from '@/lib/utils'
 import { useDashboard } from '@/context/DashboardContext'
 
@@ -14,6 +15,14 @@ const COR_FASE: Record<string, string> = {
   FASE03: 'bg-amber-500/15 text-amber-400 border border-amber-500/25',
 }
 
+const ACOES: { value: string; label: string }[] = [
+  { value: '', label: 'Todas as ações' },
+  { value: '+20% orçamento', label: '▲ +20% orçamento' },
+  { value: 'Manter', label: '→ Manter' },
+  { value: '-20% ou pausar', label: '▼ -20% ou pausar' },
+  { value: 'Pausar', label: '✕ Pausar' },
+]
+
 function BadgeRoas({ valor }: { valor: number | null }) {
   if (valor === null) return <span className="text-muted-foreground text-xs">—</span>
   const cor =
@@ -25,8 +34,11 @@ function BadgeRoas({ valor }: { valor: number | null }) {
 
 export default function TabelaCriativos({ dados }: Props) {
   const { isPrivate } = useDashboard()
+  const [filtroAcao, setFiltroAcao] = useState('')
 
-  const dadosFiltrados = dados.filter(row => row.fase !== null)
+  const dadosFiltrados = dados
+    .filter(row => row.fase !== null)
+    .filter(row => !filtroAcao || row.acao === filtroAcao)
 
   if (dadosFiltrados.length === 0) {
     return (
@@ -39,8 +51,15 @@ export default function TabelaCriativos({ dados }: Props) {
 
   return (
     <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden text-foreground">
-      <div className="px-5 py-4 border-b border-border">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-4">
         <h3 className="text-sm font-semibold text-foreground">Performance por Criativo</h3>
+        <select
+          value={filtroAcao}
+          onChange={e => setFiltroAcao(e.target.value)}
+          className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-primary/60 transition-colors"
+        >
+          {ACOES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+        </select>
       </div>
       <div className="overflow-x-auto hide-scrollbar">
         <table className="w-full text-sm">
