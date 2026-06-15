@@ -60,9 +60,9 @@ export default function StatusPage() {
   useEffect(() => {
     fetch('/api/framework')
       .then(r => r.json())
-      .then(({ criativos: data }) => {
+      .then(({ criativos: data, ultimoLancamento }) => {
         setCriativos(data ?? [])
-        setAtualizado(new Date())
+        setAtualizado(ultimoLancamento ? new Date(ultimoLancamento) : new Date())
       })
       .finally(() => setLoading(false))
   }, [])

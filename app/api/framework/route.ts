@@ -107,7 +107,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const [{ data: criativosRegistrados }, { data: gastos7d }, { data: gastosPeriodo }, { data: vendas7d }] = await Promise.all([
+    const [{ data: criativosRegistrados }, { data: gastos7d }, { data: gastosPeriodo }, { data: vendas7d }, { data: ultimoLancamento }] = await Promise.all([
       supabaseAdmin
         .from('criativos')
         .select('nome, campaign_name, fase, status')
@@ -131,6 +131,13 @@ export async function GET(request: Request) {
         .like('transaction_id', 'manual_%')
         .gte('data', `${d7}T00:00:00`)
         .lte('data', `${ontem}T23:59:59`),
+      supabaseAdmin
+        .from('vendas')
+        .select('created_at')
+        .like('transaction_id', 'manual_%')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single(),
     ])
 
     if (!criativosRegistrados) {
@@ -234,7 +241,7 @@ export async function GET(request: Request) {
     }
     criativos.sort((a, b) => prioridade[a.acao] - prioridade[b.acao])
 
-    return NextResponse.json({ criativos, roasMinimo: ROAS_MINIMO })
+    return NextResponse.json({ criativos, roasMinimo: ROAS_MINIMO, ultimoLancamento: ultimoLancamento?.created_at ?? null })
   } catch (err) {
     console.error('[framework]', err)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
