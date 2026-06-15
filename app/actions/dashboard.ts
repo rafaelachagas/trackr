@@ -1,11 +1,11 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
-import { startOfDay, endOfDay, subDays, format } from 'date-fns'
+
 
 export async function getDashboardData(product: string, startDate: string, endDate: string) {
   try {
-    let queryVendas = supabaseAdmin.from('vendas').select('valor, data, tipo').like('transaction_id', 'manual_%')
+    let queryVendas = supabaseAdmin.from('vendas').select('valor, data, tipo, produto').like('transaction_id', 'manual_%')
     let queryGastos = supabaseAdmin.from('gastos').select('valor_gasto, data').is('ad_id', null)
 
     if (product !== 'Qualquer') {
@@ -21,15 +21,32 @@ export async function getDashboardData(product: string, startDate: string, endDa
       queryGastos = queryGastos.lte('data', endDate)
     }
 
-    const [vendasRes, gastosRes] = await Promise.all([queryVendas, queryGastos])
+    const [vendasRes, gastosRes, produtosRes] = await Promise.all([
+      queryVendas,
+      queryGastos,
+      supabaseAdmin.from('produtos_mapeamento').select('nome_produto, tipo').eq('ativo', true),
+    ])
 
     if (vendasRes.error) throw vendasRes.error
     if (gastosRes.error) throw gastosRes.error
 
-    const totalRevenue = (vendasRes.data || []).reduce((acc, v) => acc + Number(v.valor), 0)
+    // Mapa produto -> tipo para classificar vendas sem tipo definido
+    const produtoTipoMap = new Map<string, string>()
+    for (const p of (produtosRes.data ?? [])) {
+      produtoTipoMap.set(p.nome_produto, p.tipo)
+    }
+
+    const vendas = vendasRes.data || []
+    const totalRevenue = vendas.reduce((acc, v) => acc + Number(v.valor), 0)
     const totalSpend = (gastosRes.data || []).reduce((acc, g) => acc + Number(g.valor_gasto), 0)
-    const salesCount = (vendasRes.data || []).length
+    const salesCount = vendas.length
     const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0
+
+    // Resolve tipo via mapeamento quando o campo está nulo
+    const vendasComTipo = vendas.map((v: any) => ({
+      ...v,
+      tipo: v.tipo ?? produtoTipoMap.get(v.produto) ?? 'front',
+    }))
 
     return {
       success: true,
@@ -39,7 +56,7 @@ export async function getDashboardData(product: string, startDate: string, endDa
         roas: roas,
         salesCount: salesCount
       },
-      vendas: vendasRes.data,
+      vendas: vendasComTipo,
       gastos: gastosRes.data
     }
   } catch (error: any) {
