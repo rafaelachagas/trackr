@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Plus, Trash2, X, ShoppingCart, TrendingDown, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Plus, Trash2, X, ShoppingCart, TrendingDown, ChevronDown, ChevronRight, Search, Pencil } from 'lucide-react'
 import {
   adicionarVenda,
   adicionarGasto,
@@ -11,39 +11,58 @@ import {
   listarGastosManuais,
   deletarVenda,
   deletarGasto,
+  editarVenda,
+  editarGasto,
   getProdutos,
 } from '@/app/actions/lancamento'
 import { listarCriativosAtivos } from '@/app/actions/criativos'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
-type ModalType = 'venda' | 'gasto' | null
 type Tab = 'vendas' | 'gastos'
+
+// Modal unificado de lançamento
+type ModalLancamento = {
+  data: string
+  criativo: string
+  campanha: string
+  // vendas: uma entrada por produto
+  vendaLinhas: { produto: string; valor: string }[]
+  // gasto
+  valorGasto: string
+}
+
+type EditVendaState = { id: string; data: string; produto: string; valor: string } | null
+type EditGastoState = { id: string; data: string; valor_gasto: string } | null
 
 export default function LancamentoPage() {
   const [produtos, setProdutos] = useState<string[]>([])
   const [criativosAtivos, setCriativosAtivos] = useState<{ nome: string; campaign_name: string; fase: string | null }[]>([])
   const [vendasList, setVendasList] = useState<any[]>([])
   const [gastosList, setGastosList] = useState<any[]>([])
-  const [modal, setModal] = useState<ModalType>(null)
   const [tab, setTab] = useState<Tab>('vendas')
   const [busca, setBusca] = useState('')
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set())
 
+  // Modal lançamento unificado
+  const [modalAberto, setModalAberto] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [erros, setErros] = useState<string[]>([])
+  const [form, setForm] = useState<ModalLancamento>({
+    data: hoje,
+    criativo: '',
+    campanha: '',
+    vendaLinhas: [],
+    valorGasto: '',
+  })
 
-  // Venda form
-  const [vData, setVData] = useState(hoje)
-  const [vCriativo, setVCriativo] = useState('')
-  const [vProduto, setVProduto] = useState('')
-  const [vValor, setVValor] = useState('')
-  const [savingVenda, setSavingVenda] = useState(false)
+  // Modal editar venda
+  const [editVenda, setEditVenda] = useState<EditVendaState>(null)
+  const [savingEditVenda, setSavingEditVenda] = useState(false)
 
-  // Gasto form
-  const [gData, setGData] = useState(hoje)
-  const [gCriativo, setGCriativo] = useState('')
-  const [gCampanha, setGCampanha] = useState('')
-  const [gValor, setGValor] = useState('')
-  const [savingGasto, setSavingGasto] = useState(false)
+  // Modal editar gasto
+  const [editGasto, setEditGasto] = useState<EditGastoState>(null)
+  const [savingEditGasto, setSavingEditGasto] = useState(false)
 
   useEffect(() => { carregar() }, [])
 
@@ -56,10 +75,8 @@ export default function LancamentoPage() {
     ])
     setProdutos(prods)
     setCriativosAtivos(criativos)
-    if (prods.length > 0 && !vProduto) setVProduto(prods[0])
     setVendasList(vendas.data)
     setGastosList(gastos.data)
-    // expand first date by default
     const firstV = vendas.data[0]?.data?.substring(0, 10)
     const firstG = gastos.data[0]?.data?.substring(0, 10)
     const initial = new Set<string>()
@@ -76,43 +93,90 @@ export default function LancamentoPage() {
     })
   }
 
-  async function handleAdicionarVenda(e: React.FormEvent) {
-    e.preventDefault()
-    if (!vCriativo || !vProduto || !vValor) return
-    setSavingVenda(true)
-    const res = await adicionarVenda({ data: vData, criativo: vCriativo, produto: vProduto, valor: parseFloat(vValor) })
-    setSavingVenda(false)
-    if (res.success) {
-      setVCriativo(''); setVValor('')
-      setModal(null); carregar()
-    } else alert('Erro: ' + res.error)
+  function abrirModal() {
+    setForm({
+      data: hoje,
+      criativo: '',
+      campanha: '',
+      vendaLinhas: produtos.map(p => ({ produto: p, valor: '' })),
+      valorGasto: '',
+    })
+    setErros([])
+    setModalAberto(true)
   }
 
-  async function handleAdicionarGasto(e: React.FormEvent) {
-    e.preventDefault()
-    if (!gCriativo || !gValor) return
-    setSavingGasto(true)
-    const res = await adicionarGasto({ data: gData, criativo: gCriativo, campanha: gCampanha || undefined, valor_gasto: parseFloat(gValor) })
-    setSavingGasto(false)
-    if (res.success) {
-      setGCriativo(''); setGCampanha(''); setGValor('')
-      setModal(null); carregar()
-    } else alert('Erro: ' + res.error)
+  function selecionarCriativo(nome: string) {
+    const c = criativosAtivos.find(x => x.nome === nome)
+    setForm(f => ({ ...f, criativo: nome, campanha: c?.campaign_name ?? '' }))
   }
 
-  // Group by date
+  async function handleLancar(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.criativo) return
+    setSaving(true)
+    setErros([])
+
+    const novosErros: string[] = []
+    const promises: Promise<any>[] = []
+
+    // Lança vendas preenchidas
+    for (const linha of form.vendaLinhas) {
+      const valor = parseFloat(linha.valor)
+      if (!linha.valor || isNaN(valor) || valor <= 0) continue
+      promises.push(
+        adicionarVenda({ data: form.data, criativo: form.criativo, produto: linha.produto, valor })
+          .then(r => { if (!r.success) novosErros.push(r.error ?? 'Erro ao salvar venda') })
+      )
+    }
+
+    // Lança gasto se preenchido
+    const valorGasto = parseFloat(form.valorGasto)
+    if (form.valorGasto && !isNaN(valorGasto) && valorGasto > 0) {
+      promises.push(
+        adicionarGasto({ data: form.data, criativo: form.criativo, campanha: form.campanha || undefined, valor_gasto: valorGasto })
+          .then(r => { if (!r.success) novosErros.push(r.error ?? 'Erro ao salvar gasto') })
+      )
+    }
+
+    await Promise.all(promises)
+    setSaving(false)
+
+    if (novosErros.length > 0) {
+      setErros(novosErros)
+    } else {
+      setModalAberto(false)
+      carregar()
+    }
+  }
+
+  async function handleSalvarEditVenda(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editVenda) return
+    setSavingEditVenda(true)
+    const res = await editarVenda(editVenda.id, { valor: parseFloat(editVenda.valor), produto: editVenda.produto, data: editVenda.data })
+    setSavingEditVenda(false)
+    if (res.success) { setEditVenda(null); carregar() }
+    else alert('Erro: ' + res.error)
+  }
+
+  async function handleSalvarEditGasto(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editGasto) return
+    setSavingEditGasto(true)
+    const res = await editarGasto(editGasto.id, { valor_gasto: parseFloat(editGasto.valor_gasto), data: editGasto.data })
+    setSavingEditGasto(false)
+    if (res.success) { setEditGasto(null); carregar() }
+    else alert('Erro: ' + res.error)
+  }
+
   const vendasFiltradas = useMemo(() => {
     const q = busca.toLowerCase()
-    return vendasList.filter(v =>
-      !q || v.criativo?.toLowerCase().includes(q) || v.produto?.toLowerCase().includes(q)
-    )
+    return vendasList.filter(v => !q || v.criativo?.toLowerCase().includes(q) || v.produto?.toLowerCase().includes(q))
   }, [vendasList, busca])
 
   const gastosFiltrados = useMemo(() => {
     const q = busca.toLowerCase()
-    return gastosList.filter(g =>
-      !q || g.criativo?.toLowerCase().includes(q) || g.campaign_name?.toLowerCase().includes(q)
-    )
+    return gastosList.filter(g => !q || g.criativo?.toLowerCase().includes(q) || g.campaign_name?.toLowerCase().includes(q))
   }, [gastosList, busca])
 
   function groupByDate<T extends { data: string }>(items: T[], prefix: string) {
@@ -123,9 +187,7 @@ export default function LancamentoPage() {
       map.get(d)!.push(item)
     }
     return Array.from(map.entries()).map(([date, rows]) => ({
-      date,
-      key: `${prefix}_${date}`,
-      rows,
+      date, key: `${prefix}_${date}`, rows,
       total: rows.reduce((s: number, r: any) => s + Number(r.valor ?? r.valor_gasto ?? 0), 0),
     }))
   }
@@ -137,9 +199,11 @@ export default function LancamentoPage() {
   const totalGastos = gastosList.reduce((s, g) => s + Number(g.valor_gasto), 0)
 
   const inputClass = 'bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary/60 w-full transition-colors'
-
   const activeList = tab === 'vendas' ? vendasGrupos : gastosGrupos
   const isEmpty = activeList.length === 0
+
+  const temAlgoParaLancar = form.vendaLinhas.some(l => l.valor && parseFloat(l.valor) > 0) ||
+    (!!form.valorGasto && parseFloat(form.valorGasto) > 0)
 
   return (
     <div className="space-y-5">
@@ -149,30 +213,18 @@ export default function LancamentoPage() {
           <h1 className="text-2xl font-bold text-foreground">Lançamento Manual</h1>
           <p className="text-sm text-muted-foreground mt-1">Registre vendas e gastos por criativo</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => { setModal('gasto') }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-card border border-border text-foreground hover:border-primary/40 hover:text-primary transition-all"
-          >
-            <TrendingDown className="w-4 h-4" />
-            Registrar Gasto
-          </button>
-          <button
-            onClick={() => { setModal('venda') }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
-          >
-            <Plus className="w-4 h-4" />
-            Registrar Venda
-          </button>
-        </div>
+        <button
+          onClick={abrirModal}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+        >
+          <Plus className="w-4 h-4" />
+          Novo Lançamento
+        </button>
       </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-4">
-        <div
-          onClick={() => setTab('vendas')}
-          className={`bg-card border rounded-2xl p-5 cursor-pointer transition-all ${tab === 'vendas' ? 'border-primary/50 shadow-lg shadow-primary/10' : 'border-border hover:border-border/80'}`}
-        >
+        <div onClick={() => setTab('vendas')} className={`bg-card border rounded-2xl p-5 cursor-pointer transition-all ${tab === 'vendas' ? 'border-primary/50 shadow-lg shadow-primary/10' : 'border-border hover:border-border/80'}`}>
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Vendas Manuais</p>
             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
@@ -182,10 +234,7 @@ export default function LancamentoPage() {
           <p className="text-2xl font-black text-foreground">R$ {totalVendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
           <p className="text-xs text-muted-foreground mt-1">{vendasList.length} registro{vendasList.length !== 1 ? 's' : ''}</p>
         </div>
-        <div
-          onClick={() => setTab('gastos')}
-          className={`bg-card border rounded-2xl p-5 cursor-pointer transition-all ${tab === 'gastos' ? 'border-primary/50 shadow-lg shadow-primary/10' : 'border-border hover:border-border/80'}`}
-        >
+        <div onClick={() => setTab('gastos')} className={`bg-card border rounded-2xl p-5 cursor-pointer transition-all ${tab === 'gastos' ? 'border-primary/50 shadow-lg shadow-primary/10' : 'border-border hover:border-border/80'}`}>
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Gastos Manuais</p>
             <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
@@ -199,52 +248,23 @@ export default function LancamentoPage() {
 
       {/* Table panel */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        {/* Toolbar */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border gap-3">
           <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1">
-            <button
-              onClick={() => setTab('vendas')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === 'vendas' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              Vendas
-            </button>
-            <button
-              onClick={() => setTab('gastos')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === 'gastos' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              Gastos
-            </button>
+            <button onClick={() => setTab('vendas')} className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === 'vendas' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Vendas</button>
+            <button onClick={() => setTab('gastos')} className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === 'gastos' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Gastos</button>
           </div>
-
-          <div className="flex items-center gap-2 flex-1 max-w-xs">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                value={busca}
-                onChange={e => setBusca(e.target.value)}
-                placeholder="Buscar criativo..."
-                className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-primary/50 transition-colors"
-              />
-            </div>
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar criativo..." className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-primary/50 transition-colors" />
           </div>
-
         </div>
 
-        {/* Content */}
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
               {tab === 'vendas' ? <ShoppingCart className="w-5 h-5 text-muted-foreground" /> : <TrendingDown className="w-5 h-5 text-muted-foreground" />}
             </div>
-            <p className="text-sm font-medium text-muted-foreground">
-              {busca ? 'Nenhum resultado para a busca' : `Nenhum ${tab === 'vendas' ? 'venda' : 'gasto'} registrado`}
-            </p>
-            {!busca && (
-              <p className="text-xs text-muted-foreground/60 mt-1">
-                Clique em "Registrar {tab === 'vendas' ? 'Venda' : 'Gasto'}" para começar
-              </p>
-            )}
+            <p className="text-sm font-medium text-muted-foreground">{busca ? 'Nenhum resultado' : `Nenhum ${tab === 'vendas' ? 'venda' : 'gasto'} registrado`}</p>
           </div>
         ) : (
           <div className="divide-y divide-border/50">
@@ -252,26 +272,15 @@ export default function LancamentoPage() {
               const isOpen = expandedDates.has(grupo.key)
               return (
                 <div key={grupo.key}>
-                  {/* Date group header */}
-                  <button
-                    onClick={() => toggleDate(grupo.key)}
-                    className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/20 transition-colors text-left"
-                  >
+                  <button onClick={() => toggleDate(grupo.key)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/20 transition-colors text-left">
                     <div className="flex items-center gap-3">
                       {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                      <span className="text-sm font-semibold text-foreground">
-                        {format(parseISO(grupo.date), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                      </span>
-                      <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">
-                        {grupo.rows.length} item{grupo.rows.length !== 1 ? 's' : ''}
-                      </span>
+                      <span className="text-sm font-semibold text-foreground">{format(parseISO(grupo.date), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</span>
+                      <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">{grupo.rows.length} item{grupo.rows.length !== 1 ? 's' : ''}</span>
                     </div>
-                    <span className={`text-sm font-bold ${tab === 'vendas' ? 'text-emerald-400' : 'text-foreground'}`}>
-                      R$ {grupo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </span>
+                    <span className={`text-sm font-bold ${tab === 'vendas' ? 'text-emerald-400' : 'text-foreground'}`}>R$ {grupo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                   </button>
 
-                  {/* Rows */}
                   {isOpen && (
                     <div className="border-t border-border/30">
                       {tab === 'vendas' ? (
@@ -281,7 +290,7 @@ export default function LancamentoPage() {
                               <th className="text-left px-6 py-2 font-semibold pl-14">Criativo</th>
                               <th className="text-left px-6 py-2 font-semibold">Produto</th>
                               <th className="text-right px-6 py-2 font-semibold">Valor</th>
-                              <th className="w-10 px-4 py-2" />
+                              <th className="w-16 px-4 py-2" />
                             </tr>
                           </thead>
                           <tbody>
@@ -291,9 +300,14 @@ export default function LancamentoPage() {
                                 <td className="px-6 py-3 text-muted-foreground text-xs">{v.produto ?? '—'}</td>
                                 <td className="px-6 py-3 text-right font-bold text-emerald-400">R$ {Number(v.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-4 py-3 text-right">
-                                  <button onClick={async () => { await deletarVenda(v.id); setVendasList(x => x.filter(i => i.id !== v.id)) }} className="text-muted-foreground hover:text-red-400 transition p-1 rounded">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button onClick={() => setEditVenda({ id: v.id, data: v.data.substring(0, 10), produto: v.produto, valor: String(v.valor) })} className="text-muted-foreground hover:text-primary transition p-1 rounded">
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={async () => { await deletarVenda(v.id); setVendasList(x => x.filter(i => i.id !== v.id)) }} className="text-muted-foreground hover:text-red-400 transition p-1 rounded">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -306,7 +320,7 @@ export default function LancamentoPage() {
                               <th className="text-left px-6 py-2 font-semibold pl-14">Criativo</th>
                               <th className="text-left px-6 py-2 font-semibold">Campanha</th>
                               <th className="text-right px-6 py-2 font-semibold">Gasto</th>
-                              <th className="w-10 px-4 py-2" />
+                              <th className="w-16 px-4 py-2" />
                             </tr>
                           </thead>
                           <tbody>
@@ -316,9 +330,14 @@ export default function LancamentoPage() {
                                 <td className="px-6 py-3 text-muted-foreground text-xs">{g.campaign_name ?? '—'}</td>
                                 <td className="px-6 py-3 text-right font-bold text-foreground">R$ {Number(g.valor_gasto).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-4 py-3 text-right">
-                                  <button onClick={async () => { await deletarGasto(g.id); setGastosList(x => x.filter(i => i.id !== g.id)) }} className="text-muted-foreground hover:text-red-400 transition p-1 rounded">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button onClick={() => setEditGasto({ id: g.id, data: g.data.substring(0, 10), valor_gasto: String(g.valor_gasto) })} className="text-muted-foreground hover:text-primary transition p-1 rounded">
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={async () => { await deletarGasto(g.id); setGastosList(x => x.filter(i => i.id !== g.id)) }} className="text-muted-foreground hover:text-red-400 transition p-1 rounded">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -334,97 +353,145 @@ export default function LancamentoPage() {
         )}
       </div>
 
-      {/* MODAL */}
-      {modal && (
+      {/* MODAL UNIFICADO DE LANÇAMENTO */}
+      {modalAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModal(null)} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModalAberto(false)} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border sticky top-0 bg-card z-10">
               <div>
-                <h3 className="text-base font-bold text-foreground">
-                  {modal === 'venda' ? 'Registrar Venda' : 'Registrar Gasto'}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {modal === 'venda' ? 'Adicione uma venda por criativo' : 'Adicione um gasto do Meta por criativo'}
-                </p>
+                <h3 className="text-base font-bold text-foreground">Novo Lançamento</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Registre vendas e gasto de uma vez</p>
               </div>
-              <button onClick={() => setModal(null)} className="text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted/50">
+              <button onClick={() => setModalAberto(false)} className="text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted/50">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6">
-              {modal === 'venda' ? (
-                <form onSubmit={handleAdicionarVenda} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data</label>
-                      <input type="date" value={vData} onChange={e => setVData(e.target.value)} className={inputClass} required />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Valor (R$)</label>
-                      <input type="number" step="0.01" min="0" value={vValor} onChange={e => setVValor(e.target.value)} placeholder="0,00" className={inputClass} required />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Criativo</label>
-                    <select value={vCriativo} onChange={e => setVCriativo(e.target.value)} className={inputClass} required>
-                      <option value="">Selecione um criativo...</option>
-                      {criativosAtivos.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Produto</label>
-                    <select value={vProduto} onChange={e => setVProduto(e.target.value)} className={inputClass} required>
-                      {produtos.length === 0 && <option value="">Nenhum produto cadastrado</option>}
-                      {produtos.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <button type="submit" disabled={savingVenda} className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50">
-                    <Plus className="w-4 h-4" />
-                    {savingVenda ? 'Salvando...' : 'Adicionar Venda'}
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleAdicionarGasto} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data</label>
-                      <input type="date" value={gData} onChange={e => setGData(e.target.value)} className={inputClass} required />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Gasto (R$)</label>
-                      <input type="number" step="0.01" min="0" value={gValor} onChange={e => setGValor(e.target.value)} placeholder="0,00" className={inputClass} required />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Criativo</label>
-                    <select
-                      value={gCriativo}
-                      onChange={e => {
-                        const nome = e.target.value
-                        setGCriativo(nome)
-                        const c = criativosAtivos.find(x => x.nome === nome)
-                        if (c) setGCampanha(c.campaign_name)
-                      }}
+            <form onSubmit={handleLancar} className="p-6 space-y-5">
+              {/* Data + Criativo */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data</label>
+                  <input type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} className={inputClass} required />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Criativo</label>
+                  <select value={form.criativo} onChange={e => selecionarCriativo(e.target.value)} className={inputClass} required>
+                    <option value="">Selecione...</option>
+                    {criativosAtivos.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Vendas por produto */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Vendas (deixe em branco para não lançar)</p>
+                {form.vendaLinhas.map((linha, i) => (
+                  <div key={linha.produto} className="flex items-center gap-3">
+                    <span className="text-xs text-foreground w-44 shrink-0 truncate" title={linha.produto}>{linha.produto}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0,00"
+                      value={linha.valor}
+                      onChange={e => setForm(f => ({
+                        ...f,
+                        vendaLinhas: f.vendaLinhas.map((l, j) => j === i ? { ...l, valor: e.target.value } : l)
+                      }))}
                       className={inputClass}
-                      required
-                    >
-                      <option value="">Selecione um criativo...</option>
-                      {criativosAtivos.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
-                    </select>
+                    />
                   </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Campanha</label>
-                    <input type="text" value={gCampanha} onChange={e => setGCampanha(e.target.value)} placeholder="Preenchida automaticamente..." className={inputClass} />
-                  </div>
-                  <button type="submit" disabled={savingGasto} className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50">
-                    <Plus className="w-4 h-4" />
-                    {savingGasto ? 'Salvando...' : 'Adicionar Gasto'}
-                  </button>
-                </form>
+                ))}
+              </div>
+
+              {/* Gasto */}
+              <div className="border-t border-border/50 pt-4 space-y-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Gasto Meta (deixe em branco para não lançar)</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-foreground w-44 shrink-0">Gasto (R$)</span>
+                  <input type="number" step="0.01" min="0" placeholder="0,00" value={form.valorGasto} onChange={e => setForm(f => ({ ...f, valorGasto: e.target.value }))} className={inputClass} />
+                </div>
+                {form.campanha && (
+                  <p className="text-[11px] text-muted-foreground">Campanha: <span className="font-mono text-primary">{form.campanha}</span></p>
+                )}
+              </div>
+
+              {/* Erros */}
+              {erros.length > 0 && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 space-y-1">
+                  {erros.map((e, i) => <p key={i} className="text-xs text-red-400">{e}</p>)}
+                </div>
               )}
+
+              <button
+                type="submit"
+                disabled={saving || !form.criativo || !temAlgoParaLancar}
+                className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" />
+                {saving ? 'Salvando...' : 'Lançar'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR VENDA */}
+      {editVenda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditVenda(null)} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <h3 className="text-base font-bold text-foreground">Editar Venda</h3>
+              <button onClick={() => setEditVenda(null)} className="text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted/50"><X className="w-5 h-5" /></button>
             </div>
+            <form onSubmit={handleSalvarEditVenda} className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data</label>
+                <input type="date" value={editVenda.data} onChange={e => setEditVenda(v => v && ({ ...v, data: e.target.value }))} className={inputClass} required />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Produto</label>
+                <select value={editVenda.produto} onChange={e => setEditVenda(v => v && ({ ...v, produto: e.target.value }))} className={inputClass}>
+                  {produtos.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Valor (R$)</label>
+                <input type="number" step="0.01" min="0" value={editVenda.valor} onChange={e => setEditVenda(v => v && ({ ...v, valor: e.target.value }))} className={inputClass} required />
+              </div>
+              <button type="submit" disabled={savingEditVenda} className="w-full bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50">
+                {savingEditVenda ? 'Salvando...' : 'Salvar'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR GASTO */}
+      {editGasto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditGasto(null)} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <h3 className="text-base font-bold text-foreground">Editar Gasto</h3>
+              <button onClick={() => setEditGasto(null)} className="text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted/50"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleSalvarEditGasto} className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data</label>
+                <input type="date" value={editGasto.data} onChange={e => setEditGasto(g => g && ({ ...g, data: e.target.value }))} className={inputClass} required />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Gasto (R$)</label>
+                <input type="number" step="0.01" min="0" value={editGasto.valor_gasto} onChange={e => setEditGasto(g => g && ({ ...g, valor_gasto: e.target.value }))} className={inputClass} required />
+              </div>
+              <button type="submit" disabled={savingEditGasto} className="w-full bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50">
+                {savingEditGasto ? 'Salvando...' : 'Salvar'}
+              </button>
+            </form>
           </div>
         </div>
       )}

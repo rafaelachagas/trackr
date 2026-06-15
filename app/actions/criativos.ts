@@ -6,12 +6,13 @@ import { revalidatePath } from 'next/cache'
 export type Criativo = {
   id: string
   nome: string
-  prefixo: string        // ex: IZ
-  tipo_campanha: string  // CBO | ADV | outro
-  objetivo: string       // VENDAS | outro
-  fase: string | null    // FASE01 | FASE02 | FASE03 | null
-  campaign_name: string  // gerado automaticamente
+  prefixo: string
+  tipo_campanha: string
+  objetivo: string
+  fase: string | null
+  campaign_name: string
   status: 'ativo' | 'pausado'
+  link_anuncio: string | null
   created_at: string
 }
 
@@ -21,6 +22,7 @@ export type NovoCriativo = {
   tipo_campanha: string
   objetivo: string
   fase: string | null
+  link_anuncio?: string | null
 }
 
 function buildCampaignName(prefixo: string, tipo: string, objetivo: string, fase: string | null) {
@@ -58,8 +60,26 @@ export async function criarCriativo(payload: NovoCriativo) {
     objetivo: payload.objetivo,
     fase: payload.fase ?? null,
     campaign_name,
+    link_anuncio: payload.link_anuncio || null,
     status: 'ativo',
   })
+  if (error) return { success: false, error: error.message }
+  revalidatePath('/criativos')
+  revalidatePath('/lancamento')
+  return { success: true }
+}
+
+export async function editarCriativo(id: string, payload: NovoCriativo) {
+  const campaign_name = buildCampaignName(payload.prefixo, payload.tipo_campanha, payload.objetivo, payload.fase)
+  const { error } = await supabaseAdmin.from('criativos').update({
+    nome: payload.nome,
+    prefixo: payload.prefixo,
+    tipo_campanha: payload.tipo_campanha,
+    objetivo: payload.objetivo,
+    fase: payload.fase ?? null,
+    campaign_name,
+    link_anuncio: payload.link_anuncio || null,
+  }).eq('id', id)
   if (error) return { success: false, error: error.message }
   revalidatePath('/criativos')
   revalidatePath('/lancamento')

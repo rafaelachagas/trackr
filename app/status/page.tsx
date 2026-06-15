@@ -1,0 +1,167 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { FrameworkData } from '@/app/api/framework/route'
+import { TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react'
+
+type FaseCampanha = 'FASE01' | 'FASE02' | 'FASE03' | null
+
+const FASES_INFO = [
+  {
+    fase: 'FASE01' as FaseCampanha,
+    label: 'Fase 01 — Teste de Criativos',
+    descricao: 'Criativos novos sendo testados com orçamento controlado. O objetivo é identificar quais têm potencial antes de escalar.',
+    cor: 'border-blue-500/30 bg-blue-500/5',
+    badge: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  },
+  {
+    fase: 'FASE02' as FaseCampanha,
+    label: 'Fase 02 — Pré-Escala',
+    descricao: 'Criativos que já provaram resultado na fase de teste. Orçamento aumentando gradualmente para validar a escala.',
+    cor: 'border-violet-500/30 bg-violet-500/5',
+    badge: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
+  },
+  {
+    fase: 'FASE03' as FaseCampanha,
+    label: 'Fase 03 — Escala Agressiva',
+    descricao: 'Os criativos vencedores. Orçamento máximo, performance consistente. Aqui está a maior parte do investimento.',
+    cor: 'border-fuchsia-500/30 bg-fuchsia-500/5',
+    badge: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30',
+  },
+]
+
+function RoasIndicator({ valor, label }: { valor: number | null; label: string }) {
+  const positivo = valor !== null && valor >= 1
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</span>
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${valor === null ? 'border-slate-700 bg-slate-800' : positivo ? 'border-emerald-500/50 bg-emerald-500/20' : 'border-red-500/50 bg-red-500/20'}`}>
+        {valor === null ? <Minus className="w-3.5 h-3.5 text-slate-500" /> : positivo ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
+      </div>
+      <span className={`text-xs font-bold ${valor === null ? 'text-slate-500' : positivo ? 'text-emerald-400' : 'text-red-400'}`}>
+        {valor === null ? '—' : `${valor.toFixed(1)}x`}
+      </span>
+    </div>
+  )
+}
+
+function acaoCor(acao: string) {
+  if (acao === '+20% orçamento') return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+  if (acao === 'Manter') return 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+  if (acao === '-20% ou pausar') return 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+  return 'bg-red-500/20 text-red-300 border border-red-500/30'
+}
+
+export default function StatusPage() {
+  const [criativos, setCriativos] = useState<FrameworkData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [atualizado, setAtualizado] = useState<Date | null>(null)
+
+  useEffect(() => {
+    fetch('/api/framework')
+      .then(r => r.json())
+      .then(({ criativos: data }) => {
+        setCriativos(data ?? [])
+        setAtualizado(new Date())
+      })
+      .finally(() => setLoading(false))
+  }, [])
+
+  // Apenas criativos com algum dado (pelo menos um ROAS calculado)
+  const comDados = criativos.filter(c => c.roas_7d !== null || c.roas_3d !== null || c.roas_1d !== null)
+  const escalando = comDados.filter(c => c.acao === '+20% orçamento')
+  const mantendo = comDados.filter(c => c.acao === 'Manter')
+  const reduzindo = comDados.filter(c => c.acao === '-20% ou pausar' || c.acao === 'Pausar')
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0f] text-white">
+      {/* Header */}
+      <div className="border-b border-white/5 px-6 py-5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-primary" strokeWidth={2.5} />
+            </div>
+            <div>
+              <span className="text-base font-black uppercase tracking-tighter">TRACKR</span>
+              <span className="text-xs text-slate-500 ml-2">· Status dos Criativos</span>
+            </div>
+          </div>
+          {atualizado && (
+            <span className="text-xs text-slate-500">
+              Atualizado às {atualizado.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-6 py-10 space-y-12">
+        {loading ? (
+          <div className="flex items-center justify-center py-32">
+            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          </div>
+        ) : (
+          <>
+            {/* Resumo */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-center">
+                <p className="text-3xl font-black text-emerald-400">{escalando.length}</p>
+                <p className="text-xs font-semibold text-emerald-400/70 uppercase tracking-widest mt-1">Escalando</p>
+              </div>
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 text-center">
+                <p className="text-3xl font-black text-amber-400">{mantendo.length}</p>
+                <p className="text-xs font-semibold text-amber-400/70 uppercase tracking-widest mt-1">Mantendo</p>
+              </div>
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-center">
+                <p className="text-3xl font-black text-red-400">{reduzindo.length}</p>
+                <p className="text-xs font-semibold text-red-400/70 uppercase tracking-widest mt-1">Reduzindo / Pausar</p>
+              </div>
+            </div>
+
+            {/* Legenda das fases */}
+            <div className="space-y-3">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">Sobre as Fases</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {FASES_INFO.map(f => (
+                  <div key={f.fase} className={`rounded-2xl border p-4 space-y-2 ${f.cor}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${f.badge}`}>{f.fase}</span>
+                    <p className="text-xs font-semibold text-white mt-2">{f.label}</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">{f.descricao}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Criativos por fase */}
+            {(['FASE01', 'FASE02', 'FASE03'] as FaseCampanha[]).map(fase => {
+              const grupo = comDados.filter(c => c.fase === fase)
+              if (grupo.length === 0) return null
+              const info = FASES_INFO.find(f => f.fase === fase)!
+              return (
+                <div key={fase} className="space-y-4">
+                  <div className="flex items-center gap-3 border-b border-white/5 pb-3">
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full border ${info.badge}`}>{fase}</span>
+                    <span className="text-xs text-slate-500">{grupo.length} criativo{grupo.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {grupo.map(c => (
+                      <div key={c.criativo} className="flex items-center gap-4 bg-white/3 border border-white/5 rounded-xl px-4 py-3 hover:bg-white/5 transition">
+                        <span className="text-sm font-medium text-slate-200 flex-1 truncate" title={c.criativo}>{c.criativo}</span>
+                        <div className="flex items-center gap-5">
+                          <RoasIndicator valor={c.roas_7d} label="7d" />
+                          <RoasIndicator valor={c.roas_3d} label="3d" />
+                          <RoasIndicator valor={c.roas_1d} label="1d" />
+                        </div>
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0 ${acaoCor(c.acao)}`}>{c.acao}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

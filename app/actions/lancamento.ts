@@ -9,6 +9,22 @@ export async function adicionarVenda(payload: {
   produto: string
   valor: number
 }) {
+  // Trava: não permite duplicata de criativo+produto no mesmo dia
+  const { data: existente } = await supabaseAdmin
+    .from('vendas')
+    .select('id')
+    .like('transaction_id', 'manual_%')
+    .eq('criativo', payload.criativo)
+    .eq('produto', payload.produto)
+    .gte('data', `${payload.data}T00:00:00`)
+    .lte('data', `${payload.data}T23:59:59`)
+    .limit(1)
+    .single()
+
+  if (existente) {
+    return { success: false, error: `Já existe um lançamento de "${payload.produto}" para este criativo nesta data.` }
+  }
+
   const { error } = await supabaseAdmin.from('vendas').insert({
     data: `${payload.data}T12:00:00`,
     criativo: payload.criativo,
@@ -30,6 +46,20 @@ export async function adicionarGasto(payload: {
   campanha?: string
   valor_gasto: number
 }) {
+  // Trava: não permite duplicata de criativo no mesmo dia
+  const { data: existente } = await supabaseAdmin
+    .from('gastos')
+    .select('id')
+    .is('ad_id', null)
+    .eq('criativo', payload.criativo)
+    .eq('data', payload.data)
+    .limit(1)
+    .single()
+
+  if (existente) {
+    return { success: false, error: `Já existe um gasto lançado para este criativo nesta data.` }
+  }
+
   const { error } = await supabaseAdmin.from('gastos').insert({
     data: payload.data,
     criativo: payload.criativo,
@@ -39,6 +69,26 @@ export async function adicionarGasto(payload: {
     impressions: 0,
     clicks: 0,
   })
+  if (error) return { success: false, error: error.message }
+  revalidatePath('/lancamento')
+  return { success: true }
+}
+
+export async function editarVenda(id: string, payload: { valor: number; produto: string; data: string }) {
+  const { error } = await supabaseAdmin
+    .from('vendas')
+    .update({ valor: payload.valor, valor_liquido: payload.valor, produto: payload.produto, data: `${payload.data}T12:00:00` })
+    .eq('id', id)
+  if (error) return { success: false, error: error.message }
+  revalidatePath('/lancamento')
+  return { success: true }
+}
+
+export async function editarGasto(id: string, payload: { valor_gasto: number; data: string }) {
+  const { error } = await supabaseAdmin
+    .from('gastos')
+    .update({ valor_gasto: payload.valor_gasto, data: payload.data })
+    .eq('id', id)
   if (error) return { success: false, error: error.message }
   revalidatePath('/lancamento')
   return { success: true }
