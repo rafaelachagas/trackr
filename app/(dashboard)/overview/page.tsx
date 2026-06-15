@@ -5,6 +5,7 @@ import MetricCard from '@/components/ui/MetricCard'
 import GraficoDiario from '@/components/dashboard/GraficoDiario'
 import TabelaCriativos from '@/components/dashboard/TabelaCriativos'
 import HistoricoCriativos from '@/components/dashboard/HistoricoCriativos'
+import GraficoTipoVendas from '@/components/dashboard/GraficoTipoVendas'
 import { RoasPorCriativo } from '@/types'
 import { FrameworkData } from '@/app/api/framework/route'
 import { DollarSign, Target, TrendingUp, Users } from 'lucide-react'
@@ -78,8 +79,11 @@ export default function OverviewPage() {
         />
       </div>
 
-      <div className="mb-6">
-        <GraficoDiario dados={chartData} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div className="lg:col-span-2">
+          <GraficoDiario dados={chartData} />
+        </div>
+        <GraficoTipoVendas />
       </div>
 
       <div>
