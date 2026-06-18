@@ -15,7 +15,7 @@ export async function GET() {
   const json = await res.json()
 
   if (json.error) {
-    return NextResponse.json({ error: json.error.message }, { status: 400 })
+    return NextResponse.json({ error: json.error.message, code: json.error.code, type: json.error.type }, { status: 400 })
   }
 
   return NextResponse.json({ accounts: json.data ?? [] })

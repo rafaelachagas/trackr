@@ -107,7 +107,10 @@ export default function ContasAnunciosPage() {
         const res = await fetch('/api/meta/accounts')
         const json = await res.json()
         if (json.accounts) setMetaContas(json.accounts)
-      } catch { /* silencioso */ } finally {
+        else alert(`Erro ao buscar contas: ${json.error}\nCódigo: ${json.code ?? ''}\nTipo: ${json.type ?? ''}`)
+      } catch (e: any) {
+        alert(`Erro de rede: ${e.message}`)
+      } finally {
         setCarregandoContas(false)
       }
     }
