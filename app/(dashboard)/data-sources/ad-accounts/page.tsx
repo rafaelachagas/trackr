@@ -267,15 +267,18 @@ export default function AdAccountsPage() {
         </div>
       </div>
 
-      {/* Monthly Spend card */}
+      {/* Sync card */}
       <div className="bg-[#0f1623] border border-slate-800 rounded-2xl overflow-hidden">
         <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-800">
-          <BarChart2 className="w-4 h-4 text-slate-400" />
-          <span className="text-sm font-semibold text-white">Monthly Spend</span>
+          <RefreshCw className="w-4 h-4 text-slate-400" />
+          <div>
+            <span className="text-sm font-semibold text-white">Import Ad Spend</span>
+            <p className="text-xs text-slate-500 mt-0.5">Pull cost data from Meta Ads into the dashboard</p>
+          </div>
         </div>
         <div className="px-6 py-5">
           {!metaAccessToken || !adAccountId ? (
-            <p className="text-sm text-slate-500 text-center py-8">No ad account connected</p>
+            <p className="text-sm text-slate-500 text-center py-8">Connect an ad account above to import data</p>
           ) : (
             <div className="flex items-center gap-3">
               <select

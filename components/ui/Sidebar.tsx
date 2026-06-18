@@ -44,8 +44,23 @@ export default function Sidebar() {
     pathname.startsWith('/data-sources')
   )
 
-  const NavItem = ({ href, label, icon: Icon }: any) => {
+  const NavItem = ({ href, label, icon: Icon, sub = false }: any) => {
     const active = pathname === href || (href === '/overview' && pathname === '/')
+    if (sub) {
+      return (
+        <Link
+          href={href}
+          className={`flex items-center gap-2.5 pl-4 pr-3 py-2 text-sm font-medium transition-all rounded-lg border-l-2 ${
+            active
+              ? 'border-primary bg-primary/10 text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40'
+          }`}
+        >
+          <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary' : ''}`} />
+          {label}
+        </Link>
+      )
+    }
     return (
       <Link
         href={href}
@@ -112,8 +127,8 @@ export default function Sidebar() {
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${dataSourcesOpen ? 'rotate-180' : ''}`} />
           </button>
           {dataSourcesOpen && (
-            <div className="mt-1 space-y-1">
-              {dataSources.map((item) => <NavItem key={item.href} {...item} />)}
+            <div className="mt-1 space-y-0.5 ml-2">
+              {dataSources.map((item) => <NavItem key={item.href} {...item} sub />)}
             </div>
           )}
         </div>
