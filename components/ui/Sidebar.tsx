@@ -12,8 +12,12 @@ import {
   ShoppingBag,
   ShoppingCart,
   PlusCircle,
-  Film
+  Film,
+  Database,
+  CreditCard,
+  ChevronDown,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
 
 const navigation = [
@@ -25,6 +29,10 @@ const navigation = [
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
 ]
 
+const dataSources = [
+  { href: '/data-sources/ad-accounts', label: 'Ad Accounts', icon: CreditCard },
+]
+
 const configuracoes = [
   { href: '/configuracoes', label: 'Integrações e Setup', icon: Settings },
 ]
@@ -32,6 +40,9 @@ const configuracoes = [
 export default function Sidebar() {
   const pathname = usePathname()
   const { sincronizarTudo, isRefreshing: sincronizando } = useDashboard()
+  const [dataSourcesOpen, setDataSourcesOpen] = useState(
+    pathname.startsWith('/data-sources')
+  )
 
   const NavItem = ({ href, label, icon: Icon }: any) => {
     const active = pathname === href || (href === '/overview' && pathname === '/')
@@ -52,13 +63,11 @@ export default function Sidebar() {
     )
   }
 
-  const NavGroup = ({ title, items, defaultOpen = true }: any) => {
+  const NavGroup = ({ title, items }: any) => {
     return (
       <div className="mb-2">
         <div className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          <div className="flex items-center gap-2">
-            {title}
-          </div>
+          <div className="flex items-center gap-2">{title}</div>
         </div>
         <div className="mt-1 space-y-1">
           {items.map((item: any) => <NavItem key={item.href} {...item} />)}
@@ -85,13 +94,32 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 space-y-4 pb-8">
-        
+
         <div className="space-y-1">
           {navigation.map((item) => <NavItem key={item.href} {...item} />)}
         </div>
 
+        {/* Data Sources collapsible group */}
+        <div className="mb-2">
+          <button
+            onClick={() => setDataSourcesOpen(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition"
+          >
+            <div className="flex items-center gap-2">
+              <Database className="w-3.5 h-3.5" />
+              Data Sources
+            </div>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${dataSourcesOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {dataSourcesOpen && (
+            <div className="mt-1 space-y-1">
+              {dataSources.map((item) => <NavItem key={item.href} {...item} />)}
+            </div>
+          )}
+        </div>
+
         <NavGroup title="Sistema" items={configuracoes} />
-        
+
       </nav>
 
       {/* Sincronização e Perfil */}
