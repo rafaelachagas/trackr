@@ -94,8 +94,9 @@ export default function LancamentoPage() {
   }
 
   function abrirModal() {
+    const ultimaData = localStorage.getItem('lancamento_ultima_data') ?? hoje
     setForm({
-      data: hoje,
+      data: ultimaData,
       criativo: '',
       campanha: '',
       vendaLinhas: produtos.map(p => ({ produto: p, valor: '' })),
@@ -373,7 +374,7 @@ export default function LancamentoPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data</label>
-                  <input type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} className={inputClass} required />
+                  <input type="date" value={form.data} onChange={e => { localStorage.setItem('lancamento_ultima_data', e.target.value); setForm(f => ({ ...f, data: e.target.value })) }} className={inputClass} required />
                 </div>
                 <div>
                   <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Criativo</label>

@@ -16,6 +16,7 @@ export async function GET() {
     const { data, error } = await supabaseAdmin
       .from('gastos')
       .select('data, valor_gasto')
+      .not('ad_id', 'is', null)
       .gte('data', dataInicio)
       .order('data', { ascending: false })
       .range(page * pageSize, (page + 1) * pageSize - 1)
@@ -35,10 +36,16 @@ export async function GET() {
     if (page > 20) break // safety
   }
 
-  const gastos = Object.entries(mapa)
-    .map(([mes, total]) => ({ mes, total }))
+  // Always include the last 3 months even if they have R$0
+  const meses3: string[] = []
+  for (let i = 2; i >= 0; i--) {
+    const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - i, 1))
+    meses3.push(d.toISOString().slice(0, 7))
+  }
+
+  const gastos = meses3
+    .map((mes) => ({ mes, total: mapa[mes] ?? 0 }))
     .sort((a, b) => b.mes.localeCompare(a.mes))
-    .slice(0, 3)
 
   return NextResponse.json({ gastos, debug: { dataInicio, pages: page + 1 } })
 }
