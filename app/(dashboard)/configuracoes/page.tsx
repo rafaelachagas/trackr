@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Save, RefreshCw, CheckCircle2, Settings2, Eye, EyeOff } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Save, RefreshCw, CheckCircle2, Settings2, Eye, EyeOff, Link2, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AcaoOtimizacao } from '@/types'
 
@@ -56,6 +56,8 @@ export default function ConfiguracoesPage() {
   const [diasSync, setDiasSync] = useState('7')
   const [showToken, setShowToken] = useState(false)
   const [showHotmartSecrets, setShowHotmartSecrets] = useState(false)
+  const [metaConectando, setMetaConectando] = useState(false)
+  const [metaContas, setMetaContas] = useState<{ id: string; name: string }[]>([])
   const [produtosFront, setProdutosFront] = useState('')
   const [produtosUpsell, setProdutosUpsell] = useState('')
   const [regras, setRegras] = useState<RegraFramework[]>(REGRAS_PADRAO)
@@ -173,6 +175,55 @@ export default function ConfiguracoesPage() {
     setRegras(REGRAS_PADRAO)
   }
 
+  const conectarMetaOAuth = useCallback(() => {
+    setMetaConectando(true)
+    const popup = window.open('/api/auth/meta', 'meta_oauth', 'width=600,height=700,scrollbars=yes')
+
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type === 'meta_auth_success') {
+        window.removeEventListener('message', handler)
+        setMetaConectando(false)
+        const accounts: { id: string; name: string }[] = event.data.accounts ?? []
+        setMetaContas(accounts)
+        if (accounts.length === 1) {
+          const id = accounts[0].id.replace('act_', '')
+          setAdAccountId(id)
+          alert(`Meta Ads conectado! Conta "${accounts[0].name}" selecionada automaticamente.`)
+        } else if (accounts.length > 1) {
+          // multiple accounts - user will pick from dropdown rendered below
+        } else {
+          alert('Meta Ads conectado! Token salvo. Insira o Ad Account ID manualmente.')
+        }
+        carregarConfiguracoes()
+      } else if (event.data?.type === 'meta_auth_error') {
+        window.removeEventListener('message', handler)
+        setMetaConectando(false)
+        alert(`Erro ao conectar: ${event.data.error}`)
+      }
+    }
+
+    window.addEventListener('message', handler)
+
+    // Remove listener se o popup for fechado sem retorno
+    const checkClosed = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(checkClosed)
+        window.removeEventListener('message', handler)
+        setMetaConectando(false)
+      }
+    }, 1000)
+  }, [])
+
+  async function desconectarMeta() {
+    await supabase.from('configuracoes').upsert(
+      { chave: 'meta_access_token', valor: '', updated_at: new Date().toISOString() },
+      { onConflict: 'chave' }
+    )
+    setMetaAccessToken('')
+    setMetaContas([])
+  }
+
   return (
     <div className="max-w-5xl mx-auto text-slate-200 pb-12">
       <div className="flex items-center justify-between mb-8">
@@ -286,38 +337,89 @@ export default function ConfiguracoesPage() {
           </div>
 
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Access Token (longa duração)</label>
-              <div className="relative">
-                <input
-                  type={showToken ? 'text' : 'password'}
-                  value={metaAccessToken}
-                  onChange={e => setMetaAccessToken(e.target.value)}
-                  className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 pr-10 text-sm text-white focus:outline-none focus:border-blue-500 transition"
-                  placeholder="EAAl..."
-                />
+
+            {/* Botão de conexão OAuth */}
+            {!metaAccessToken ? (
+              <button
+                onClick={conectarMetaOAuth}
+                disabled={metaConectando}
+                className="w-full flex items-center justify-center gap-2.5 bg-[#1877F2] hover:bg-[#166fe5] disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold text-sm py-2.5 rounded-xl transition"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                {metaConectando ? 'Abrindo Facebook...' : 'Conectar com Facebook'}
+              </button>
+            ) : (
+              <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/25 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm font-medium text-slate-200">Meta Ads conectado</span>
+                </div>
                 <button
-                  type="button"
-                  onClick={() => setShowToken(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition"
+                  onClick={desconectarMeta}
+                  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition px-2.5 py-1.5 bg-red-500/10 rounded-lg"
                 >
-                  {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  <LogOut className="w-3.5 h-3.5" />
+                  Desconectar
                 </button>
               </div>
-              <p className="text-[10px] text-slate-500 mt-1">Token de 60 dias gerado no Graph API Explorer.</p>
-            </div>
+            )}
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Ad Account ID</label>
-              <input
-                type="text"
-                value={adAccountId}
-                onChange={e => setAdAccountId(e.target.value)}
-                className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition"
-                placeholder="1147900723247431"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">Somente os números, sem "act_".</p>
-            </div>
+            {/* Seleção de conta quando há múltiplas */}
+            {metaContas.length > 1 && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Selecione a conta de anúncios</label>
+                <select
+                  value={adAccountId}
+                  onChange={e => setAdAccountId(e.target.value)}
+                  className="w-full bg-[#0b1121] border border-blue-500 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none transition"
+                >
+                  <option value="">Selecione...</option>
+                  {metaContas.map(c => (
+                    <option key={c.id} value={c.id.replace('act_', '')}>{c.name} ({c.id})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Ad Account ID manual (fallback) */}
+            {metaAccessToken && metaContas.length === 0 && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Ad Account ID</label>
+                <input
+                  type="text"
+                  value={adAccountId}
+                  onChange={e => setAdAccountId(e.target.value)}
+                  className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition"
+                  placeholder="1147900723247431"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">Somente os números, sem "act_".</p>
+              </div>
+            )}
+
+            {/* Token manual (avançado) */}
+            {metaAccessToken && (
+              <details className="group">
+                <summary className="text-[10px] text-slate-600 cursor-pointer hover:text-slate-400 transition select-none">Avançado: ver/editar token manualmente</summary>
+                <div className="mt-2">
+                  <div className="relative">
+                    <input
+                      type={showToken ? 'text' : 'password'}
+                      value={metaAccessToken}
+                      onChange={e => setMetaAccessToken(e.target.value)}
+                      className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 pr-10 text-sm text-white focus:outline-none focus:border-blue-500 transition"
+                      placeholder="EAAl..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowToken(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition"
+                    >
+                      {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </details>
+            )}
 
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">Período:</label>
@@ -336,12 +438,12 @@ export default function ConfiguracoesPage() {
 
             <div className="flex items-center justify-between p-3 bg-slate-800/30 border border-slate-800 rounded-xl">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className={`w-4 h-4 ${metaAccessToken ? 'text-emerald-500' : 'text-slate-600'}`} />
-                <span className="text-sm font-medium text-slate-300">{metaAccessToken ? 'Token configurado' : 'Não configurado'}</span>
+                <Link2 className={`w-4 h-4 ${adAccountId ? 'text-blue-400' : 'text-slate-600'}`} />
+                <span className="text-sm font-medium text-slate-300">{adAccountId ? `Conta: act_${adAccountId}` : 'Nenhuma conta selecionada'}</span>
               </div>
               <button
                 onClick={sincronizarMeta}
-                disabled={syncing || !metaAccessToken}
+                disabled={syncing || !metaAccessToken || !adAccountId}
                 className="flex items-center gap-2 text-xs font-semibold text-blue-400 hover:text-blue-300 transition px-3 py-1.5 bg-blue-500/10 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
