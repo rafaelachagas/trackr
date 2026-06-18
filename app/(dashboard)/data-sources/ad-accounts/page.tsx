@@ -5,6 +5,7 @@ import { RefreshCw, Search, X, Check, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 type Conta = { id: string; name: string; account_status?: number }
+type GastoMensal = { mes: string; total: number }
 
 export default function ContasAnunciosPage() {
   const [loading, setLoading] = useState(true)
@@ -18,8 +19,9 @@ export default function ContasAnunciosPage() {
   const [selecionadas, setSelecionadas] = useState<string[]>([]) // IDs sem "act_" temporário no modal
   const [salvando, setSalvando] = useState(false)
   const [carregandoContas, setCarregandoContas] = useState(false)
+  const [gastosMensais, setGastosMensais] = useState<GastoMensal[]>([])
 
-  useEffect(() => { carregar() }, [])
+  useEffect(() => { carregar(); carregarGastos() }, [])
 
   async function carregar() {
     setLoading(true)
@@ -47,6 +49,26 @@ export default function ContasAnunciosPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function carregarGastos() {
+    const { data } = await supabase
+      .from('gastos')
+      .select('data, valor_gasto')
+      .order('data', { ascending: false })
+      .limit(2000)
+    if (!data) return
+    // Agrupa por mês
+    const mapa: Record<string, number> = {}
+    for (const g of data) {
+      const mes = g.data.slice(0, 7) // "2026-06"
+      mapa[mes] = (mapa[mes] ?? 0) + (g.valor_gasto ?? 0)
+    }
+    const lista = Object.entries(mapa)
+      .map(([mes, total]) => ({ mes, total }))
+      .sort((a, b) => b.mes.localeCompare(a.mes))
+      .slice(0, 6)
+    setGastosMensais(lista)
   }
 
   const conectarMeta = useCallback(() => {
@@ -373,8 +395,67 @@ export default function ContasAnunciosPage() {
         </div>
       )}
 
+      {/* Gasto Mensal */}
+      {gastosMensais.length > 0 && (
+        <div className="bg-[#0f1623] border border-slate-800 rounded-2xl overflow-hidden mt-4">
+          <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-800">
+            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            <span className="text-sm font-semibold text-white">Gasto Mensal</span>
+          </div>
+          <div className="px-6 py-5">
+            {/* Totais */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Total ({gastosMensais.length} meses)</p>
+                <p className="text-xl font-black text-white">
+                  {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0))}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Média mensal</p>
+                <p className="text-xl font-black text-white">
+                  {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0) / gastosMensais.length)}
+                </p>
+              </div>
+            </div>
+            {/* Barras por mês */}
+            <div className="space-y-3">
+              {(() => {
+                const maxVal = Math.max(...gastosMensais.map(g => g.total))
+                return gastosMensais.map(g => (
+                  <div key={g.mes}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-slate-400">{formatMes(g.mes)}</span>
+                      <span className="text-slate-300 font-semibold">{formatBRL(g.total)}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${maxVal > 0 ? (g.total / maxVal) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
+}
+
+function formatBRL(v: number) {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+}
+
+function formatMes(mes: string) {
+  const [ano, m] = mes.split('-')
+  const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${nomes[parseInt(m) - 1]} de ${ano}`
 }
 
 function ContaItem({ conta, selecionada, onToggle, label }: {

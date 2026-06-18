@@ -47,8 +47,8 @@ export async function GET(request: NextRequest) {
 
     // Busca nome do usuário e contas de anúncio em paralelo
     const [userRes, accountsRes] = await Promise.all([
-      fetch(`https://graph.facebook.com/me?fields=name&access_token=${accessToken}`),
-      fetch(`https://graph.facebook.com/me/adaccounts?fields=id,name,account_status&limit=50&access_token=${accessToken}`),
+      fetch(`https://graph.facebook.com/v25.0/me?fields=name&access_token=${accessToken}`),
+      fetch(`https://graph.facebook.com/v25.0/me/adaccounts?fields=id,name,account_status&limit=50&access_token=${accessToken}`),
     ])
     const userJson = await userRes.json()
     const accountsJson = await accountsRes.json()

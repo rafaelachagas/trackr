@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   const res = await fetch(
-    `https://graph.facebook.com/me/adaccounts?fields=id,name,account_status&limit=50&access_token=${token}`
+    `https://graph.facebook.com/v25.0/me/adaccounts?fields=id,name,account_status&limit=50&access_token=${token}`
   )
   const json = await res.json()
 
