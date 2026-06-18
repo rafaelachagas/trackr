@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Search, X, Check, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-type Conta = { id: string; name: string; account_status?: number }
+type Conta = { id: string; name: string; account_status?: number; currency?: string }
 type GastoMensal = { mes: string; total: number }
 
 export default function ContasAnunciosPage() {
@@ -18,6 +18,7 @@ export default function ContasAnunciosPage() {
   const [busca, setBusca] = useState('')
   const [selecionadas, setSelecionadas] = useState<string[]>([]) // IDs sem "act_" temporário no modal
   const [salvando, setSalvando] = useState(false)
+  const [sincronizandoHistorico, setSincronizandoHistorico] = useState(false)
   const [carregandoContas, setCarregandoContas] = useState(false)
   const [gastosMensais, setGastosMensais] = useState<GastoMensal[]>([])
 
@@ -172,6 +173,25 @@ export default function ContasAnunciosPage() {
     setModalAberto(false)
   }
 
+  async function sincronizarHistorico() {
+    if (!confirm('Isso vai limpar e re-sincronizar os últimos 90 dias de dados de gasto. Continuar?')) return
+    setSincronizandoHistorico(true)
+    try {
+      const res = await fetch('/api/meta/sync?dias=90', { method: 'POST' })
+      const json = await res.json()
+      if (json.success) {
+        await carregarGastos()
+        alert(`Histórico sincronizado! ${json.total_registros} registros atualizados.`)
+      } else {
+        alert(`Erro: ${json.error}`)
+      }
+    } catch (e: any) {
+      alert(`Erro de rede: ${e.message}`)
+    } finally {
+      setSincronizandoHistorico(false)
+    }
+  }
+
   const contasFiltradas = metaContas.filter(c => {
     const q = busca.toLowerCase()
     return c.name.toLowerCase().includes(q) || c.id.includes(q)
@@ -282,7 +302,7 @@ export default function ContasAnunciosPage() {
                           <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
                           <div>
                             {conta?.name && <p className="text-sm font-medium text-slate-200">{conta.name}</p>}
-                            <p className="text-xs text-slate-500" translate="no">act_{id}</p>
+                            <p className="text-xs text-slate-500" translate="no">{id}{conta?.currency ? ` · ${conta.currency}` : ''}</p>
                           </div>
                         </div>
                         <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full font-semibold">Ativa</span>
@@ -407,11 +427,21 @@ export default function ContasAnunciosPage() {
       {/* Gasto Mensal */}
       {gastosMensais.length > 0 && (
         <div className="bg-[#0f1623] border border-slate-800 rounded-2xl overflow-hidden mt-4">
-          <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-800">
-            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <span className="text-sm font-semibold text-white">Gasto Mensal</span>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <span className="text-sm font-semibold text-white">Gasto Mensal</span>
+            </div>
+            <button
+              onClick={sincronizarHistorico}
+              disabled={sincronizandoHistorico}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${sincronizandoHistorico ? 'animate-spin' : ''}`} />
+              {sincronizandoHistorico ? 'Sincronizando...' : 'Sincronizar 90 dias'}
+            </button>
           </div>
           <div className="px-6 py-5">
             {/* Totais */}
