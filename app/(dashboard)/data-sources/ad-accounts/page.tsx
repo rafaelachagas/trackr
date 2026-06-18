@@ -76,7 +76,7 @@ export default function ContasAnunciosPage() {
     const lista = Object.entries(mapa)
       .map(([mes, total]) => ({ mes, total }))
       .sort((a, b) => b.mes.localeCompare(a.mes))
-      .slice(0, 6)
+      .slice(0, 3)
     setGastosMensais(lista)
   }
 
@@ -420,7 +420,7 @@ export default function ContasAnunciosPage() {
                 <p className="text-2xl font-black text-white">
                   {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0))}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">Total {gastosMensais.length} meses</p>
+                <p className="text-xs text-slate-500 mt-1">Total {gastosMensais.length} {gastosMensais.length === 1 ? 'mês' : 'meses'}</p>
               </div>
               <div className="text-center border-x border-slate-800">
                 <p className="text-2xl font-black text-primary">
@@ -468,7 +468,7 @@ function formatBRL(v: number) {
 
 function formatMes(mes: string) {
   const [ano, m] = mes.split('-')
-  const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  const nomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
   return `${nomes[parseInt(m) - 1]} de ${ano}`
 }
 
