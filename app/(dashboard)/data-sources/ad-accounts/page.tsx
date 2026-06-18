@@ -17,6 +17,7 @@ export default function ContasAnunciosPage() {
   const [busca, setBusca] = useState('')
   const [selecionadas, setSelecionadas] = useState<string[]>([]) // IDs sem "act_" temporário no modal
   const [salvando, setSalvando] = useState(false)
+  const [carregandoContas, setCarregandoContas] = useState(false)
 
   useEffect(() => { carregar() }, [])
 
@@ -95,10 +96,23 @@ export default function ContasAnunciosPage() {
     setMetaContas([])
   }
 
-  function abrirModal() {
+  async function abrirModal() {
     setSelecionadas([...adAccountIds])
     setBusca('')
     setModalAberto(true)
+    // Busca contas do Meta se ainda não tiver carregado
+    if (metaContas.length === 0 && metaAccessToken) {
+      setCarregandoContas(true)
+      try {
+        const res = await fetch(
+          `https://graph.facebook.com/me/adaccounts?fields=id,name,account_status&limit=50&access_token=${metaAccessToken}`
+        )
+        const json = await res.json()
+        if (json.data) setMetaContas(json.data)
+      } catch { /* silencioso */ } finally {
+        setCarregandoContas(false)
+      }
+    }
   }
 
   function toggleConta(id: string) {
@@ -288,7 +302,12 @@ export default function ContasAnunciosPage() {
 
             {/* Lista */}
             <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1">
-              {metaContas.length === 0 && (
+              {carregandoContas && (
+                <div className="flex items-center justify-center py-8 gap-2 text-sm text-slate-500">
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Buscando contas...
+                </div>
+              )}
+              {!carregandoContas && metaContas.length === 0 && (
                 <p className="text-center text-sm text-slate-500 py-6">Nenhuma conta encontrada.<br />Reconecte sua conta do Facebook.</p>
               )}
 
