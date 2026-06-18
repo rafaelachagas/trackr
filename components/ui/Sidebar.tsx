@@ -53,13 +53,16 @@ export default function Sidebar() {
       return (
         <Link
           href={href}
-          className={`flex items-center gap-2.5 px-3 py-2.5 text-sm transition-all rounded-r-lg ${
+          className={`relative flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 ${
             active
-              ? 'border-l-2 border-primary bg-primary/10 text-foreground font-semibold'
-              : 'border-l-2 border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30 font-medium'
+              ? 'bg-primary/10 font-medium text-primary rounded-l-none'
+              : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
           }`}
         >
-          <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary' : ''}`} />
+          {active && (
+            <span className="absolute inset-y-2 left-0 w-0.5 bg-primary rounded-r-full" />
+          )}
+          <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary scale-110' : 'text-zinc-500'}`} />
           {label}
         </Link>
       )
@@ -134,7 +137,7 @@ export default function Sidebar() {
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${dataSourcesOpen ? 'rotate-180' : ''}`} />
           </button>
           {dataSourcesOpen && (
-            <div className="mt-1 space-y-0.5 ml-4 border-l border-white/10">
+            <div className="mt-1 space-y-1 ml-3 border-l border-white/5 pl-3 pb-0.5">
               {dataSources.map((item) => <NavItem key={item.href} {...item} sub />)}
             </div>
           )}

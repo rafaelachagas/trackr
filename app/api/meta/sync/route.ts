@@ -57,12 +57,13 @@ async function sincronizarMeta(request: NextRequest) {
       .select()
       .single()
 
-    // Limpa registros do período ANTES de re-inserir para evitar dados de contas removidas
+    // Limpa apenas gastos vindos da Meta API (ad_id IS NOT NULL) — nunca apaga entradas manuais do framework
     await supabaseAdmin
       .from('gastos')
       .delete()
       .gte('data', dataInicio)
       .lte('data', dataFim)
+      .not('ad_id', 'is', null)
 
     let totalRegistros = 0
 
