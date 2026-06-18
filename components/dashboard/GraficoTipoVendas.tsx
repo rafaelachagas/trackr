@@ -42,8 +42,8 @@ export default function GraficoTipoVendas() {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number, name: string) => [
-                    isPrivate ? '••' : `${value} venda${value !== 1 ? 's' : ''}`,
+                  formatter={(value, name) => [
+                    isPrivate ? '••' : `${Number(value)} venda${Number(value) !== 1 ? 's' : ''}`,
                     name,
                   ]}
                   contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, fontSize: 12 }}
