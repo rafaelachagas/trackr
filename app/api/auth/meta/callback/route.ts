@@ -45,18 +45,27 @@ export async function GET(request: NextRequest) {
     const longJson = await longRes.json()
     const accessToken: string = longJson.access_token ?? shortToken
 
-    // Busca as contas de anúncio disponíveis
-    const accountsRes = await fetch(
-      `https://graph.facebook.com/me/adaccounts?fields=id,name,account_status&limit=50&access_token=${accessToken}`
-    )
+    // Busca nome do usuário e contas de anúncio em paralelo
+    const [userRes, accountsRes] = await Promise.all([
+      fetch(`https://graph.facebook.com/me?fields=name&access_token=${accessToken}`),
+      fetch(`https://graph.facebook.com/me/adaccounts?fields=id,name,account_status&limit=50&access_token=${accessToken}`),
+    ])
+    const userJson = await userRes.json()
     const accountsJson = await accountsRes.json()
     const accounts: { id: string; name: string; account_status: number }[] = accountsJson.data ?? []
+    const userName: string = userJson.name ?? ''
 
-    // Salva o token no banco
-    await supabaseAdmin.from('configuracoes').upsert(
-      { chave: 'meta_access_token', valor: accessToken, updated_at: new Date().toISOString() },
-      { onConflict: 'chave' }
-    )
+    // Salva token e nome do usuário
+    await Promise.all([
+      supabaseAdmin.from('configuracoes').upsert(
+        { chave: 'meta_access_token', valor: accessToken, updated_at: new Date().toISOString() },
+        { onConflict: 'chave' }
+      ),
+      supabaseAdmin.from('configuracoes').upsert(
+        { chave: 'meta_user_name', valor: userName, updated_at: new Date().toISOString() },
+        { onConflict: 'chave' }
+      ),
+    ])
 
     // Se só tem uma conta, salva automaticamente
     if (accounts.length === 1) {
@@ -68,7 +77,7 @@ export async function GET(request: NextRequest) {
     }
 
     return htmlResponse(
-      `window.opener?.postMessage({type:'meta_auth_success',accounts:${JSON.stringify(accounts)}},window.location.origin);window.close()`
+      `window.opener?.postMessage({type:'meta_auth_success',accounts:${JSON.stringify(accounts)},userName:${JSON.stringify(userName)}},window.location.origin);window.close()`
     )
   } catch (err) {
     return htmlResponse(
