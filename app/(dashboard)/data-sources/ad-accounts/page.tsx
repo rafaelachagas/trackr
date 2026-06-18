@@ -62,23 +62,9 @@ export default function ContasAnunciosPage() {
   }
 
   async function carregarGastos() {
-    const { data } = await supabase
-      .from('gastos')
-      .select('data, valor_gasto')
-      .order('data', { ascending: false })
-      .limit(2000)
-    if (!data) return
-    // Agrupa por mês
-    const mapa: Record<string, number> = {}
-    for (const g of data) {
-      const mes = g.data.slice(0, 7) // "2026-06"
-      mapa[mes] = (mapa[mes] ?? 0) + (g.valor_gasto ?? 0)
-    }
-    const lista = Object.entries(mapa)
-      .map(([mes, total]) => ({ mes, total }))
-      .sort((a, b) => b.mes.localeCompare(a.mes))
-      .slice(0, 3)
-    setGastosMensais(lista)
+    const res = await fetch('/api/meta/gastos-mensais')
+    const json = await res.json()
+    if (json.gastos) setGastosMensais(json.gastos)
   }
 
   const conectarMeta = useCallback(() => {
