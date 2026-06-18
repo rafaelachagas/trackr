@@ -406,27 +406,32 @@ export default function ContasAnunciosPage() {
           </div>
           <div className="px-6 py-5">
             {/* Totais */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Total ({gastosMensais.length} meses)</p>
-                <p className="text-xl font-black text-white">
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center">
+                <p className="text-2xl font-black text-white">
                   {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0))}
                 </p>
+                <p className="text-xs text-slate-500 mt-1">Total {gastosMensais.length} meses</p>
               </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Média mensal</p>
-                <p className="text-xl font-black text-white">
+              <div className="text-center border-x border-slate-800">
+                <p className="text-2xl font-black text-primary">
                   {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0) / gastosMensais.length)}
                 </p>
+                <p className="text-xs text-slate-500 mt-1">Média mensal</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-slate-400">Sem limites</p>
+                <p className="text-xs text-slate-600 mt-1">no seu plano</p>
               </div>
             </div>
             {/* Barras por mês */}
+            <p className="text-xs text-slate-500 font-medium mb-3">Gasto por mês</p>
             <div className="space-y-3">
               {(() => {
                 const maxVal = Math.max(...gastosMensais.map(g => g.total))
                 return gastosMensais.map(g => (
                   <div key={g.mes}>
-                    <div className="flex items-center justify-between text-xs mb-1">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
                       <span className="text-slate-400">{formatMes(g.mes)}</span>
                       <span className="text-slate-300 font-semibold">{formatBRL(g.total)}</span>
                     </div>
