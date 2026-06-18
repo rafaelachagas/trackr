@@ -30,7 +30,7 @@ const navigation = [
 ]
 
 const dataSources = [
-  { href: '/data-sources/ad-accounts', label: 'Ad Accounts', icon: CreditCard },
+  { href: '/data-sources/ad-accounts', label: 'Contas de anúncios', icon: CreditCard },
 ]
 
 const configuracoes = [
@@ -43,6 +43,7 @@ export default function Sidebar() {
   const [dataSourcesOpen, setDataSourcesOpen] = useState(
     pathname.startsWith('/data-sources')
   )
+  const dataSourcesActive = pathname.startsWith('/data-sources')
 
   const NavItem = ({ href, label, icon: Icon, sub = false }: any) => {
     const active = pathname === href || (href === '/overview' && pathname === '/')
@@ -50,13 +51,13 @@ export default function Sidebar() {
       return (
         <Link
           href={href}
-          className={`flex items-center gap-2.5 pl-4 pr-3 py-2 text-sm font-medium transition-all rounded-lg border-l-2 ${
+          className={`flex items-center gap-2.5 pl-4 pr-3 py-2.5 text-sm font-semibold transition-all rounded-xl border-l-2 ${
             active
-              ? 'border-primary bg-primary/10 text-foreground'
+              ? 'border-primary bg-primary/15 text-foreground'
               : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40'
           }`}
         >
-          <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary' : ''}`} />
+          <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
           {label}
         </Link>
       )
@@ -118,11 +119,15 @@ export default function Sidebar() {
         <div className="mb-2">
           <button
             onClick={() => setDataSourcesOpen(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition"
+            className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all ${
+              dataSourcesActive || dataSourcesOpen
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+            }`}
           >
-            <div className="flex items-center gap-2">
-              <Database className="w-3.5 h-3.5" />
-              Data Sources
+            <div className="flex items-center gap-2.5">
+              <Database className={`w-4 h-4 ${dataSourcesActive || dataSourcesOpen ? 'text-primary' : ''}`} />
+              Fontes de dados
             </div>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${dataSourcesOpen ? 'rotate-180' : ''}`} />
           </button>
