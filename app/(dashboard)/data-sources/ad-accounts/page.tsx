@@ -297,7 +297,10 @@ export default function ContasAnunciosPage() {
                   {adAccountIds.map(id => {
                     const conta = metaContas.find(c => c.id.replace('act_', '') === id)
                     return (
-                      <div key={id} className="flex items-center justify-between p-3 bg-slate-800/40 border border-slate-700/50 rounded-xl">
+                      <div key={id} className="relative flex items-center justify-between p-3 bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-hidden">
+                        {/* corner accents */}
+                        <span className="pointer-events-none absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-primary/60 rounded-tl-xl" />
+                        <span className="pointer-events-none absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-primary/60 rounded-br-xl" />
                         <div className="flex items-center gap-2.5">
                           <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
                           <div>

@@ -16,6 +16,7 @@ import {
   Database,
   CreditCard,
   ChevronDown,
+  DollarSign,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
@@ -30,6 +31,7 @@ const navigation = [
 ]
 
 const dataSources = [
+  { href: '/data-sources/sales', label: 'Vendas', icon: DollarSign },
   { href: '/data-sources/ad-accounts', label: 'Contas de anúncios', icon: CreditCard },
 ]
 

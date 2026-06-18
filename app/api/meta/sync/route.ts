@@ -215,7 +215,8 @@ async function buscarInsightsMeta({
 
     return {
       data: json.data ?? [],
-      nextCursor: json.paging?.cursors?.after,
+      // cursors.after exists even on the last page; paging.next only exists when there IS a next page
+      nextCursor: json.paging?.next ? json.paging?.cursors?.after : undefined,
     }
   } catch (error) {
     return { error: `Erro de conexão com Meta API: ${error}` }
