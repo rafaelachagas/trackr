@@ -51,13 +51,13 @@ export default function Sidebar() {
       return (
         <Link
           href={href}
-          className={`flex items-center gap-2.5 pl-4 pr-3 py-2.5 text-sm font-semibold transition-all rounded-xl border-l-2 ${
+          className={`flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-all rounded-lg ${
             active
-              ? 'border-primary bg-primary/15 text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40'
+              ? 'bg-primary/10 text-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
           }`}
         >
-          <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+          <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary' : ''}`} />
           {label}
         </Link>
       )
@@ -119,7 +119,7 @@ export default function Sidebar() {
         <div className="mb-2">
           <button
             onClick={() => setDataSourcesOpen(v => !v)}
-            className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all ${
+            className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-xs font-semibold uppercase tracking-widest transition-all ${
               dataSourcesActive || dataSourcesOpen
                 ? 'bg-primary/10 text-primary'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'

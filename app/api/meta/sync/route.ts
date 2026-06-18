@@ -67,6 +67,9 @@ async function sincronizarMeta(request: NextRequest) {
     let totalRegistros = 0
 
     for (const adAccountId of adAccountIds) {
+      // Coleta TODOS os insights de todas as páginas antes de agregar
+      // (evita o bug onde page2 sobrescreve page1 para o mesmo ad_name+data)
+      const todosInsights: MetaAdInsight[] = []
       let cursor: string | null = null
       let paginaAtual = 0
 
@@ -85,39 +88,38 @@ async function sincronizarMeta(request: NextRequest) {
           return NextResponse.json({ error: resultado.error }, { status: 500 })
         }
 
-        const insights: MetaAdInsight[] = resultado.data ?? []
-
-        if (insights.length > 0) {
-          // Agrupa por (data, ad_name) somando gastos quando o mesmo anúncio aparece em múltiplos adsets
-          const mapaRegistros = new Map<string, ReturnType<typeof buildRegistro>>()
-          for (const insight of insights) {
-            const chave = `${insight.date_start}||${insight.ad_name}`
-            const existente = mapaRegistros.get(chave)
-            if (existente) {
-              existente.valor_gasto += parseFloat(insight.spend) || 0
-              existente.impressions += parseInt(insight.impressions) || 0
-              existente.clicks += parseInt(insight.clicks) || 0
-            } else {
-              mapaRegistros.set(chave, buildRegistro(insight))
-            }
-          }
-          const registros = Array.from(mapaRegistros.values())
-
-          const { error: erroUpsert } = await supabaseAdmin
-            .from('gastos')
-            .upsert(registros, { onConflict: 'data,ad_name' })
-
-          if (erroUpsert) {
-            console.error('[Meta] Erro ao salvar gastos:', erroUpsert)
-            await atualizarSyncLog(syncLog?.id, 'erro', `Erro ao salvar: ${erroUpsert.message}`)
-            return NextResponse.json({ error: `Erro ao salvar gastos: ${erroUpsert.message}`, detalhes: erroUpsert }, { status: 500 })
-          }
-
-          totalRegistros += registros.length
-        }
-
+        todosInsights.push(...(resultado.data ?? []))
         cursor = resultado.nextCursor ?? null
       } while (cursor && paginaAtual < 20)
+
+      if (todosInsights.length > 0) {
+        // Agrega por (data, ad_name) sobre TODOS os insights coletados
+        const mapaRegistros = new Map<string, ReturnType<typeof buildRegistro>>()
+        for (const insight of todosInsights) {
+          const chave = `${insight.date_start}||${insight.ad_name}`
+          const existente = mapaRegistros.get(chave)
+          if (existente) {
+            existente.valor_gasto += parseFloat(insight.spend) || 0
+            existente.impressions += parseInt(insight.impressions) || 0
+            existente.clicks += parseInt(insight.clicks) || 0
+          } else {
+            mapaRegistros.set(chave, buildRegistro(insight))
+          }
+        }
+        const registros = Array.from(mapaRegistros.values())
+
+        const { error: erroUpsert } = await supabaseAdmin
+          .from('gastos')
+          .upsert(registros, { onConflict: 'data,ad_name' })
+
+        if (erroUpsert) {
+          console.error('[Meta] Erro ao salvar gastos:', erroUpsert)
+          await atualizarSyncLog(syncLog?.id, 'erro', `Erro ao salvar: ${erroUpsert.message}`)
+          return NextResponse.json({ error: `Erro ao salvar gastos: ${erroUpsert.message}`, detalhes: erroUpsert }, { status: 500 })
+        }
+
+        totalRegistros += registros.length
+      }
     }
 
     // Atualizar última sync
