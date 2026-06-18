@@ -56,7 +56,7 @@ export default function Sidebar() {
           className={`flex items-center gap-2.5 px-3 py-2.5 text-sm transition-all rounded-r-lg ${
             active
               ? 'border-l-2 border-primary bg-primary/10 text-foreground font-semibold'
-              : 'border-l-2 border-white/10 text-muted-foreground hover:text-foreground hover:bg-muted/30 font-medium'
+              : 'border-l-2 border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30 font-medium'
           }`}
         >
           <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary' : ''}`} />
@@ -134,7 +134,7 @@ export default function Sidebar() {
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${dataSourcesOpen ? 'rotate-180' : ''}`} />
           </button>
           {dataSourcesOpen && (
-            <div className="mt-1 space-y-0.5 ml-2">
+            <div className="mt-1 space-y-0.5 ml-4 border-l border-white/10">
               {dataSources.map((item) => <NavItem key={item.href} {...item} sub />)}
             </div>
           )}
