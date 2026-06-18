@@ -23,6 +23,15 @@ export default function ContasAnunciosPage() {
 
   useEffect(() => { carregar(); carregarGastos() }, [])
 
+  useEffect(() => {
+    if (metaAccessToken && metaContas.length === 0) {
+      fetch('/api/meta/accounts')
+        .then(r => r.json())
+        .then(j => { if (j.accounts) setMetaContas(j.accounts) })
+        .catch(() => {})
+    }
+  }, [metaAccessToken])
+
   async function carregar() {
     setLoading(true)
     try {
