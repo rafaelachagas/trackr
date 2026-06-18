@@ -316,8 +316,14 @@ export default function ContasAnunciosPage() {
 
       {/* Modal de seleção de contas */}
       {modalAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-[#0f1623] border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setModalAberto(false)}
+        >
+          <div
+            className="bg-[#0f1623] border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]"
+            onClick={e => e.stopPropagation()}
+          >
             {/* Header modal */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
               <h2 className="text-sm font-bold text-white">Selecionar contas de anúncio</h2>
@@ -499,7 +505,7 @@ function ContaItem({ conta, selecionada, onToggle, label }: {
 }) {
   const id = conta.id.replace('act_', '')
   return (
-    <div className="flex items-center justify-between px-3 py-3 rounded-xl hover:bg-slate-800/40 transition">
+    <div className="flex items-center justify-between px-3 py-3 rounded-xl border border-slate-700/60 bg-slate-800/30 hover:bg-slate-800/60 transition">
       <div>
         <p className="text-sm font-semibold text-slate-200">{conta.name}</p>
         <p className="text-xs text-slate-500" translate="no">{id}</p>
