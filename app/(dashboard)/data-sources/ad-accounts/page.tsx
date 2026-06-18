@@ -104,11 +104,9 @@ export default function ContasAnunciosPage() {
     if (metaContas.length === 0 && metaAccessToken) {
       setCarregandoContas(true)
       try {
-        const res = await fetch(
-          `https://graph.facebook.com/me/adaccounts?fields=id,name,account_status&limit=50&access_token=${metaAccessToken}`
-        )
+        const res = await fetch('/api/meta/accounts')
         const json = await res.json()
-        if (json.data) setMetaContas(json.data)
+        if (json.accounts) setMetaContas(json.accounts)
       } catch { /* silencioso */ } finally {
         setCarregandoContas(false)
       }
