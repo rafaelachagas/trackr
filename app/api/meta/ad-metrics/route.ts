@@ -264,14 +264,15 @@ function extrairFaseDoCampaign(campaignName: string): string | null {
 async function fetchAdThumbnails(accountId: string, accessToken: string): Promise<Map<string, string>> {
   const result = new Map<string, string>()
   const params = new URLSearchParams({
-    fields: 'name,creative{thumbnail_url}',
+    fields: 'name,creative{thumbnail_url,image_url,object_story_spec{link_data{image_hash},photo_data{image_hash}}}',
     limit: '500',
     access_token: accessToken,
   })
   const res = await fetch(`${META_API_BASE}/${accountId}/ads?${params}`)
   const json = await res.json()
   for (const ad of json.data ?? []) {
-    if (ad.creative?.thumbnail_url) result.set(ad.name, ad.creative.thumbnail_url)
+    const url = ad.creative?.thumbnail_url ?? ad.creative?.image_url ?? null
+    if (url) result.set(ad.name, url)
   }
   return result
 }
