@@ -237,7 +237,6 @@ async function fetchInsights({
       'ad_id', 'ad_name', 'campaign_name',
       'spend', 'impressions', 'clicks',
       'cpm', 'ctr', 'cpc', 'frequency',
-      'video_3_sec_watched_actions',
     ].join(',')
 
     const params = new URLSearchParams({
