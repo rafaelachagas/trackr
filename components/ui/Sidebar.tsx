@@ -120,6 +120,21 @@ export default function Sidebar() {
           {navigation.map((item) => <NavItem key={item.href} {...item} />)}
         </div>
 
+        {/* Analisar Criativos */}
+        <Link
+          href="/ad-analysis"
+          className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-xs font-semibold uppercase tracking-widest transition-all ${
+            pathname === '/ad-analysis'
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <Film className={`w-4 h-4 ${pathname === '/ad-analysis' ? 'text-primary' : ''}`} />
+            Analisar Criativos
+          </div>
+        </Link>
+
         {/* Data Sources collapsible group */}
         <div className="mb-2">
           <button
