@@ -20,6 +20,11 @@ export interface AdMetric {
   cpc: number | null
   frequency: number | null
   hook_rate: number | null
+  receita: number
+  roas: number | null
+  roas_1d: number | null
+  roas_3d: number | null
+  roas_7d: number | null
 }
 
 export async function GET(request: NextRequest) {
@@ -52,7 +57,12 @@ export async function GET(request: NextRequest) {
     const dataFim = sp.get('dataFim') ?? format(new Date(), 'yyyy-MM-dd')
     const dataInicio = sp.get('dataInicio') ?? format(subDays(new Date(), 6), 'yyyy-MM-dd')
 
-    // Carrega criativos — sem thumbnail_url para compatibilidade (coluna pode não existir)
+    const hoje = format(new Date(), 'yyyy-MM-dd')
+    const d1 = format(subDays(new Date(), 0), 'yyyy-MM-dd')
+    const d3 = format(subDays(new Date(), 2), 'yyyy-MM-dd')
+    const d7 = format(subDays(new Date(), 6), 'yyyy-MM-dd')
+
+    // Carrega criativos
     const { data: criativosDB } = await supabaseAdmin
       .from('criativos')
       .select('nome, fase, link_anuncio, campaign_name')
@@ -67,6 +77,36 @@ export async function GET(request: NextRequest) {
         if (r.thumbnail_url) thumbMap.set(r.nome, r.thumbnail_url)
       }
     } catch {}
+
+    // Carrega vendas e gastos do DB (para ROAS 1D/3D/7D e período)
+    const [vendasPeriodo, vendasRolling, gastosPeriodo, gastosRolling] = await Promise.all([
+      supabaseAdmin.from('vendas').select('criativo, valor').eq('status', 'approved').gte('data', dataInicio).lte('data', dataFim),
+      supabaseAdmin.from('vendas').select('criativo, valor, data').eq('status', 'approved').gte('data', d7).lte('data', hoje),
+      supabaseAdmin.from('gastos').select('criativo, valor_gasto').gte('data', dataInicio).lte('data', dataFim),
+      supabaseAdmin.from('gastos').select('criativo, valor_gasto, data').gte('data', d7).lte('data', hoje),
+    ])
+
+    // Agrega receita e gasto por criativo para o período selecionado
+    const receitaPeriodoMap = new Map<string, number>()
+    for (const v of vendasPeriodo.data ?? []) {
+      if (v.criativo) receitaPeriodoMap.set(v.criativo, (receitaPeriodoMap.get(v.criativo) ?? 0) + (v.valor || 0))
+    }
+    const gastoPeriodoMap = new Map<string, number>()
+    for (const g of gastosPeriodo.data ?? []) {
+      if (g.criativo) gastoPeriodoMap.set(g.criativo, (gastoPeriodoMap.get(g.criativo) ?? 0) + (g.valor_gasto || 0))
+    }
+
+    // Agrega para rolling windows
+    function rollingReceita(criativo: string, desde: string) {
+      return (vendasRolling.data ?? [])
+        .filter((v) => v.criativo === criativo && v.data >= desde)
+        .reduce((s, v) => s + (v.valor || 0), 0)
+    }
+    function rollingGasto(criativo: string, desde: string) {
+      return (gastosRolling.data ?? [])
+        .filter((g) => g.criativo === criativo && g.data >= desde)
+        .reduce((s, g) => s + (g.valor_gasto || 0), 0)
+    }
 
     type DBCriativo = { fase: string | null; link_anuncio: string | null; campaign_name: string }
     const criativosMap = new Map<string, DBCriativo>()
@@ -95,7 +135,6 @@ export async function GET(request: NextRequest) {
     for (const adAccountId of adAccountIds) {
       const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`
 
-      // Thumbnails e primeiro lote de insights em paralelo
       const [thumbData, primeiroLote] = await Promise.all([
         fetchAdThumbnails(accountId, accessToken).catch(() => new Map<string, string>()),
         fetchInsights({ accessToken, accountId, dataInicio, dataFim, cursor: null }),
@@ -155,7 +194,6 @@ export async function GET(request: NextRequest) {
       const cpm = m.impressions > 0 ? (m.spend / m.impressions) * 1000 : null
       const ctr = m.impressions > 0 ? (m.clicks / m.impressions) * 100 : null
       const cpc = m.clicks > 0 ? m.spend / m.clicks : null
-      const hookRate = m.impressions > 0 ? (m.hook_actions / m.impressions) * 100 : null
       const frequency = m.frequency_count > 0 ? m.frequency_total / m.frequency_count : null
 
       let dbCriativo: DBCriativo | undefined
@@ -168,6 +206,19 @@ export async function GET(request: NextRequest) {
       }
 
       const thumbnailUrl = thumbMap.get(m.ad_name) ?? adNameToThumb.get(m.ad_name) ?? null
+
+      // ROAS
+      const receita = receitaPeriodoMap.get(m.ad_name) ?? 0
+      const gastoDB = gastoPeriodoMap.get(m.ad_name) ?? 0
+      const spendParaRoas = gastoDB > 0 ? gastoDB : m.spend
+      const roas = spendParaRoas > 0 && receita > 0 ? receita / spendParaRoas : null
+
+      const r1 = rollingReceita(m.ad_name, d1)
+      const g1 = rollingGasto(m.ad_name, d1)
+      const r3 = rollingReceita(m.ad_name, d3)
+      const g3 = rollingGasto(m.ad_name, d3)
+      const r7 = rollingReceita(m.ad_name, d7)
+      const g7 = rollingGasto(m.ad_name, d7)
 
       resultado.push({
         criativo: m.ad_name,
@@ -183,7 +234,12 @@ export async function GET(request: NextRequest) {
         ctr,
         cpc,
         frequency,
-        hook_rate: hookRate,
+        hook_rate: null,
+        receita,
+        roas,
+        roas_1d: g1 > 0 && r1 > 0 ? r1 / g1 : null,
+        roas_3d: g3 > 0 && r3 > 0 ? r3 / g3 : null,
+        roas_7d: g7 > 0 && r7 > 0 ? r7 / g7 : null,
       })
     }
 
@@ -198,12 +254,6 @@ export async function GET(request: NextRequest) {
     console.error('[ad-metrics]', err)
     return NextResponse.json({ error: `Erro interno: ${err}` }, { status: 500 })
   }
-}
-
-function parseHookActions(arr: unknown): number {
-  if (!Array.isArray(arr)) return 0
-  const item = (arr as any[]).find((a) => a.action_type === 'video_view')
-  return parseInt(item?.value ?? '0') || 0
 }
 
 function extrairFaseDoCampaign(campaignName: string): string | null {

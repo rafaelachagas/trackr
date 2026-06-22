@@ -10,23 +10,22 @@ import { ptBR } from 'date-fns/locale'
 import { Calendar, ChevronDown, ArrowUpDown, ExternalLink, RefreshCw, ImageOff, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react'
 import type { AdMetric } from '@/app/api/meta/ad-metrics/route'
 
-// ── Cores por threshold ───────────────────────────────────────────────────
 function cpmColor(v: number) { return v < 20 ? 'bg-emerald-500' : v < 40 ? 'bg-amber-500' : 'bg-red-500' }
 function ctrColor(v: number) { return v >= 3 ? 'bg-emerald-500' : v >= 1.5 ? 'bg-amber-500' : 'bg-red-500' }
-function hookColor(v: number) { return v >= 30 ? 'bg-emerald-500' : v >= 15 ? 'bg-amber-500' : 'bg-red-500' }
 function cpcColor(v: number) { return v < 5 ? 'bg-emerald-500' : v < 15 ? 'bg-amber-500' : 'bg-red-500' }
 function freqColor(v: number) { return v < 2 ? 'bg-emerald-500' : v < 4 ? 'bg-amber-500' : 'bg-red-500' }
+function roasColor(v: number) { return v >= 3 ? 'text-emerald-400' : v >= 1.5 ? 'text-amber-400' : 'text-red-400' }
 
 function MetricBar({ label, value, formatted, barPct, colorFn }: {
   label: string; value: number | null; formatted: string; barPct: number; colorFn: (v: number) => string
 }) {
   return (
     <div className="flex items-center gap-2 text-[11px]">
-      <span className="w-20 shrink-0 text-muted-foreground font-medium">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${value !== null ? colorFn(value) : 'bg-muted'}`} style={{ width: `${Math.min(barPct, 100)}%` }} />
+      <span className="w-[52px] shrink-0 text-muted-foreground">{label}</span>
+      <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
+        <div className={`h-full rounded-full ${value !== null ? colorFn(value) : 'bg-muted'}`} style={{ width: `${Math.min(barPct, 100)}%` }} />
       </div>
-      <span className={`w-16 text-right font-bold tabular-nums ${value === null ? 'text-muted-foreground' : 'text-foreground'}`}>{formatted}</span>
+      <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : 'text-foreground'}`}>{formatted}</span>
     </div>
   )
 }
@@ -38,31 +37,28 @@ const FASE_BADGE: Record<string, string> = {
   FASE03: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30',
 }
 
-type SortKey = 'spend' | 'cpm' | 'ctr' | 'hook_rate' | 'frequency' | 'cpc'
+type SortKey = 'spend' | 'cpm' | 'ctr' | 'frequency' | 'cpc' | 'roas'
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'spend', label: 'Gasto' },
+  { key: 'roas', label: 'ROAS' },
   { key: 'cpm', label: 'CPM' },
   { key: 'ctr', label: 'CTR' },
-  { key: 'hook_rate', label: 'Hook Rate' },
   { key: 'frequency', label: 'Frequência' },
   { key: 'cpc', label: 'CPC' },
 ]
 
-type Tab = 'todos' | 'hook' | 'ctr'
+type Tab = 'todos' | 'roas' | 'ctr'
 
-// ── Calendário de Range ───────────────────────────────────────────────────
 function CalendarRangePicker({
-  startDate, endDate,
-  onRangeChange, onClose,
+  startDate, endDate, onRangeChange, onClose,
 }: {
-  startDate: string
-  endDate: string
+  startDate: string; endDate: string
   onRangeChange: (start: string, end: string) => void
   onClose: () => void
 }) {
   const today = new Date()
   const [viewMonth, setViewMonth] = useState(parseISO(endDate))
-  const [selecting, setSelecting] = useState<Date | null>(null) // first click waiting for second
+  const [selecting, setSelecting] = useState<Date | null>(null)
 
   const start = parseISO(startDate)
   const end = parseISO(endDate)
@@ -93,37 +89,27 @@ function CalendarRangePicker({
   }
 
   function dayClass(day: Date) {
-    const isStart = isSameDay(day, selecting ?? start)
-    const isEnd = !selecting && isSameDay(day, end)
     const inRange = !selecting && isWithinInterval(day, { start, end })
-    const isToday = isSameDay(day, today)
     const isCurrentMonth = day.getMonth() === viewMonth.getMonth()
-
     if ((selecting && isSameDay(day, selecting)) || (!selecting && (isSameDay(day, start) || isSameDay(day, end)))) {
       return 'bg-primary text-white font-bold rounded-full'
     }
     if (inRange) return 'bg-primary/20 text-foreground rounded-none'
-    if (isToday) return 'ring-1 ring-primary/60 text-foreground rounded-full'
+    if (isSameDay(day, today)) return 'ring-1 ring-primary/60 text-foreground rounded-full'
     if (!isCurrentMonth) return 'text-muted-foreground/30'
     return 'text-foreground hover:bg-muted/40 rounded-full'
   }
 
   return (
     <div className="absolute right-0 top-full mt-2 z-50 bg-card border border-border rounded-2xl shadow-xl overflow-hidden w-[320px]">
-      {/* Presets */}
       <div className="grid grid-cols-3 gap-px p-3 border-b border-border bg-background/50">
         {presets.map(p => (
-          <button
-            key={p.label}
-            onClick={() => { onRangeChange(p.s, p.e); onClose() }}
-            className="px-2 py-1.5 rounded-lg text-xs text-foreground hover:bg-muted/60 transition text-center"
-          >
+          <button key={p.label} onClick={() => { onRangeChange(p.s, p.e); onClose() }}
+            className="px-2 py-1.5 rounded-lg text-xs text-foreground hover:bg-muted/60 transition text-center">
             {p.label}
           </button>
         ))}
       </div>
-
-      {/* Mês nav */}
       <div className="flex items-center justify-between px-4 py-3">
         <button onClick={() => setViewMonth(m => subMonths(m, 1))} className="p-1 rounded-lg hover:bg-muted/40 transition">
           <ChevronLeft className="w-4 h-4 text-muted-foreground" />
@@ -135,31 +121,21 @@ function CalendarRangePicker({
           <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </button>
       </div>
-
-      {/* Dias da semana */}
       <div className="grid grid-cols-7 px-3 pb-1">
         {['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'].map(d => (
           <div key={d} className="text-center text-[10px] font-bold text-muted-foreground py-1">{d}</div>
         ))}
       </div>
-
-      {/* Grid de dias */}
       <div className="grid grid-cols-7 px-3 pb-3 gap-y-0.5">
         {days.map(day => (
-          <button
-            key={day.toISOString()}
-            onClick={() => handleDayClick(day)}
-            className={`h-8 w-full text-xs transition-colors ${dayClass(day)}`}
-          >
+          <button key={day.toISOString()} onClick={() => handleDayClick(day)}
+            className={`h-8 w-full text-xs transition-colors ${dayClass(day)}`}>
             {day.getDate()}
           </button>
         ))}
       </div>
-
       {selecting && (
-        <div className="px-4 pb-3 text-xs text-muted-foreground text-center">
-          Agora clique na data final
-        </div>
+        <div className="px-4 pb-3 text-xs text-muted-foreground text-center">Agora clique na data final</div>
       )}
     </div>
   )
@@ -169,6 +145,9 @@ function fmtK(v: number) {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`
   return String(v)
+}
+function fmtBRL(v: number) {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
 export default function AdAnalysisPage() {
@@ -228,7 +207,7 @@ export default function AdAnalysisPage() {
   const filtered = useMemo(() => {
     let list = [...metrics]
     if (filtroFase) list = list.filter(m => m.fase === filtroFase)
-    if (tab === 'hook') list = list.filter(m => m.hook_rate !== null).sort((a, b) => (b.hook_rate ?? 0) - (a.hook_rate ?? 0))
+    if (tab === 'roas') list = list.filter(m => m.roas !== null).sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))
     else if (tab === 'ctr') list = list.filter(m => m.ctr !== null).sort((a, b) => (b.ctr ?? 0) - (a.ctr ?? 0))
     else {
       list.sort((a, b) => {
@@ -244,11 +223,9 @@ export default function AdAnalysisPage() {
 
   return (
     <div className="pb-12 space-y-6">
-      {/* Cabeçalho */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Análise de Criativos</h1>
         <div className="flex items-center gap-3">
-          {/* Date picker */}
           <div ref={dateRef} className="relative">
             <button
               onClick={() => setShowDatePicker(v => !v)}
@@ -261,27 +238,20 @@ export default function AdAnalysisPage() {
             </button>
             {showDatePicker && (
               <CalendarRangePicker
-                startDate={dataInicio}
-                endDate={dataFim}
+                startDate={dataInicio} endDate={dataFim}
                 onRangeChange={(s, e) => { setDataInicio(s); setDataFim(e) }}
                 onClose={() => setShowDatePicker(false)}
               />
             )}
           </div>
-
-          {/* Atualizar */}
-          <button
-            onClick={carregar}
-            disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary text-sm font-semibold border border-primary/20 hover:bg-primary hover:text-white transition disabled:opacity-50"
-          >
+          <button onClick={carregar} disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary text-sm font-semibold border border-primary/20 hover:bg-primary hover:text-white transition disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             {atualizado ? `Atualizado: ${atualizado}` : 'Carregar'}
           </button>
         </div>
       </div>
 
-      {/* Erro da API */}
       {apiError && (
         <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -289,7 +259,6 @@ export default function AdAnalysisPage() {
         </div>
       )}
 
-      {/* Container de cards */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         {/* Toolbar */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-wrap gap-2">
@@ -297,27 +266,20 @@ export default function AdAnalysisPage() {
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mr-3">Criativos em Cards</p>
             {([
               { key: 'todos' as Tab, label: 'Todos' },
-              { key: 'hook' as Tab, label: 'Melhores Ganchos' },
+              { key: 'roas' as Tab, label: 'Maiores ROAS' },
               { key: 'ctr' as Tab, label: 'Maiores CTR' },
             ]).map(t => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                  tab === t.key ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
-                }`}
-              >
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${tab === t.key ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'}`}>
                 {t.label}
               </button>
             ))}
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Filtro fase */}
             <div className="flex items-center gap-1">
               {(['todas', ...FASES] as const).map(f => (
-                <button
-                  key={f}
+                <button key={f}
                   onClick={() => setFiltroFase(f === 'todas' ? null : (filtroFase === f ? null : f))}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border ${
                     (f === 'todas' && filtroFase === null)
@@ -325,19 +287,15 @@ export default function AdAnalysisPage() {
                       : (f !== 'todas' && filtroFase === f)
                       ? `border ${FASE_BADGE[f]}`
                       : 'border-transparent text-muted-foreground hover:bg-muted/40'
-                  }`}
-                >
+                  }`}>
                   {f === 'todas' ? 'Todas' : f}
                 </button>
               ))}
             </div>
 
-            {/* Sort */}
             <div ref={sortRef} className="relative">
-              <button
-                onClick={() => setShowSort(v => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted/50 transition"
-              >
+              <button onClick={() => setShowSort(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted/50 transition">
                 <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
                 {SORT_OPTIONS.find(s => s.key === sortKey)?.label}
                 <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${showSort ? 'rotate-180' : ''}`} />
@@ -345,11 +303,8 @@ export default function AdAnalysisPage() {
               {showSort && (
                 <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-xl shadow-xl p-1 w-40">
                   {SORT_OPTIONS.map(s => (
-                    <button
-                      key={s.key}
-                      onClick={() => toggleSort(s.key)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs transition ${sortKey === s.key ? 'text-primary font-semibold' : 'text-foreground hover:bg-muted/40'}`}
-                    >
+                    <button key={s.key} onClick={() => toggleSort(s.key)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs transition ${sortKey === s.key ? 'text-primary font-semibold' : 'text-foreground hover:bg-muted/40'}`}>
                       {s.label}
                     </button>
                   ))}
@@ -360,7 +315,7 @@ export default function AdAnalysisPage() {
         </div>
 
         {/* Cards */}
-        <div className="p-5">
+        <div className="p-4">
           {loading ? (
             <div className="flex items-center justify-center py-32">
               <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -370,7 +325,7 @@ export default function AdAnalysisPage() {
               {apiError ? 'Erro ao carregar dados.' : 'Nenhum dado encontrado para o período selecionado.'}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
               {filtered.map((m, i) => (
                 <AdCard key={`${m.ad_name}-${m.fase ?? 'x'}-${i}`} metric={m} />
               ))}
@@ -387,15 +342,16 @@ function AdCard({ metric: m }: { metric: AdMetric }) {
 
   const cpmPct = m.cpm !== null ? Math.min((m.cpm / 60) * 100, 100) : 0
   const ctrPct = m.ctr !== null ? Math.min((m.ctr / 6) * 100, 100) : 0
-  const hookPct = m.hook_rate !== null ? Math.min((m.hook_rate / 60) * 100, 100) : 0
   const cpcPct = m.cpc !== null ? Math.min((m.cpc / 30) * 100, 100) : 0
   const freqPct = m.frequency !== null ? Math.min((m.frequency / 6) * 100, 100) : 0
 
   const hasThumb = !!m.thumbnail_url && !imgErr
-  const cardContent = (
-    <div className="bg-background border border-border rounded-2xl overflow-hidden hover:border-primary/30 transition-colors group">
-      {/* Thumbnail */}
-      <div className="relative bg-muted overflow-hidden" style={{ aspectRatio: '16/9' }}>
+  const hasRoas = m.roas !== null && m.roas > 0
+
+  const inner = (
+    <div className="bg-background border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors group cursor-pointer">
+      {/* Thumbnail — portrait 4:5 */}
+      <div className="relative bg-muted overflow-hidden" style={{ aspectRatio: '4/5' }}>
         {hasThumb ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -403,67 +359,93 @@ function AdCard({ metric: m }: { metric: AdMetric }) {
               src={m.thumbnail_url!}
               alt={m.criativo}
               onError={() => setImgErr(true)}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-            <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end justify-between gap-2">
-              <span className="text-xs font-semibold text-white truncate" title={m.criativo}>{m.criativo}</span>
-              {m.link_anuncio && <ExternalLink className="w-3.5 h-3.5 text-white/70 shrink-0 opacity-0 group-hover:opacity-100 transition" />}
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
           </>
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4">
-            <ImageOff className="w-8 h-8 text-muted-foreground/30" />
-            <span className="text-xs text-muted-foreground/60 text-center truncate w-full text-center" title={m.criativo}>{m.criativo}</span>
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-3">
+            <ImageOff className="w-6 h-6 text-muted-foreground/30" />
           </div>
         )}
 
+        {/* Nome do criativo (bottom) */}
+        <div className="absolute bottom-0 left-0 right-0 px-2.5 pb-2 pt-6">
+          <p className="text-[11px] font-semibold text-white leading-tight line-clamp-2" title={m.criativo}>
+            {m.criativo}
+          </p>
+        </div>
+
+        {/* Fase badge (top right) */}
         {m.fase && (
-          <span className={`absolute top-2 right-2 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${FASE_BADGE[m.fase] ?? 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'}`}>
+          <span className={`absolute top-2 right-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${FASE_BADGE[m.fase] ?? 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'}`}>
             {m.fase}
+          </span>
+        )}
+
+        {/* Link externo (top left) */}
+        {m.link_anuncio && (
+          <span className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition">
+            <ExternalLink className="w-3.5 h-3.5 text-white/80" />
           </span>
         )}
       </div>
 
-      {/* Métricas */}
-      <div className="p-4 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+      {/* Stats */}
+      <div className="p-2.5 space-y-2.5">
+        {/* Gasto + Receita + ROAS */}
+        <div className="grid grid-cols-2 gap-1.5">
           <div>
             <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Gasto</p>
-            <p className="text-sm font-bold text-foreground tabular-nums mt-0.5">
-              {m.spend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
-            </p>
+            <p className="text-xs font-bold text-foreground tabular-nums">{fmtBRL(m.spend)}</p>
           </div>
           <div>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Impressões</p>
-            <p className="text-sm font-bold text-foreground tabular-nums mt-0.5">{fmtK(m.impressions)}</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Receita</p>
+            <p className={`text-xs font-bold tabular-nums ${m.receita > 0 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+              {m.receita > 0 ? fmtBRL(m.receita) : '—'}
+            </p>
           </div>
         </div>
 
-        <div className="space-y-2 pt-1 border-t border-border">
+        {/* ROAS period + rolling */}
+        {(hasRoas || m.roas_1d || m.roas_3d || m.roas_7d) && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {hasRoas && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 ${roasColor(m.roas!)}`}>
+                ROAS {m.roas!.toFixed(1)}x
+              </span>
+            )}
+            {m.roas_1d && (
+              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/5 ${roasColor(m.roas_1d)}`}>
+                1D {m.roas_1d.toFixed(1)}x
+              </span>
+            )}
+            {m.roas_3d && (
+              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/5 ${roasColor(m.roas_3d)}`}>
+                3D {m.roas_3d.toFixed(1)}x
+              </span>
+            )}
+            {m.roas_7d && (
+              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/5 ${roasColor(m.roas_7d)}`}>
+                7D {m.roas_7d.toFixed(1)}x
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Metric bars */}
+        <div className="space-y-1.5 pt-1.5 border-t border-border">
           <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? m.cpm.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }) : '—'} barPct={cpmPct} colorFn={cpmColor} />
           <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
-          <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
-          <MetricBar label="Frequência" value={m.frequency} formatted={m.frequency !== null && m.frequency > 0 ? m.frequency.toFixed(1) : '—'} barPct={freqPct} colorFn={freqColor} />
+          <MetricBar label="Freq." value={m.frequency} formatted={m.frequency !== null && m.frequency > 0 ? m.frequency.toFixed(1) : '—'} barPct={freqPct} colorFn={freqColor} />
           <MetricBar label="CPC" value={m.cpc} formatted={m.cpc !== null ? m.cpc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }) : '—'} barPct={cpcPct} colorFn={cpcColor} />
         </div>
-
-        {m.link_anuncio && !hasThumb && (
-          <a href={m.link_anuncio} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition pt-1">
-            <ExternalLink className="w-3 h-3" />Ver anúncio
-          </a>
-        )}
       </div>
     </div>
   )
 
   if (hasThumb && m.link_anuncio) {
-    return (
-      <a href={m.link_anuncio} target="_blank" rel="noopener noreferrer" className="block">
-        {cardContent}
-      </a>
-    )
+    return <a href={m.link_anuncio} target="_blank" rel="noopener noreferrer" className="block">{inner}</a>
   }
-  return cardContent
+  return inner
 }
