@@ -425,6 +425,32 @@ function AdCard({ metric: m }: { metric: AdMetric }) {
           <MetricBar label="Freq." value={m.frequency} formatted={m.frequency !== null && m.frequency > 0 ? m.frequency.toFixed(1) : '—'} barPct={freqPct} colorFn={freqColor} />
           <MetricBar label="CPC" value={m.cpc} formatted={m.cpc !== null ? m.cpc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }) : '—'} barPct={cpcPct} colorFn={cpcColor} />
         </div>
+
+        {/* Rolling ROAS */}
+        {(m.roas_1d || m.roas_3d || m.roas_7d) && (
+          <div className="space-y-1.5 pt-1.5 border-t border-border">
+            {([
+              { label: 'Últ. 7d', value: m.roas_7d },
+              { label: 'Últ. 3d', value: m.roas_3d },
+              { label: 'Últ. 1d', value: m.roas_1d },
+            ] as const).map(({ label, value }) => (
+              <div key={label} className="flex items-center gap-2 text-[11px]">
+                <span className="w-[52px] shrink-0 text-muted-foreground">{label}</span>
+                <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
+                  {value !== null && (
+                    <div
+                      className={`h-full rounded-full ${value >= 3 ? 'bg-emerald-500' : value >= 1.5 ? 'bg-amber-500' : 'bg-red-500'}`}
+                      style={{ width: `${Math.min((value / 5) * 100, 100)}%` }}
+                    />
+                  )}
+                </div>
+                <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
+                  {value !== null ? `${value.toFixed(2)}x` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
