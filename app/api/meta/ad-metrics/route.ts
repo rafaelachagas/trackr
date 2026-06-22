@@ -300,6 +300,7 @@ async function fetchInsights({
       fields: campos,
       level: 'ad',
       time_range: JSON.stringify({ since: dataInicio, until: dataFim }),
+      filtering: JSON.stringify([{ field: 'ad.effective_status', operator: 'IN', value: ['ACTIVE'] }]),
       limit: '500',
       access_token: accessToken,
     })

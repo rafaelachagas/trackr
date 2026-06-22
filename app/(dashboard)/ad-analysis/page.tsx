@@ -345,7 +345,8 @@ function AdCard({ metric: m }: { metric: AdMetric }) {
   const cpcPct = m.cpc !== null ? Math.min((m.cpc / 30) * 100, 100) : 0
   const freqPct = m.frequency !== null ? Math.min((m.frequency / 6) * 100, 100) : 0
 
-  const hasThumb = !!m.thumbnail_url && !imgErr
+  const thumbSrc = m.thumbnail_url ? `/api/meta/thumb-proxy?url=${encodeURIComponent(m.thumbnail_url)}` : null
+  const hasThumb = !!thumbSrc && !imgErr
   const hasRoas = m.roas !== null && m.roas > 0
 
   const inner = (
@@ -356,7 +357,7 @@ function AdCard({ metric: m }: { metric: AdMetric }) {
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={m.thumbnail_url!}
+              src={thumbSrc!}
               alt={m.criativo}
               onError={() => setImgErr(true)}
               className="w-full h-full object-cover"
@@ -407,29 +408,13 @@ function AdCard({ metric: m }: { metric: AdMetric }) {
           </div>
         </div>
 
-        {/* ROAS period + rolling */}
-        {(hasRoas || m.roas_1d || m.roas_3d || m.roas_7d) && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {hasRoas && (
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 ${roasColor(m.roas!)}`}>
-                ROAS {m.roas!.toFixed(1)}x
-              </span>
-            )}
-            {m.roas_1d && (
-              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/5 ${roasColor(m.roas_1d)}`}>
-                1D {m.roas_1d.toFixed(1)}x
-              </span>
-            )}
-            {m.roas_3d && (
-              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/5 ${roasColor(m.roas_3d)}`}>
-                3D {m.roas_3d.toFixed(1)}x
-              </span>
-            )}
-            {m.roas_7d && (
-              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/5 ${roasColor(m.roas_7d)}`}>
-                7D {m.roas_7d.toFixed(1)}x
-              </span>
-            )}
+        {/* ROAS do período */}
+        {hasRoas && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS</span>
+            <span className={`text-sm font-bold tabular-nums ${roasColor(m.roas!)}`}>
+              {m.roas!.toFixed(2)}x
+            </span>
           </div>
         )}
 
