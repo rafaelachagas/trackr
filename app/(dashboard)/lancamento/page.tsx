@@ -93,22 +93,41 @@ export default function LancamentoPage() {
     })
   }
 
+  const RASCUNHO_KEY = 'lancamento_rascunho'
+
+  function salvarRascunho(f: ModalLancamento) {
+    localStorage.setItem(RASCUNHO_KEY, JSON.stringify(f))
+  }
+
+  function limparRascunho() {
+    localStorage.removeItem(RASCUNHO_KEY)
+  }
+
   function abrirModal() {
-    const ultimaData = localStorage.getItem('lancamento_ultima_data') ?? hoje
-    setForm({
-      data: ultimaData,
-      criativo: '',
-      campanha: '',
-      vendaLinhas: produtos.map(p => ({ produto: p, valor: '' })),
-      valorGasto: '',
-    })
+    const salvo = localStorage.getItem(RASCUNHO_KEY)
+    if (salvo) {
+      try {
+        const rascunho = JSON.parse(salvo) as ModalLancamento
+        // garante que vendaLinhas tenha todos os produtos atuais
+        const linhas = produtos.map(p => {
+          const existente = rascunho.vendaLinhas?.find(l => l.produto === p)
+          return existente ?? { produto: p, valor: '' }
+        })
+        setForm({ ...rascunho, vendaLinhas: linhas })
+      } catch {
+        setForm({ data: hoje, criativo: '', campanha: '', vendaLinhas: produtos.map(p => ({ produto: p, valor: '' })), valorGasto: '' })
+      }
+    } else {
+      const ultimaData = localStorage.getItem('lancamento_ultima_data') ?? hoje
+      setForm({ data: ultimaData, criativo: '', campanha: '', vendaLinhas: produtos.map(p => ({ produto: p, valor: '' })), valorGasto: '' })
+    }
     setErros([])
     setModalAberto(true)
   }
 
   function selecionarCriativo(nome: string) {
     const c = criativosAtivos.find(x => x.nome === nome)
-    setForm(f => ({ ...f, criativo: nome, campanha: c?.campaign_name ?? '' }))
+    setForm(f => { const novo = { ...f, criativo: nome, campanha: c?.campaign_name ?? '' }; salvarRascunho(novo); return novo })
   }
 
   async function handleLancar(e: React.FormEvent) {
@@ -145,6 +164,7 @@ export default function LancamentoPage() {
     if (novosErros.length > 0) {
       setErros(novosErros)
     } else {
+      limparRascunho()
       setModalAberto(false)
       carregar()
     }
@@ -374,7 +394,7 @@ export default function LancamentoPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data</label>
-                  <input type="date" value={form.data} onChange={e => { localStorage.setItem('lancamento_ultima_data', e.target.value); setForm(f => ({ ...f, data: e.target.value })) }} className={inputClass} required />
+                  <input type="date" value={form.data} onChange={e => { localStorage.setItem('lancamento_ultima_data', e.target.value); setForm(f => { const novo = { ...f, data: e.target.value }; salvarRascunho(novo); return novo }) }} className={inputClass} required />
                 </div>
                 <div>
                   <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Criativo</label>
@@ -397,10 +417,11 @@ export default function LancamentoPage() {
                       min="0"
                       placeholder="0,00"
                       value={linha.valor}
-                      onChange={e => setForm(f => ({
-                        ...f,
-                        vendaLinhas: f.vendaLinhas.map((l, j) => j === i ? { ...l, valor: e.target.value } : l)
-                      }))}
+                      onChange={e => setForm(f => {
+                        const novo = { ...f, vendaLinhas: f.vendaLinhas.map((l, j) => j === i ? { ...l, valor: e.target.value } : l) }
+                        salvarRascunho(novo)
+                        return novo
+                      })}
                       className={inputClass}
                     />
                   </div>
@@ -412,7 +433,7 @@ export default function LancamentoPage() {
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Gasto Meta (deixe em branco para não lançar)</p>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-foreground w-44 shrink-0">Gasto (R$)</span>
-                  <input type="number" step="0.01" min="0" placeholder="0,00" value={form.valorGasto} onChange={e => setForm(f => ({ ...f, valorGasto: e.target.value }))} className={inputClass} />
+                  <input type="number" step="0.01" min="0" placeholder="0,00" value={form.valorGasto} onChange={e => setForm(f => { const novo = { ...f, valorGasto: e.target.value }; salvarRascunho(novo); return novo })} className={inputClass} />
                 </div>
                 {form.campanha && (
                   <p className="text-[11px] text-muted-foreground">Campanha: <span className="font-mono text-primary">{form.campanha}</span></p>
