@@ -95,31 +95,27 @@ export async function GET(request: NextRequest) {
     for (const adAccountId of adAccountIds) {
       const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`
 
-      // Thumbnails da Meta API (fallback quando não há no DB)
-      try {
-        const thumbData = await fetchAdThumbnails(accountId, accessToken)
-        for (const [name, url] of thumbData) adNameToThumb.set(name, url)
-      } catch {}
+      // Thumbnails e primeiro lote de insights em paralelo
+      const [thumbData, primeiroLote] = await Promise.all([
+        fetchAdThumbnails(accountId, accessToken).catch(() => new Map<string, string>()),
+        fetchInsights({ accessToken, accountId, dataInicio, dataFim, cursor: null }),
+      ])
 
-      // Insights agregados pelo período
-      let cursor: string | null = null
-      let page = 0
-      do {
-        const resultado = await fetchInsights({ accessToken, accountId, dataInicio, dataFim, cursor })
-        if (resultado.error) {
-          return NextResponse.json({ error: resultado.error }, { status: 500 })
-        }
+      for (const [name, url] of thumbData) adNameToThumb.set(name, url)
 
-        for (const row of resultado.data ?? []) {
+      if (primeiroLote.error) {
+        return NextResponse.json({ error: primeiroLote.error }, { status: 500 })
+      }
+
+      const processRows = (rows: any[]) => {
+        for (const row of rows) {
           const chave = `${row.ad_name}||${row.campaign_name}`
-          const hookActions = parseHookActions(row.video_3_sec_watched_actions)
           const freq = parseFloat(row.frequency) || 0
           const existente = mapaMetricas.get(chave)
           if (existente) {
             existente.spend += parseFloat(row.spend) || 0
             existente.impressions += parseInt(row.impressions) || 0
             existente.clicks += parseInt(row.clicks) || 0
-            existente.hook_actions += hookActions
             existente.frequency_total += freq
             existente.frequency_count++
           } else {
@@ -131,15 +127,26 @@ export async function GET(request: NextRequest) {
               clicks: parseInt(row.clicks) || 0,
               frequency_total: freq,
               frequency_count: 1,
-              hook_actions: hookActions,
+              hook_actions: 0,
               ad_id: row.ad_id,
             })
           }
         }
+      }
 
+      processRows(primeiroLote.data ?? [])
+
+      let cursor: string | null = primeiroLote.nextCursor ?? null
+      let page = 1
+      while (cursor && page < 20) {
+        const resultado = await fetchInsights({ accessToken, accountId, dataInicio, dataFim, cursor })
+        if (resultado.error) {
+          return NextResponse.json({ error: resultado.error }, { status: 500 })
+        }
+        processRows(resultado.data ?? [])
         cursor = resultado.nextCursor ?? null
         page++
-      } while (cursor && page < 20)
+      }
     }
 
     const resultado: AdMetric[] = []
