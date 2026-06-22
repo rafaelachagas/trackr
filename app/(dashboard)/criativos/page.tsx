@@ -32,6 +32,7 @@ type FormState = {
   objetivo: string
   fase: string
   linkAnuncio: string
+  thumbnailUrl: string
 }
 
 const formVazio: FormState = {
@@ -41,6 +42,7 @@ const formVazio: FormState = {
   objetivo: 'VENDAS',
   fase: 'FASE01',
   linkAnuncio: '',
+  thumbnailUrl: '',
 }
 
 export default function CriativosPage() {
@@ -72,6 +74,7 @@ export default function CriativosPage() {
       objetivo: c.objetivo,
       fase: c.fase ?? '',
       linkAnuncio: c.link_anuncio ?? '',
+      thumbnailUrl: c.thumbnail_url ?? '',
     })
     setEditando(c)
   }
@@ -93,6 +96,7 @@ export default function CriativosPage() {
       objetivo: form.objetivo,
       fase: form.fase || null,
       link_anuncio: form.linkAnuncio || null,
+      thumbnail_url: form.thumbnailUrl || null,
     }
     const res = editando
       ? await editarCriativo(editando.id, payload)
@@ -285,6 +289,12 @@ export default function CriativosPage() {
               <div>
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Link do Anúncio (opcional)</label>
                 <input type="url" value={form.linkAnuncio} onChange={e => setForm(f => ({ ...f, linkAnuncio: e.target.value }))} placeholder="https://facebook.com/ads/..." className={inputClass} />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">URL da Thumbnail (opcional)</label>
+                <input type="url" value={form.thumbnailUrl} onChange={e => setForm(f => ({ ...f, thumbnailUrl: e.target.value }))} placeholder="https://..." className={inputClass} />
+                <p className="text-[10px] text-muted-foreground mt-1">Imagem exibida no card de Análise de Criativos</p>
               </div>
 
               <button type="submit" disabled={saving || !form.nome.trim()} className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50">

@@ -13,6 +13,7 @@ export type Criativo = {
   campaign_name: string
   status: 'ativo' | 'pausado'
   link_anuncio: string | null
+  thumbnail_url: string | null
   created_at: string
 }
 
@@ -23,6 +24,7 @@ export type NovoCriativo = {
   objetivo: string
   fase: string | null
   link_anuncio?: string | null
+  thumbnail_url?: string | null
 }
 
 function buildCampaignName(prefixo: string, tipo: string, objetivo: string, fase: string | null) {
@@ -61,6 +63,7 @@ export async function criarCriativo(payload: NovoCriativo) {
     fase: payload.fase ?? null,
     campaign_name,
     link_anuncio: payload.link_anuncio || null,
+    thumbnail_url: payload.thumbnail_url || null,
     status: 'ativo',
   })
   if (error) return { success: false, error: error.message }
@@ -79,6 +82,7 @@ export async function editarCriativo(id: string, payload: NovoCriativo) {
     fase: payload.fase ?? null,
     campaign_name,
     link_anuncio: payload.link_anuncio || null,
+    thumbnail_url: payload.thumbnail_url || null,
   }).eq('id', id)
   if (error) return { success: false, error: error.message }
   revalidatePath('/criativos')
