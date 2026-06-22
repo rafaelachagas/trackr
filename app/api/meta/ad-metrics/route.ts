@@ -274,14 +274,20 @@ function extrairFaseDoCampaign(campaignName: string): string | null {
 async function fetchAdThumbnails(accountId: string, accessToken: string): Promise<Map<string, string>> {
   const result = new Map<string, string>()
   const params = new URLSearchParams({
-    fields: 'name,creative{thumbnail_url,image_url,object_story_spec{link_data{image_hash},photo_data{image_hash}}}',
+    fields: 'name,creative{thumbnail_url,object_story_spec{link_data{picture},photo_data{url},video_data{image_url}}}',
     limit: '500',
     access_token: accessToken,
   })
   const res = await fetch(`${META_API_BASE}/${accountId}/ads?${params}`)
   const json = await res.json()
   for (const ad of json.data ?? []) {
-    const url = ad.creative?.thumbnail_url ?? ad.creative?.image_url ?? null
+    const c = ad.creative
+    const url =
+      c?.thumbnail_url ??
+      c?.object_story_spec?.link_data?.picture ??
+      c?.object_story_spec?.photo_data?.url ??
+      c?.object_story_spec?.video_data?.image_url ??
+      null
     if (url) result.set(ad.name, url)
   }
   return result
