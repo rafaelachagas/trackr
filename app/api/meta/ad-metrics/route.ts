@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { subDays, format } from 'date-fns'
+import { toZonedTime } from 'date-fns-tz'
 
 const META_API_VERSION = 'v25.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
@@ -54,13 +55,17 @@ export async function GET(request: NextRequest) {
     }
 
     const sp = request.nextUrl.searchParams
-    const dataFim = sp.get('dataFim') ?? format(new Date(), 'yyyy-MM-dd')
-    const dataInicio = sp.get('dataInicio') ?? format(subDays(new Date(), 6), 'yyyy-MM-dd')
+    const agora = toZonedTime(new Date(), 'America/Sao_Paulo')
+    const hoje = format(agora, 'yyyy-MM-dd')
+    const ontem = format(subDays(agora, 1), 'yyyy-MM-dd')
 
-    const hoje = format(new Date(), 'yyyy-MM-dd')
-    const d1 = format(subDays(new Date(), 0), 'yyyy-MM-dd')
-    const d3 = format(subDays(new Date(), 2), 'yyyy-MM-dd')
-    const d7 = format(subDays(new Date(), 6), 'yyyy-MM-dd')
+    const dataFim = sp.get('dataFim') ?? hoje
+    const dataInicio = sp.get('dataInicio') ?? format(subDays(agora, 6), 'yyyy-MM-dd')
+
+    // Janelas fixas sempre encerram em ontem (dia completo) — igual ao framework
+    const d1 = ontem
+    const d3 = format(subDays(agora, 3), 'yyyy-MM-dd')
+    const d7 = format(subDays(agora, 7), 'yyyy-MM-dd')
 
     // Carrega criativos
     const { data: criativosDB } = await supabaseAdmin
@@ -78,12 +83,16 @@ export async function GET(request: NextRequest) {
       }
     } catch {}
 
-    // Carrega vendas e gastos do DB (para ROAS 1D/3D/7D e período)
+    // Carrega vendas e gastos do DB — espelha /api/framework exatamente
     const [vendasPeriodo, vendasRolling, gastosPeriodo, gastosRolling] = await Promise.all([
+      // Período selecionado: todas as vendas aprovadas (para receita do card)
       supabaseAdmin.from('vendas').select('criativo, valor').eq('status', 'approved').gte('data', dataInicio).lte('data', dataFim),
-      supabaseAdmin.from('vendas').select('criativo, valor, data').eq('status', 'approved').gte('data', d7).lte('data', hoje),
-      supabaseAdmin.from('gastos').select('criativo, valor_gasto').gte('data', dataInicio).lte('data', dataFim),
-      supabaseAdmin.from('gastos').select('criativo, valor_gasto, data').gte('data', d7).lte('data', hoje),
+      // Rolling 7d: só lançamentos manuais, encerrando em ontem
+      supabaseAdmin.from('vendas').select('criativo, valor, data').eq('status', 'approved').like('transaction_id', 'manual_%').gte('data', `${d7}T00:00:00`).lte('data', `${ontem}T23:59:59`),
+      // Gastos do período: só gastos manuais (ad_id null)
+      supabaseAdmin.from('gastos').select('criativo, valor_gasto').is('ad_id', null).gte('data', dataInicio).lte('data', dataFim),
+      // Gastos rolling 7d: só gastos manuais
+      supabaseAdmin.from('gastos').select('criativo, valor_gasto, data').is('ad_id', null).gte('data', d7).lte('data', ontem),
     ])
 
     // Agrega receita e gasto por criativo para o período selecionado
@@ -96,15 +105,15 @@ export async function GET(request: NextRequest) {
       if (g.criativo) gastoPeriodoMap.set(g.criativo, (gastoPeriodoMap.get(g.criativo) ?? 0) + (g.valor_gasto || 0))
     }
 
-    // Agrega para rolling windows
-    function rollingReceita(criativo: string, desde: string) {
+    // Agrega para rolling windows — igual ao framework
+    function rollingReceita(criativo: string, desde: string, ate: string = ontem) {
       return (vendasRolling.data ?? [])
-        .filter((v) => v.criativo === criativo && v.data >= desde)
+        .filter((v) => v.criativo === criativo && v.data.substring(0, 10) >= desde && v.data.substring(0, 10) <= ate)
         .reduce((s, v) => s + (v.valor || 0), 0)
     }
-    function rollingGasto(criativo: string, desde: string) {
+    function rollingGasto(criativo: string, desde: string, ate: string = ontem) {
       return (gastosRolling.data ?? [])
-        .filter((g) => g.criativo === criativo && g.data >= desde)
+        .filter((g) => g.criativo === criativo && g.data >= desde && g.data <= ate)
         .reduce((s, g) => s + (g.valor_gasto || 0), 0)
     }
 
@@ -213,12 +222,13 @@ export async function GET(request: NextRequest) {
       const spendParaRoas = gastoDB > 0 ? gastoDB : m.spend
       const roas = spendParaRoas > 0 && receita > 0 ? receita / spendParaRoas : null
 
-      const r1 = rollingReceita(m.ad_name, d1)
-      const g1 = rollingGasto(m.ad_name, d1)
-      const r3 = rollingReceita(m.ad_name, d3)
-      const g3 = rollingGasto(m.ad_name, d3)
-      const r7 = rollingReceita(m.ad_name, d7)
-      const g7 = rollingGasto(m.ad_name, d7)
+      // Janelas: 1d = só ontem, 3d = d3 até ontem, 7d = d7 até ontem
+      const r1 = rollingReceita(m.ad_name, d1, d1)
+      const g1 = rollingGasto(m.ad_name, d1, d1)
+      const r3 = rollingReceita(m.ad_name, d3, ontem)
+      const g3 = rollingGasto(m.ad_name, d3, ontem)
+      const r7 = rollingReceita(m.ad_name, d7, ontem)
+      const g7 = rollingGasto(m.ad_name, d7, ontem)
 
       resultado.push({
         criativo: m.ad_name,
