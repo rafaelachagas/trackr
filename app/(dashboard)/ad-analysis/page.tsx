@@ -304,7 +304,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
     <div className="bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/30 transition-colors group flex flex-col">
 
       {/* Thumbnail */}
-      <div className="relative bg-muted overflow-hidden" style={{ aspectRatio: '4/5' }}>
+      <div className="relative bg-[#0d1117] overflow-hidden" style={{ aspectRatio: '4/3' }}>
         {hasThumb ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -314,13 +314,15 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
               onError={() => setImgErr(true)}
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
           </>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <ImageOff className="w-8 h-8 text-muted-foreground/20" />
           </div>
         )}
+
+        {/* Gradient overlay for text legibility */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
 
         {/* Action buttons — top right */}
         <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -351,15 +353,17 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
             {m.fase}
           </span>
         )}
+
+        {/* Name overlaid at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 px-3 pb-2.5 pt-8">
+          <p className="text-[11px] font-semibold text-white leading-snug line-clamp-2" title={m.criativo}>
+            {m.criativo}
+          </p>
+        </div>
       </div>
 
       {/* Card body */}
       <div className="p-3 flex flex-col gap-3 flex-1">
-
-        {/* Name */}
-        <p className="text-xs font-semibold text-foreground leading-snug line-clamp-2" title={m.criativo}>
-          {m.criativo}
-        </p>
 
         {/* Gasto + Impressões | Conversões */}
         <div className="grid grid-cols-2 gap-1.5">
@@ -419,6 +423,11 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
             ))}
           </div>
         )}
+
+        {/* Footer: anúncio count */}
+        <div className="pt-0.5 border-t border-border/60 mt-auto">
+          <span className="text-[11px] text-muted-foreground">1 anúncio</span>
+        </div>
       </div>
     </div>
   )
