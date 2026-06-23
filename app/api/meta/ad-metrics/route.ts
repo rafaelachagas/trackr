@@ -140,16 +140,18 @@ export async function GET(request: NextRequest) {
     }
     const mapaMetricas = new Map<string, MetricEntry>()
     const adNameToThumb = new Map<string, string>()
+    let thumbDebug: any[] = []
 
     for (const adAccountId of adAccountIds) {
       const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`
 
-      const [thumbData, primeiroLote] = await Promise.all([
-        fetchAdThumbnails(accountId, accessToken).catch(() => new Map<string, string>()),
+      const [thumbResult, primeiroLote] = await Promise.all([
+        fetchAdThumbnails(accountId, accessToken).catch(() => ({ map: new Map<string, string>(), debug: [] })),
         fetchInsights({ accessToken, accountId, dataInicio, dataFim, cursor: null }),
       ])
 
-      for (const [name, url] of thumbData) adNameToThumb.set(name, url)
+      thumbDebug = thumbResult.debug
+      for (const [name, url] of thumbResult.map) adNameToThumb.set(name, url)
 
       if (primeiroLote.error) {
         return NextResponse.json({ error: primeiroLote.error }, { status: 500 })
@@ -258,7 +260,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       metrics: resultado,
       periodo: { dataInicio, dataFim },
-      debug: { total: resultado.length, accounts: adAccountIds.length },
+      debug: { total: resultado.length, accounts: adAccountIds.length, thumb_sample: (thumbDebug as any[]) },
     })
   } catch (err) {
     console.error('[ad-metrics]', err)
@@ -271,26 +273,43 @@ function extrairFaseDoCampaign(campaignName: string): string | null {
   return match ? match[1].toUpperCase() : null
 }
 
-async function fetchAdThumbnails(accountId: string, accessToken: string): Promise<Map<string, string>> {
-  const result = new Map<string, string>()
+async function fetchAdThumbnails(accountId: string, accessToken: string): Promise<{ map: Map<string, string>; debug: any[] }> {
+  const map = new Map<string, string>()
   const params = new URLSearchParams({
-    fields: 'name,creative{thumbnail_url,object_story_spec{link_data{picture},photo_data{url},video_data{image_url}}}',
+    fields: 'name,creative{id,thumbnail_url,image_url,object_story_spec{link_data{picture},photo_data{url},video_data{image_url,thumbnail_url}}}',
     limit: '500',
     access_token: accessToken,
   })
   const res = await fetch(`${META_API_BASE}/${accountId}/ads?${params}`)
   const json = await res.json()
-  for (const ad of json.data ?? []) {
+  const debug: any[] = []
+  for (const ad of (json.data ?? []).slice(0, 5)) {
     const c = ad.creative
     const url =
       c?.thumbnail_url ??
+      c?.image_url ??
       c?.object_story_spec?.link_data?.picture ??
       c?.object_story_spec?.photo_data?.url ??
       c?.object_story_spec?.video_data?.image_url ??
+      c?.object_story_spec?.video_data?.thumbnail_url ??
       null
-    if (url) result.set(ad.name, url)
+    debug.push({ name: ad.name, creative_id: c?.id, fields_returned: c ? Object.keys(c) : [], url_found: !!url })
+    if (url) map.set(ad.name, url)
   }
-  return result
+  // process remaining without debug
+  for (const ad of (json.data ?? []).slice(5)) {
+    const c = ad.creative
+    const url =
+      c?.thumbnail_url ??
+      c?.image_url ??
+      c?.object_story_spec?.link_data?.picture ??
+      c?.object_story_spec?.photo_data?.url ??
+      c?.object_story_spec?.video_data?.image_url ??
+      c?.object_story_spec?.video_data?.thumbnail_url ??
+      null
+    if (url) map.set(ad.name, url)
+  }
+  return { map, debug }
 }
 
 async function fetchInsights({

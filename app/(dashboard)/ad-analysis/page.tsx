@@ -362,72 +362,72 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
         </div>
       </div>
 
-      {/* Card body */}
-      <div className="p-3 flex flex-col gap-3 flex-1">
+      {/* Stats section — flat, like Odin */}
+      <div className="px-4 py-3 flex gap-0">
+        {/* Left: Gasto + Impressões */}
+        <div className="flex-1 pr-4">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Gasto</p>
+          <p className="text-sm font-bold text-foreground tabular-nums mt-0.5">{fmtBRL2(m.spend)}</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-2">Impressões</p>
+          <p className="text-sm font-semibold text-foreground tabular-nums mt-0.5">{fmtK(m.impressions)}</p>
+        </div>
+        {/* Vertical divider */}
+        <div className="w-px bg-border/60 self-stretch" />
+        {/* Right: Conversões / ROAS */}
+        <div className="flex-1 pl-4 flex flex-col justify-center">
+          {hasRoas ? (
+            <>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS</p>
+              <p className={`text-sm font-bold tabular-nums mt-0.5 ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
+              {m.receita > 0 && (
+                <>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-2">Receita</p>
+                  <p className="text-sm font-semibold text-emerald-400 tabular-nums mt-0.5">{fmtBRL(m.receita)}</p>
+                </>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground/50 italic">Sem conversões</p>
+          )}
+        </div>
+      </div>
 
-        {/* Gasto + Impressões | Conversões */}
-        <div className="grid grid-cols-2 gap-1.5">
-          <div className="bg-background/60 rounded-xl p-2.5">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Gasto</p>
-            <p className="text-xs font-bold text-foreground tabular-nums mt-0.5">{fmtBRL(m.spend)}</p>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1.5">Impressões</p>
-            <p className="text-xs font-semibold text-foreground tabular-nums mt-0.5">{fmtK(m.impressions)}</p>
-          </div>
-          <div className={`rounded-xl p-2.5 flex flex-col items-start justify-center ${hasRoas ? 'bg-background/60' : 'bg-background/30'}`}>
-            {hasRoas ? (
-              <>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS</p>
-                <p className={`text-lg font-bold tabular-nums mt-0.5 ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
-                {m.receita > 0 && (
-                  <>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1.5">Receita</p>
-                    <p className="text-xs font-semibold text-emerald-400 tabular-nums mt-0.5">{fmtBRL(m.receita)}</p>
-                  </>
+      {/* Metric bars */}
+      <div className="px-4 pb-3 space-y-2 border-t border-border/40 pt-3">
+        <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} />
+        <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
+        <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
+      </div>
+
+      {/* Rolling ROAS */}
+      {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
+        <div className="px-4 pb-3 space-y-2 border-t border-border/40 pt-3">
+          {([
+            { label: 'Últ. 7d', value: m.roas_7d },
+            { label: 'Últ. 3d', value: m.roas_3d },
+            { label: 'Últ. 1d', value: m.roas_1d },
+          ] as const).map(({ label, value }) => (
+            <div key={label} className="flex items-center gap-2 text-[11px]">
+              <span className="w-[60px] shrink-0 text-muted-foreground">{label}</span>
+              <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
+                {value !== null && (
+                  <div
+                    className={`h-full rounded-full ${roasBg(value)}`}
+                    style={{ width: `${Math.min((value / 5) * 100, 100)}%` }}
+                  />
                 )}
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground/60 italic text-center w-full">Sem conversões</p>
-            )}
-          </div>
-        </div>
-
-        {/* Metric bars */}
-        <div className="space-y-1.5 pt-0.5 border-t border-border/60">
-          <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} />
-          <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
-          <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
-        </div>
-
-        {/* Rolling ROAS */}
-        {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
-          <div className="space-y-1.5 pt-0.5 border-t border-border/60">
-            {([
-              { label: 'Últ. 7d', value: m.roas_7d },
-              { label: 'Últ. 3d', value: m.roas_3d },
-              { label: 'Últ. 1d', value: m.roas_1d },
-            ] as const).map(({ label, value }) => (
-              <div key={label} className="flex items-center gap-2 text-[11px]">
-                <span className="w-[60px] shrink-0 text-muted-foreground">{label}</span>
-                <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
-                  {value !== null && (
-                    <div
-                      className={`h-full rounded-full ${roasBg(value)}`}
-                      style={{ width: `${Math.min((value / 5) * 100, 100)}%` }}
-                    />
-                  )}
-                </div>
-                <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
-                  {value !== null ? `${value.toFixed(2)}x` : '—'}
-                </span>
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* Footer: anúncio count */}
-        <div className="pt-0.5 border-t border-border/60 mt-auto">
-          <span className="text-[11px] text-muted-foreground">1 anúncio</span>
+              <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
+                {value !== null ? `${value.toFixed(2)}x` : '—'}
+              </span>
+            </div>
+          ))}
         </div>
+      )}
+
+      {/* Footer */}
+      <div className="px-4 pb-3 border-t border-border/40 pt-2.5">
+        <span className="text-[11px] text-muted-foreground">1 anúncio</span>
       </div>
     </div>
   )
@@ -612,7 +612,7 @@ export default function AdAnalysisPage() {
               {apiError ? 'Erro ao carregar dados.' : 'Nenhum dado encontrado para o período selecionado.'}
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {filtered.map((m, i) => (
                 <AdCard
                   key={`${m.ad_name}-${m.fase ?? 'x'}-${i}`}
