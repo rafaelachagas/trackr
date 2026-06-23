@@ -7,21 +7,21 @@ import {
   startOfWeek, endOfWeek, isAfter, isBefore,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Calendar, ChevronDown, ArrowUpDown, ExternalLink, RefreshCw, ImageOff, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react'
+import { Calendar, ChevronDown, ArrowUpDown, ExternalLink, RefreshCw, ImageOff, ChevronLeft, ChevronRight, AlertCircle, Maximize2, X } from 'lucide-react'
 import type { AdMetric } from '@/app/api/meta/ad-metrics/route'
 
 function cpmColor(v: number) { return v < 20 ? 'bg-emerald-500' : v < 40 ? 'bg-amber-500' : 'bg-red-500' }
 function ctrColor(v: number) { return v >= 3 ? 'bg-emerald-500' : v >= 1.5 ? 'bg-amber-500' : 'bg-red-500' }
-function cpcColor(v: number) { return v < 5 ? 'bg-emerald-500' : v < 15 ? 'bg-amber-500' : 'bg-red-500' }
-function freqColor(v: number) { return v < 2 ? 'bg-emerald-500' : v < 4 ? 'bg-amber-500' : 'bg-red-500' }
+function hookColor(v: number) { return v >= 30 ? 'bg-emerald-500' : v >= 15 ? 'bg-amber-500' : 'bg-red-500' }
 function roasColor(v: number) { return v >= 3 ? 'text-emerald-400' : v >= 1.5 ? 'text-amber-400' : 'text-red-400' }
+function roasBg(v: number) { return v >= 3 ? 'bg-emerald-500' : v >= 1.5 ? 'bg-amber-500' : 'bg-red-500' }
 
 function MetricBar({ label, value, formatted, barPct, colorFn }: {
   label: string; value: number | null; formatted: string; barPct: number; colorFn: (v: number) => string
 }) {
   return (
     <div className="flex items-center gap-2 text-[11px]">
-      <span className="w-[52px] shrink-0 text-muted-foreground">{label}</span>
+      <span className="w-[60px] shrink-0 text-muted-foreground">{label}</span>
       <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
         <div className={`h-full rounded-full ${value !== null ? colorFn(value) : 'bg-muted'}`} style={{ width: `${Math.min(barPct, 100)}%` }} />
       </div>
@@ -149,7 +149,282 @@ function fmtK(v: number) {
 function fmtBRL(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
+function fmtBRL2(v: number) {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 })
+}
 
+/* ─── Detail Modal ───────────────────────────────────────────────── */
+function DetailModal({ metric: m, onClose }: { metric: AdMetric; onClose: () => void }) {
+  const [imgErr, setImgErr] = useState(false)
+  const thumbSrc = m.thumbnail_url ? `/api/meta/thumb-proxy?url=${encodeURIComponent(m.thumbnail_url)}` : null
+  const hasThumb = !!thumbSrc && !imgErr
+  const hasRoas = m.roas !== null && m.roas > 0
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  function StatCell({ label, value }: { label: string; value: string }) {
+    return (
+      <div className="bg-background/60 rounded-xl p-3">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">{label}</p>
+        <p className="text-sm font-bold text-foreground tabular-nums">{value}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div
+        className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-3 min-w-0">
+            <p className="text-sm font-bold text-foreground truncate">{m.criativo}</p>
+            {m.fase && (
+              <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${FASE_BADGE[m.fase] ?? 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'}`}>
+                {m.fase}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            {m.link_anuncio && (
+              <a
+                href={m.link_anuncio}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Ver anúncio
+              </a>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted/50 transition text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-0">
+          {/* Thumbnail panel */}
+          <div className="md:w-64 shrink-0 bg-black/30">
+            {hasThumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={thumbSrc!}
+                alt={m.criativo}
+                onError={() => setImgErr(true)}
+                className="w-full h-full object-cover md:rounded-bl-2xl"
+                style={{ maxHeight: '520px' }}
+              />
+            ) : (
+              <div className="w-full flex items-center justify-center py-20 md:rounded-bl-2xl">
+                <ImageOff className="w-10 h-10 text-muted-foreground/20" />
+              </div>
+            )}
+          </div>
+
+          {/* Metrics panel */}
+          <div className="flex-1 p-5 space-y-4">
+            {/* Main stats grid */}
+            <div className="grid grid-cols-3 gap-2">
+              <StatCell label="Gasto" value={fmtBRL2(m.spend)} />
+              <StatCell label="Impressões" value={fmtK(m.impressions)} />
+              <StatCell label="Cliques" value={fmtK(m.clicks)} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <StatCell label="CPM" value={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} />
+              <StatCell label="CPC" value={m.cpc !== null ? fmtBRL2(m.cpc) : '—'} />
+              <StatCell label="CTR" value={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <StatCell label="Hook Rate" value={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} />
+              <StatCell label="Frequência" value={m.frequency !== null ? m.frequency.toFixed(1) : '—'} />
+              <div className="bg-background/60 rounded-xl p-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">ROAS</p>
+                {hasRoas ? (
+                  <p className={`text-sm font-bold tabular-nums ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
+                ) : (
+                  <p className="text-sm font-bold text-muted-foreground">—</p>
+                )}
+              </div>
+            </div>
+
+            {/* Rolling ROAS */}
+            {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
+              <div className="pt-2 border-t border-border space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">ROAS Rolling</p>
+                {([
+                  { label: 'Últ. 7d', value: m.roas_7d },
+                  { label: 'Últ. 3d', value: m.roas_3d },
+                  { label: 'Últ. 1d', value: m.roas_1d },
+                ] as const).map(({ label, value }) => (
+                  <div key={label} className="flex items-center gap-3 text-xs">
+                    <span className="w-14 shrink-0 text-muted-foreground">{label}</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                      {value !== null && (
+                        <div
+                          className={`h-full rounded-full ${roasBg(value)}`}
+                          style={{ width: `${Math.min((value / 5) * 100, 100)}%` }}
+                        />
+                      )}
+                    </div>
+                    <span className={`w-14 text-right font-bold tabular-nums ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
+                      {value !== null ? `${value.toFixed(2)}x` : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Ad Card ────────────────────────────────────────────────────── */
+function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => void }) {
+  const [imgErr, setImgErr] = useState(false)
+
+  const cpmPct = m.cpm !== null ? Math.min((m.cpm / 60) * 100, 100) : 0
+  const ctrPct = m.ctr !== null ? Math.min((m.ctr / 6) * 100, 100) : 0
+  const hookPct = m.hook_rate !== null ? Math.min((m.hook_rate / 50) * 100, 100) : 0
+
+  const thumbSrc = m.thumbnail_url ? `/api/meta/thumb-proxy?url=${encodeURIComponent(m.thumbnail_url)}` : null
+  const hasThumb = !!thumbSrc && !imgErr
+  const hasRoas = m.roas !== null && m.roas > 0
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/30 transition-colors group flex flex-col">
+
+      {/* Thumbnail */}
+      <div className="relative bg-muted overflow-hidden" style={{ aspectRatio: '4/5' }}>
+        {hasThumb ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={thumbSrc!}
+              alt={m.criativo}
+              onError={() => setImgErr(true)}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
+          </>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <ImageOff className="w-8 h-8 text-muted-foreground/20" />
+          </div>
+        )}
+
+        {/* Action buttons — top right */}
+        <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={onExpand}
+            className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition"
+            title="Ver detalhes"
+          >
+            <Maximize2 className="w-3.5 h-3.5 text-white" />
+          </button>
+          {m.link_anuncio && (
+            <a
+              href={m.link_anuncio}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition"
+              title="Abrir no Instagram"
+              onClick={e => e.stopPropagation()}
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-white" />
+            </a>
+          )}
+        </div>
+
+        {/* Fase badge — top left */}
+        {m.fase && (
+          <span className={`absolute top-2 left-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${FASE_BADGE[m.fase] ?? 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'}`}>
+            {m.fase}
+          </span>
+        )}
+      </div>
+
+      {/* Card body */}
+      <div className="p-3 flex flex-col gap-3 flex-1">
+
+        {/* Name */}
+        <p className="text-xs font-semibold text-foreground leading-snug line-clamp-2" title={m.criativo}>
+          {m.criativo}
+        </p>
+
+        {/* Gasto + Impressões | Conversões */}
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="bg-background/60 rounded-xl p-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Gasto</p>
+            <p className="text-xs font-bold text-foreground tabular-nums mt-0.5">{fmtBRL(m.spend)}</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1.5">Impressões</p>
+            <p className="text-xs font-semibold text-foreground tabular-nums mt-0.5">{fmtK(m.impressions)}</p>
+          </div>
+          <div className={`rounded-xl p-2.5 flex flex-col items-start justify-center ${hasRoas ? 'bg-background/60' : 'bg-background/30'}`}>
+            {hasRoas ? (
+              <>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS</p>
+                <p className={`text-lg font-bold tabular-nums mt-0.5 ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
+                {m.receita > 0 && (
+                  <>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1.5">Receita</p>
+                    <p className="text-xs font-semibold text-emerald-400 tabular-nums mt-0.5">{fmtBRL(m.receita)}</p>
+                  </>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground/60 italic text-center w-full">Sem conversões</p>
+            )}
+          </div>
+        </div>
+
+        {/* Metric bars */}
+        <div className="space-y-1.5 pt-0.5 border-t border-border/60">
+          <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} />
+          <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
+          <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
+        </div>
+
+        {/* Rolling ROAS */}
+        {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
+          <div className="space-y-1.5 pt-0.5 border-t border-border/60">
+            {([
+              { label: 'Últ. 7d', value: m.roas_7d },
+              { label: 'Últ. 3d', value: m.roas_3d },
+              { label: 'Últ. 1d', value: m.roas_1d },
+            ] as const).map(({ label, value }) => (
+              <div key={label} className="flex items-center gap-2 text-[11px]">
+                <span className="w-[60px] shrink-0 text-muted-foreground">{label}</span>
+                <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
+                  {value !== null && (
+                    <div
+                      className={`h-full rounded-full ${roasBg(value)}`}
+                      style={{ width: `${Math.min((value / 5) * 100, 100)}%` }}
+                    />
+                  )}
+                </div>
+                <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
+                  {value !== null ? `${value.toFixed(2)}x` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Page ───────────────────────────────────────────────────────── */
 export default function AdAnalysisPage() {
   const hoje = format(new Date(), 'yyyy-MM-dd')
   const [dataInicio, setDataInicio] = useState(format(subDays(new Date(), 6), 'yyyy-MM-dd'))
@@ -164,6 +439,7 @@ export default function AdAnalysisPage() {
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showSort, setShowSort] = useState(false)
   const [atualizado, setAtualizado] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<AdMetric | null>(null)
   const dateRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
 
@@ -223,6 +499,8 @@ export default function AdAnalysisPage() {
 
   return (
     <div className="pb-12 space-y-6">
+      {expanded && <DetailModal metric={expanded} onClose={() => setExpanded(null)} />}
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Análise de Criativos</h1>
         <div className="flex items-center gap-3">
@@ -263,7 +541,7 @@ export default function AdAnalysisPage() {
         {/* Toolbar */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-wrap gap-2">
           <div className="flex items-center gap-1 flex-wrap">
-            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mr-3">Criativos em Cards</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mr-3">Análise de Criativos</p>
             {([
               { key: 'todos' as Tab, label: 'Todos' },
               { key: 'roas' as Tab, label: 'Maiores ROAS' },
@@ -314,7 +592,7 @@ export default function AdAnalysisPage() {
           </div>
         </div>
 
-        {/* Cards */}
+        {/* Cards grid */}
         <div className="p-4">
           {loading ? (
             <div className="flex items-center justify-center py-32">
@@ -327,7 +605,11 @@ export default function AdAnalysisPage() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
               {filtered.map((m, i) => (
-                <AdCard key={`${m.ad_name}-${m.fase ?? 'x'}-${i}`} metric={m} />
+                <AdCard
+                  key={`${m.ad_name}-${m.fase ?? 'x'}-${i}`}
+                  metric={m}
+                  onExpand={() => setExpanded(m)}
+                />
               ))}
             </div>
           )}
@@ -335,128 +617,4 @@ export default function AdAnalysisPage() {
       </div>
     </div>
   )
-}
-
-function AdCard({ metric: m }: { metric: AdMetric }) {
-  const [imgErr, setImgErr] = useState(false)
-
-  const cpmPct = m.cpm !== null ? Math.min((m.cpm / 60) * 100, 100) : 0
-  const ctrPct = m.ctr !== null ? Math.min((m.ctr / 6) * 100, 100) : 0
-  const cpcPct = m.cpc !== null ? Math.min((m.cpc / 30) * 100, 100) : 0
-  const freqPct = m.frequency !== null ? Math.min((m.frequency / 6) * 100, 100) : 0
-
-  const thumbSrc = m.thumbnail_url ? `/api/meta/thumb-proxy?url=${encodeURIComponent(m.thumbnail_url)}` : null
-  const hasThumb = !!thumbSrc && !imgErr
-  const hasRoas = m.roas !== null && m.roas > 0
-
-  const inner = (
-    <div className="bg-background border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors group cursor-pointer">
-      {/* Thumbnail — portrait 4:5 */}
-      <div className="relative bg-muted overflow-hidden" style={{ aspectRatio: '4/5' }}>
-        {hasThumb ? (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={thumbSrc!}
-              alt={m.criativo}
-              onError={() => setImgErr(true)}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-          </>
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-3">
-            <ImageOff className="w-6 h-6 text-muted-foreground/30" />
-          </div>
-        )}
-
-        {/* Nome do criativo (bottom) */}
-        <div className="absolute bottom-0 left-0 right-0 px-2.5 pb-2 pt-6">
-          <p className="text-[11px] font-semibold text-white leading-tight line-clamp-2" title={m.criativo}>
-            {m.criativo}
-          </p>
-        </div>
-
-        {/* Fase badge (top right) */}
-        {m.fase && (
-          <span className={`absolute top-2 right-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${FASE_BADGE[m.fase] ?? 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'}`}>
-            {m.fase}
-          </span>
-        )}
-
-        {/* Link externo (top left) */}
-        {m.link_anuncio && (
-          <span className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition">
-            <ExternalLink className="w-3.5 h-3.5 text-white/80" />
-          </span>
-        )}
-      </div>
-
-      {/* Stats */}
-      <div className="p-2.5 space-y-2.5">
-        {/* Gasto + Receita + ROAS */}
-        <div className="grid grid-cols-2 gap-1.5">
-          <div>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Gasto</p>
-            <p className="text-xs font-bold text-foreground tabular-nums">{fmtBRL(m.spend)}</p>
-          </div>
-          <div>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Receita</p>
-            <p className={`text-xs font-bold tabular-nums ${m.receita > 0 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
-              {m.receita > 0 ? fmtBRL(m.receita) : '—'}
-            </p>
-          </div>
-        </div>
-
-        {/* ROAS do período */}
-        {hasRoas && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS</span>
-            <span className={`text-sm font-bold tabular-nums ${roasColor(m.roas!)}`}>
-              {m.roas!.toFixed(2)}x
-            </span>
-          </div>
-        )}
-
-        {/* Metric bars */}
-        <div className="space-y-1.5 pt-1.5 border-t border-border">
-          <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? m.cpm.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }) : '—'} barPct={cpmPct} colorFn={cpmColor} />
-          <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
-          <MetricBar label="Freq." value={m.frequency} formatted={m.frequency !== null && m.frequency > 0 ? m.frequency.toFixed(1) : '—'} barPct={freqPct} colorFn={freqColor} />
-          <MetricBar label="CPC" value={m.cpc} formatted={m.cpc !== null ? m.cpc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }) : '—'} barPct={cpcPct} colorFn={cpcColor} />
-        </div>
-
-        {/* Rolling ROAS */}
-        {(m.roas_1d || m.roas_3d || m.roas_7d) && (
-          <div className="space-y-1.5 pt-1.5 border-t border-border">
-            {([
-              { label: 'Últ. 7d', value: m.roas_7d },
-              { label: 'Últ. 3d', value: m.roas_3d },
-              { label: 'Últ. 1d', value: m.roas_1d },
-            ] as const).map(({ label, value }) => (
-              <div key={label} className="flex items-center gap-2 text-[11px]">
-                <span className="w-[52px] shrink-0 text-muted-foreground">{label}</span>
-                <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
-                  {value !== null && (
-                    <div
-                      className={`h-full rounded-full ${value >= 3 ? 'bg-emerald-500' : value >= 1.5 ? 'bg-amber-500' : 'bg-red-500'}`}
-                      style={{ width: `${Math.min((value / 5) * 100, 100)}%` }}
-                    />
-                  )}
-                </div>
-                <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
-                  {value !== null ? `${value.toFixed(2)}x` : '—'}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-
-  if (hasThumb && m.link_anuncio) {
-    return <a href={m.link_anuncio} target="_blank" rel="noopener noreferrer" className="block">{inner}</a>
-  }
-  return inner
 }
