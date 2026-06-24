@@ -51,18 +51,21 @@ export default function Sidebar() {
   const NavItem = ({ href, label, icon: Icon }: { href: string; label: string; icon: any }) => {
     const active = pathname === href || (href === '/overview' && pathname === '/')
     return (
-      <div className="relative group">
+      <div className="relative group/item">
         <Link
           href={href}
           className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
           style={active ? { backgroundColor: '#5dd3ff14' } : {}}
         >
           {active && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-          <Icon className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: active ? '#00aeef' : '#71777a' }} />
+          <Icon
+            className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`}
+            style={{ color: active ? '#00aeef' : '#71777a' }}
+          />
           <span className={labelClass} style={{ color: active ? '#00aeef' : '' }}>{label}</span>
         </Link>
         {collapsed && (
-          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
             {label}
             <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
           </div>
@@ -99,18 +102,18 @@ export default function Sidebar() {
           {navigation.map((item) => <NavItem key={item.href} {...item} />)}
 
           {/* Analisar Criativos */}
-          <div className="relative group">
+          <div className="relative group/item">
             <Link
               href="/ad-analysis"
               className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
               style={adAnalysisActive ? { backgroundColor: '#5dd3ff14' } : {}}
             >
               {adAnalysisActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Film className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: adAnalysisActive ? '#00aeef' : '#71777a' }} />
+              <Film className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!adAnalysisActive ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: adAnalysisActive ? '#00aeef' : '#71777a' }} />
               <span className={labelClass} style={{ color: adAnalysisActive ? '#00aeef' : '' }}>Analisar Criativos</span>
             </Link>
             {collapsed && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
                 Analisar Criativos
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
               </div>
@@ -118,19 +121,19 @@ export default function Sidebar() {
           </div>
 
           {/* Fontes de dados */}
-          <div className="relative group">
+          <div className="relative group/item">
             <button
               onClick={() => !collapsed && setDataSourcesOpen(v => !v)}
               className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
               style={dataSourcesActive || dataSourcesOpen ? { backgroundColor: '#5dd3ff14' } : {}}
             >
               {(dataSourcesActive || dataSourcesOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Database className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
+              <Database className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(dataSourcesActive || dataSourcesOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
               <span className={`${labelClass} flex-1 text-left`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '' }}>Fontes de dados</span>
               <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
             </button>
             {collapsed && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
                 Fontes de dados
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
               </div>
@@ -140,8 +143,8 @@ export default function Sidebar() {
                 {dataSources.map(({ href, label, icon: Icon }) => {
                   const active = pathname === href
                   return (
-                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : '#71777a' }}>
-                      <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? '#00aeef' : '#71777a' }} />
+                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : '#71777a' }}>
+                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-white' : ''}`} style={{ color: active ? '#00aeef' : '#71777a' }} />
                       {label}
                     </Link>
                   )
@@ -151,18 +154,18 @@ export default function Sidebar() {
           </div>
 
           {/* Configurações */}
-          <div className="relative group">
+          <div className="relative group/item">
             <Link
               href="/configuracoes"
               className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
               style={configActive ? { backgroundColor: '#5dd3ff14' } : {}}
             >
               {configActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Settings className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: configActive ? '#00aeef' : '#71777a' }} />
+              <Settings className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!configActive ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: configActive ? '#00aeef' : '#71777a' }} />
               <span className={labelClass} style={{ color: configActive ? '#00aeef' : '' }}>Integrações e Setup</span>
             </Link>
             {collapsed && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
                 Integrações e Setup
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
               </div>
