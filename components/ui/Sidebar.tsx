@@ -54,14 +54,11 @@ export default function Sidebar() {
       <div className="relative group">
         <Link
           href={href}
-          className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative ${
-            active
-              ? 'border-l-2 border-[#00aeef]'
-              : 'border-l-2 border-transparent hover:bg-white/5'
-          }`}
+          className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
           style={active ? { backgroundColor: '#5dd3ff14' } : {}}
         >
-          <Icon className={`w-5 h-5 flex-shrink-0 transition-colors duration-200`} style={{ color: active ? '#00aeef' : '#71777a' }} />
+          {active && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
+          <Icon className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: active ? '#00aeef' : '#71777a' }} />
           <span className={labelClass} style={{ color: active ? '#00aeef' : '' }}>{label}</span>
         </Link>
         {collapsed && (
@@ -105,11 +102,10 @@ export default function Sidebar() {
           <div className="relative group">
             <Link
               href="/ad-analysis"
-              className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative border-l-2 ${
-                adAnalysisActive ? 'border-[#00aeef]' : 'border-transparent hover:bg-white/5'
-              }`}
+              className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
               style={adAnalysisActive ? { backgroundColor: '#5dd3ff14' } : {}}
             >
+              {adAnalysisActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
               <Film className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: adAnalysisActive ? '#00aeef' : '#71777a' }} />
               <span className={labelClass} style={{ color: adAnalysisActive ? '#00aeef' : '' }}>Analisar Criativos</span>
             </Link>
@@ -125,11 +121,10 @@ export default function Sidebar() {
           <div className="relative group">
             <button
               onClick={() => !collapsed && setDataSourcesOpen(v => !v)}
-              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative border-l-2 ${
-                dataSourcesActive || dataSourcesOpen ? 'border-[#00aeef]' : 'border-transparent hover:bg-white/5'
-              }`}
+              className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
               style={dataSourcesActive || dataSourcesOpen ? { backgroundColor: '#5dd3ff14' } : {}}
             >
+              {(dataSourcesActive || dataSourcesOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
               <Database className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
               <span className={`${labelClass} flex-1 text-left`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '' }}>Fontes de dados</span>
               <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
@@ -159,11 +154,10 @@ export default function Sidebar() {
           <div className="relative group">
             <Link
               href="/configuracoes"
-              className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative border-l-2 ${
-                configActive ? 'border-[#00aeef]' : 'border-transparent hover:bg-white/5'
-              }`}
+              className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
               style={configActive ? { backgroundColor: '#5dd3ff14' } : {}}
             >
+              {configActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
               <Settings className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: configActive ? '#00aeef' : '#71777a' }} />
               <span className={labelClass} style={{ color: configActive ? '#00aeef' : '' }}>Integrações e Setup</span>
             </Link>
