@@ -359,24 +359,24 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
           )}
       </div>
 
-      {/* Main stats — Gasto + Impressões */}
-      <div className="px-1 pt-2 pb-2 flex gap-6">
-        <div>
+      {/* Main stats — Gasto + Impressões empilhados */}
+      <div className="px-4 pt-3 pb-1 flex gap-4">
+        <div className="flex-1">
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Gasto</p>
-          <p className="text-xl font-bold text-rose-500 tabular-nums">{fmtBRL2(m.spend)}</p>
+          <p className="text-lg font-bold text-rose-500 tabular-nums leading-tight">{fmtBRL2(m.spend)}</p>
         </div>
-        <div>
+        <div className="flex-1">
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Impressões</p>
-          <p className="text-xl font-semibold text-foreground tabular-nums">{fmtK(m.impressions)}</p>
+          <p className="text-lg font-semibold text-foreground tabular-nums leading-tight">{fmtK(m.impressions)}</p>
         </div>
-        {!hasRoas && <p className="text-xs text-muted-foreground/50 italic self-end pb-0.5">Sem conversões</p>}
+        {!hasRoas && <p className="text-[11px] text-muted-foreground/50 italic self-end pb-0.5">Sem conversões</p>}
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-border/40 my-2" />
+      <div className="h-px bg-border/40 mx-4 my-3" />
 
       {/* Metric bars section */}
-      <div className="px-1 py-2 space-y-2">
+      <div className="px-4 pb-2 space-y-2.5">
         <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} />
         <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
         <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
@@ -385,13 +385,13 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       {/* ROAS section (if available) */}
       {hasRoas && (
         <>
-          <div className="h-px bg-border/40 my-2" />
-          <div className="px-1 py-2">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">ROAS</p>
+          <div className="h-px bg-border/40 mx-4 my-3" />
+          <div className="px-4 pb-2">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">ROAS</p>
             <p className={`text-lg font-bold tabular-nums mb-2 ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
             {m.receita > 0 && (
               <>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Receita</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Receita</p>
                 <p className="text-base font-semibold text-emerald-400 tabular-nums">{fmtBRL(m.receita)}</p>
               </>
             )}
@@ -402,11 +402,9 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       {/* Rolling ROAS section */}
       {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
         <>
-          <div className="px-4">
-            <div className="h-px bg-border/40" />
-          </div>
-          <div className="px-4 py-3 space-y-2">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS Rolling</p>
+          <div className="h-px bg-border/40 mx-4 my-3" />
+          <div className="px-4 pb-3 space-y-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">ROAS Rolling</p>
             {([
               { label: 'Últ. 7d', value: m.roas_7d },
               { label: 'Últ. 3d', value: m.roas_3d },
@@ -432,7 +430,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       )}
 
       {/* Footer — Número de anúncios */}
-      <div className="px-1 py-2 border-t border-border/40 mt-auto">
+      <div className="px-4 py-2.5 border-t border-border/40 mt-auto">
         <span className="text-[11px] text-muted-foreground">1 anúncio</span>
       </div>
     </div>
