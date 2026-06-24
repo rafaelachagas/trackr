@@ -101,11 +101,11 @@ function CalendarRangePicker({
   }
 
   return (
-    <div className="absolute right-0 top-full mt-2 z-50 rounded-2xl shadow-2xl overflow-hidden w-[320px]" style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.07)' }}>
-      <div className="grid grid-cols-3 gap-px p-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#151c1e' }}>
+    <div className="absolute right-0 top-full mt-2 z-50 rounded-2xl shadow-2xl overflow-hidden w-[360px]" style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="grid grid-cols-3 gap-1 p-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#151c1e' }}>
         {presets.map(p => (
           <button key={p.label} onClick={() => { onRangeChange(p.s, p.e); onClose() }}
-            className="px-2 py-1.5 rounded-lg text-xs font-medium transition text-center hover:bg-white/5" style={{ color: '#6b7980' }}>
+            className="px-2 py-2 rounded-lg text-xs font-medium transition text-center hover:bg-white/5 cursor-pointer whitespace-nowrap" style={{ color: '#6b7980' }}>
             {p.label}
           </button>
         ))}
