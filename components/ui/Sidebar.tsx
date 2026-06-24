@@ -51,18 +51,26 @@ export default function Sidebar() {
   const NavItem = ({ href, label, icon: Icon }: { href: string; label: string; icon: any }) => {
     const active = pathname === href || (href === '/overview' && pathname === '/')
     return (
-      <Link
-        href={href}
-        title={collapsed ? label : undefined}
-        className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-          active
-            ? 'bg-primary text-white shadow-lg shadow-primary/20'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-        }`}
-      >
-        <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-white' : 'text-primary'}`} />
-        <span className={labelClass}>{label}</span>
-      </Link>
+      <div className="relative group">
+        <Link
+          href={href}
+          className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative ${
+            active
+              ? 'border-l-2 border-[#00aeef]'
+              : 'border-l-2 border-transparent hover:bg-white/5'
+          }`}
+          style={active ? { backgroundColor: '#5dd3ff14' } : {}}
+        >
+          <Icon className={`w-5 h-5 flex-shrink-0 transition-colors duration-200`} style={{ color: active ? '#00aeef' : '#71777a' }} />
+          <span className={labelClass} style={{ color: active ? '#00aeef' : '' }}>{label}</span>
+        </Link>
+        {collapsed && (
+          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+            {label}
+            <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -94,41 +102,51 @@ export default function Sidebar() {
           {navigation.map((item) => <NavItem key={item.href} {...item} />)}
 
           {/* Analisar Criativos */}
-          <Link
-            href="/ad-analysis"
-            title={collapsed ? 'Analisar Criativos' : undefined}
-            className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-              adAnalysisActive
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
-          >
-            <Film className={`w-5 h-5 flex-shrink-0 ${adAnalysisActive ? 'text-primary' : 'text-primary'}`} />
-            <span className={labelClass}>Analisar Criativos</span>
-          </Link>
+          <div className="relative group">
+            <Link
+              href="/ad-analysis"
+              className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative border-l-2 ${
+                adAnalysisActive ? 'border-[#00aeef]' : 'border-transparent hover:bg-white/5'
+              }`}
+              style={adAnalysisActive ? { backgroundColor: '#5dd3ff14' } : {}}
+            >
+              <Film className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: adAnalysisActive ? '#00aeef' : '#71777a' }} />
+              <span className={labelClass} style={{ color: adAnalysisActive ? '#00aeef' : '' }}>Analisar Criativos</span>
+            </Link>
+            {collapsed && (
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+                Analisar Criativos
+                <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
+              </div>
+            )}
+          </div>
 
           {/* Fontes de dados */}
-          <div>
+          <div className="relative group">
             <button
               onClick={() => !collapsed && setDataSourcesOpen(v => !v)}
-              title={collapsed ? 'Fontes de dados' : undefined}
-              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                dataSourcesActive || dataSourcesOpen
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              className={`w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative border-l-2 ${
+                dataSourcesActive || dataSourcesOpen ? 'border-[#00aeef]' : 'border-transparent hover:bg-white/5'
               }`}
+              style={dataSourcesActive || dataSourcesOpen ? { backgroundColor: '#5dd3ff14' } : {}}
             >
-              <Database className={`w-5 h-5 flex-shrink-0 ${dataSourcesActive || dataSourcesOpen ? 'text-primary' : 'text-primary'}`} />
-              <span className={`${labelClass} flex-1 text-left`}>Fontes de dados</span>
-              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} />
+              <Database className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
+              <span className={`${labelClass} flex-1 text-left`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '' }}>Fontes de dados</span>
+              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
             </button>
+            {collapsed && (
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+                Fontes de dados
+                <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
+              </div>
+            )}
             <div className={`overflow-hidden transition-all duration-300 ${dataSourcesOpen && !collapsed ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'}`}>
               <div className="ml-3 border-l border-white/5 pl-3 py-1 space-y-1">
                 {dataSources.map(({ href, label, icon: Icon }) => {
                   const active = pathname === href
                   return (
-                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 ${active ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-white/5'}`}>
-                      <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-primary' : 'text-zinc-500'}`} />
+                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : '#71777a' }}>
+                      <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? '#00aeef' : '#71777a' }} />
                       {label}
                     </Link>
                   )
@@ -138,18 +156,24 @@ export default function Sidebar() {
           </div>
 
           {/* Configurações */}
-          <Link
-            href="/configuracoes"
-            title={collapsed ? 'Integrações e Setup' : undefined}
-            className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-              configActive
-                ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
-          >
-            <Settings className={`w-5 h-5 flex-shrink-0 ${configActive ? 'text-white' : 'text-primary'}`} />
-            <span className={labelClass}>Integrações e Setup</span>
-          </Link>
+          <div className="relative group">
+            <Link
+              href="/configuracoes"
+              className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative border-l-2 ${
+                configActive ? 'border-[#00aeef]' : 'border-transparent hover:bg-white/5'
+              }`}
+              style={configActive ? { backgroundColor: '#5dd3ff14' } : {}}
+            >
+              <Settings className="w-5 h-5 flex-shrink-0 transition-colors duration-200" style={{ color: configActive ? '#00aeef' : '#71777a' }} />
+              <span className={labelClass} style={{ color: configActive ? '#00aeef' : '' }}>Integrações e Setup</span>
+            </Link>
+            {collapsed && (
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+                Integrações e Setup
+                <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
+              </div>
+            )}
+          </div>
 
         </nav>
 
