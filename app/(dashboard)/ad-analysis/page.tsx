@@ -303,8 +303,8 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/30 transition-colors group flex flex-col">
 
-      {/* Thumbnail — 4:3 aspect */}
-      <div className="relative bg-[#0d1117] overflow-hidden" style={{ aspectRatio: '4/3' }}>
+      {/* Thumbnail */}
+      <div className="relative bg-[#0d1117] overflow-hidden" style={{ height: '180px' }}>
         {hasThumb ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -363,15 +363,16 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       </div>
 
       {/* Main stats — Gasto + Impressões */}
-      <div className="px-4 py-4 space-y-3">
+      <div className="px-4 pt-3 pb-2 flex gap-6">
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Gasto</p>
-          <p className="text-2xl font-bold text-rose-500 tabular-nums">{fmtBRL2(m.spend)}</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Gasto</p>
+          <p className="text-xl font-bold text-rose-500 tabular-nums">{fmtBRL2(m.spend)}</p>
         </div>
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Impressões</p>
-          <p className="text-base font-semibold text-foreground tabular-nums">{fmtK(m.impressions)}</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Impressões</p>
+          <p className="text-xl font-semibold text-foreground tabular-nums">{fmtK(m.impressions)}</p>
         </div>
+        {!hasRoas && <p className="text-xs text-muted-foreground/50 italic self-end pb-0.5">Sem conversões</p>}
       </div>
 
       {/* Divider */}
