@@ -567,9 +567,9 @@ export default function AdAnalysisPage() {
         </div>
       )}
 
-      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#0d1117', border: '1px solid rgba(85,182,247,0.08)' }}>
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-wrap gap-2">
+        <div className="flex items-center justify-between px-5 py-3 flex-wrap gap-2" style={{ borderBottom: '1px solid rgba(85,182,247,0.08)' }}>
           <div className="flex items-center gap-1 flex-wrap">
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mr-3">Análise de Criativos</p>
             {([
