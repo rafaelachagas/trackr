@@ -520,7 +520,7 @@ export default function AdAnalysisPage() {
   const fmtDate = (d: string) => format(parseISO(d), 'dd/MM/yy')
 
   return (
-    <div className="pb-12 space-y-6">
+    <div className="pb-12 space-y-6 max-w-[1200px] mx-auto w-full">
       {expanded && <DetailModal metric={expanded} onClose={() => setExpanded(null)} />}
 
       <div className="flex items-center justify-between">
