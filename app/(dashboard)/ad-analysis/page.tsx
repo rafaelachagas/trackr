@@ -305,7 +305,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
 
       {/* Thumbnail */}
       <div className="px-3 pt-3">
-        <div className="relative rounded-xl overflow-hidden" style={{ height: '180px', backgroundColor: '#0d1117' }}>
+        <div className="relative rounded-xl overflow-hidden" style={{ height: '192px', backgroundColor: '#0d1117' }}>
           {hasThumb ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
