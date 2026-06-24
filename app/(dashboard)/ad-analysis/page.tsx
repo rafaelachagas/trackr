@@ -301,7 +301,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
   const hasRoas = m.roas !== null && m.roas > 0
 
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/30 transition-colors group flex flex-col">
+    <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-[rgb(28,104,135,0.2)] border border-[rgb(85,182,247,0.1)] rounded-xl shadow-lg overflow-hidden hover:border-[rgb(85,182,247,0.25)] transition-colors group flex flex-col">
 
       {/* Thumbnail */}
       <div className="relative bg-[#0d1117] overflow-hidden" style={{ height: '180px' }}>
