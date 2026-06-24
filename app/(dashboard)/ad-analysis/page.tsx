@@ -301,11 +301,10 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
   const hasRoas = m.roas !== null && m.roas > 0
 
   return (
-    <div className="rounded-xl overflow-hidden transition-colors group flex flex-col" style={{ backgroundColor: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
+    <div className="rounded-xl transition-colors group flex flex-col p-3" style={{ backgroundColor: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
 
       {/* Thumbnail */}
-      <div className="flex justify-center pt-3 px-3">
-        <div className="relative rounded-xl overflow-hidden w-full" style={{ height: '192px', maxWidth: '340px', backgroundColor: '#0d1117' }}>
+      <div className="relative rounded-xl overflow-hidden mb-3" style={{ height: '192px' }}>
           {hasThumb ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -358,11 +357,10 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
               {m.fase}
             </span>
           )}
-        </div>
       </div>
 
       {/* Main stats — Gasto + Impressões */}
-      <div className="px-4 pt-3 pb-2 flex gap-6">
+      <div className="px-1 pt-2 pb-2 flex gap-6">
         <div>
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Gasto</p>
           <p className="text-xl font-bold text-rose-500 tabular-nums">{fmtBRL2(m.spend)}</p>
@@ -375,12 +373,10 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       </div>
 
       {/* Divider */}
-      <div className="px-4">
-        <div className="h-px bg-border/40" />
-      </div>
+      <div className="h-px bg-border/40 my-2" />
 
       {/* Metric bars section */}
-      <div className="px-4 py-3 space-y-2">
+      <div className="px-1 py-2 space-y-2">
         <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} />
         <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
         <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
@@ -389,10 +385,8 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       {/* ROAS section (if available) */}
       {hasRoas && (
         <>
-          <div className="px-4">
-            <div className="h-px bg-border/40" />
-          </div>
-          <div className="px-4 py-3">
+          <div className="h-px bg-border/40 my-2" />
+          <div className="px-1 py-2">
             <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">ROAS</p>
             <p className={`text-lg font-bold tabular-nums mb-2 ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
             {m.receita > 0 && (
@@ -438,7 +432,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       )}
 
       {/* Footer — Número de anúncios */}
-      <div className="px-4 py-3 border-t border-border/40 mt-auto">
+      <div className="px-1 py-2 border-t border-border/40 mt-auto">
         <span className="text-[11px] text-muted-foreground">1 anúncio</span>
       </div>
     </div>
