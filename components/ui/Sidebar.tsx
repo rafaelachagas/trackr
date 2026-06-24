@@ -219,7 +219,10 @@ export default function Sidebar() {
       {/* Toggle button — centralizado na borda direita da sidebar */}
       <button
         onClick={() => setCollapsed(v => !v)}
-        className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full bg-card border border-white/5 flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/40 transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
+        className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
+        style={{ backgroundColor: '#181e21', border: '1px solid hsla(0,0%,100%,.08)', color: '#71777a' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#00aeef'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,174,239,0.4)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#71777a'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'hsla(0,0%,100%,.08)' }}
       >
         {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
       </button>
