@@ -301,7 +301,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
   const hasRoas = m.roas !== null && m.roas > 0
 
   return (
-    <div className="rounded-2xl transition-colors group flex flex-col p-3" style={{ backgroundColor: '#1a2035', border: '1px solid rgba(255,255,255,0.07)' }}>
+    <div className="rounded-2xl transition-colors group flex flex-col p-3" style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.07)' }}>
 
       {/* Thumbnail */}
       <div className="relative rounded-xl overflow-hidden mb-3" style={{ height: '192px' }}>
@@ -316,7 +316,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
               />
             </>
           ) : (
-            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: '#0f1623' }}>
+            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: '#262d2f' }}>
               <ImageOff className="w-8 h-8 text-muted-foreground/20" />
             </div>
           )}
@@ -362,7 +362,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       {/* Main stats — mini-cards lado a lado */}
       <div className="flex gap-2 mb-3">
         {/* Mini-card: Gasto + Impressões empilhados */}
-        <div className="flex-1 rounded-xl p-3" style={{ backgroundColor: '#0f1623' }}>
+        <div className="flex-1 rounded-xl p-3" style={{ backgroundColor: '#262d2f' }}>
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Gasto</p>
           <p className="text-base font-bold text-rose-500 tabular-nums leading-tight">{fmtBRL2(m.spend)}</p>
           <div className="h-px my-2" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
@@ -370,7 +370,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
           <p className="text-base font-semibold text-foreground tabular-nums leading-tight">{fmtK(m.impressions)}</p>
         </div>
         {/* Mini-card direito: Sem conversões ou ROAS */}
-        <div className="flex-1 rounded-xl p-3 flex items-center justify-center" style={{ backgroundColor: '#0f1623' }}>
+        <div className="flex-1 rounded-xl p-3 flex items-center justify-center" style={{ backgroundColor: '#262d2f' }}>
           {hasRoas ? (
             <div className="w-full">
               <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">ROAS</p>
