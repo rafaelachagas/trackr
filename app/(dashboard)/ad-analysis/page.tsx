@@ -322,8 +322,12 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
             </div>
           )}
 
-          {/* Gradient overlay for text legibility */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+          {/* Gradient overlay + name at bottom */}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-3 pt-10">
+            <p className="text-[11px] font-semibold text-white leading-snug line-clamp-2" title={m.criativo}>
+              {m.criativo}
+            </p>
+          </div>
 
           {/* Action buttons — top right */}
           <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -354,13 +358,6 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
               {m.fase}
             </span>
           )}
-
-          {/* Name overlaid at bottom */}
-          <div className="absolute bottom-0 left-0 right-0 px-3 pb-2.5 pt-8">
-            <p className="text-[11px] font-semibold text-white leading-snug line-clamp-2" title={m.criativo}>
-              {m.criativo}
-            </p>
-          </div>
         </div>
       </div>
 
