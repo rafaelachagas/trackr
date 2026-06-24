@@ -74,15 +74,13 @@ export default function Topbar() {
           {activeOrg && (
             <div className="relative" ref={orgRef}>
               <button
-                onClick={() => orgs.length > 1 && setOrgMenuOpen(v => !v)}
+                onClick={() => setOrgMenuOpen(v => !v)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-white/5"
                 style={{ border: '1px solid rgba(255,255,255,0.07)', color: '#e2e8f0' }}
               >
                 <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="max-w-[140px] truncate">{activeOrg.org_name}</span>
-                {orgs.length > 1 && (
-                  <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${orgMenuOpen ? 'rotate-180' : ''}`} />
-                )}
+                <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${orgMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {orgMenuOpen && (
