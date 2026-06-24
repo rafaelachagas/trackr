@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
       const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`
 
       const [thumbResult, primeiroLote] = await Promise.all([
-        fetchAdThumbnails(accountId, accessToken).catch(() => ({ map: new Map<string, string>(), debug: [] })),
+        fetchAdThumbnails(accountId, accessToken).catch((err) => { console.error('[thumb] error:', err); return { map: new Map<string, string>(), debug: [{ error: String(err) }] } }),
         fetchInsights({ accessToken, accountId, dataInicio, dataFim, cursor: null }),
       ])
 
@@ -277,9 +277,9 @@ async function fetchAdThumbnails(accountId: string, accessToken: string): Promis
   const map = new Map<string, string>()
   const debug: any[] = []
 
-  // Step 1: fetch all ads with creative IDs + inline fields (works for image ads)
-  let url = `${META_API_BASE}/${accountId}/ads?${new URLSearchParams({
-    fields: 'name,creative{id,thumbnail_url,image_url,object_story_spec{link_data{picture},photo_data{url},video_data{image_url,thumbnail_url}}}',
+  // Step 1: fetch ads with minimal fields — just name + creative id
+  let url: string | null = `${META_API_BASE}/${accountId}/ads?${new URLSearchParams({
+    fields: 'name,creative{id}',
     limit: '500',
     access_token: accessToken,
   })}`
@@ -289,26 +289,17 @@ async function fetchAdThumbnails(accountId: string, accessToken: string): Promis
   while (url) {
     const res = await fetch(url)
     const json = await res.json()
+    if (json.error) {
+      debug.push({ step: 'fetch_ads', error: json.error })
+      break
+    }
     for (const ad of json.data ?? []) {
-      const c = ad.creative
-      const inlineUrl =
-        c?.thumbnail_url ||
-        c?.image_url ||
-        c?.object_story_spec?.link_data?.picture ||
-        c?.object_story_spec?.photo_data?.url ||
-        c?.object_story_spec?.video_data?.image_url ||
-        c?.object_story_spec?.video_data?.thumbnail_url ||
-        null
-      if (inlineUrl) {
-        map.set(ad.name, inlineUrl)
-      } else if (c?.id) {
-        adCreativeIds.push({ adName: ad.name, creativeId: c.id })
-      }
+      if (ad.creative?.id) adCreativeIds.push({ adName: ad.name, creativeId: ad.creative.id })
     }
     url = json.paging?.next ?? null
   }
 
-  // Step 2: batch-fetch thumbnails for video creatives (thumbnail_url requires explicit dimensions)
+  // Step 2: batch-fetch thumbnail_url per creative (required for video ads)
   const BATCH_SIZE = 50
   for (let i = 0; i < adCreativeIds.length; i += BATCH_SIZE) {
     const batch = adCreativeIds.slice(i, i + BATCH_SIZE)
@@ -317,7 +308,7 @@ async function fetchAdThumbnails(accountId: string, accessToken: string): Promis
       batch: JSON.stringify(
         batch.map(({ creativeId }) => ({
           method: 'GET',
-          relative_url: `${creativeId}?fields=thumbnail_url,image_url&thumbnail_width=500&thumbnail_height=500`,
+          relative_url: `v25.0/${creativeId}?fields=thumbnail_url,image_url&thumbnail_width=500&thumbnail_height=500`,
         }))
       ),
     })
@@ -330,8 +321,10 @@ async function fetchAdThumbnails(accountId: string, accessToken: string): Promis
           const body = JSON.parse(item.body)
           const thumbUrl = body.thumbnail_url || body.image_url || null
           if (thumbUrl) map.set(batch[j].adName, thumbUrl)
-          debug.push({ adName: batch[j].adName, creative_id: batch[j].creativeId, url_found: !!thumbUrl })
+          if (i === 0) debug.push({ adName: batch[j].adName, creative_id: batch[j].creativeId, url_found: !!thumbUrl, url: thumbUrl })
         } catch {}
+      } else if (i === 0) {
+        debug.push({ adName: batch[j]?.adName, batch_error: item })
       }
     }
   }
