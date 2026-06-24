@@ -123,7 +123,7 @@ export default function Sidebar() {
           {/* Fontes de dados */}
           <div className="relative group/item">
             <button
-              onClick={() => !collapsed && setDataSourcesOpen(v => !v)}
+              onClick={() => { if (collapsed) { setCollapsed(false); setDataSourcesOpen(true) } else { setDataSourcesOpen(v => !v) } }}
               className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
               style={dataSourcesActive || dataSourcesOpen ? { backgroundColor: '#5dd3ff14' } : {}}
             >
