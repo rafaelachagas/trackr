@@ -65,7 +65,7 @@ export default function Sidebar() {
           <span className={labelClass} style={{ color: active ? '#00aeef' : '' }}>{label}</span>
         </Link>
         {collapsed && (
-          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
             {label}
             <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
           </div>
@@ -84,8 +84,8 @@ export default function Sidebar() {
         style={{ backgroundColor: '#13181a', borderRight: '1px solid hsla(0,0%,100%,.05)', boxShadow: '4px 0 24px rgba(0,0,0,.4)' }}
       >
         {/* Logo */}
-        <div className="pt-6 pb-6 flex flex-col items-center border-b border-border px-3">
-          <div className="w-10 h-10 rounded-2xl bg-card border border-border flex items-center justify-center shadow-lg shadow-black/5 flex-shrink-0 relative overflow-hidden">
+        <div className="pt-6 pb-6 flex flex-col items-center border-b border-white/5 px-3">
+          <div className="w-10 h-10 rounded-2xl bg-card border border-white/5 flex items-center justify-center shadow-lg shadow-black/5 flex-shrink-0 relative overflow-hidden">
             <div className="absolute inset-0 bg-primary/10" />
             <Zap className="w-5 h-5 text-primary relative z-10" strokeWidth={2.5} />
           </div>
@@ -114,7 +114,7 @@ export default function Sidebar() {
               <span className={labelClass} style={{ color: adAnalysisActive ? '#00aeef' : '' }}>Analisar Criativos</span>
             </Link>
             {collapsed && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
                 Analisar Criativos
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
               </div>
@@ -134,7 +134,7 @@ export default function Sidebar() {
               <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
             </button>
             {collapsed && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
                 Fontes de dados
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
               </div>
@@ -166,7 +166,7 @@ export default function Sidebar() {
               <span className={labelClass} style={{ color: configActive ? '#00aeef' : '' }}>Integrações e Setup</span>
             </Link>
             {collapsed && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
                 Integrações e Setup
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
               </div>
@@ -176,7 +176,7 @@ export default function Sidebar() {
         </nav>
 
         {/* Bottom */}
-        <div className="p-2 mb-3 mx-2 bg-background border border-border rounded-xl space-y-3">
+        <div className="p-2 mb-3 mx-2 bg-background border border-white/5 rounded-xl space-y-3">
           <button
             onClick={sincronizarTudo}
             disabled={sincronizando}
@@ -189,7 +189,7 @@ export default function Sidebar() {
             </span>
           </button>
 
-          <div className="pt-2 border-t border-border flex items-center gap-3 px-1">
+          <div className="pt-2 border-t border-white/5 flex items-center gap-3 px-1">
             <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-muted-foreground shadow-md flex-shrink-0">
               RC
             </div>
@@ -207,7 +207,7 @@ export default function Sidebar() {
       {/* Toggle button — centralizado na borda direita da sidebar */}
       <button
         onClick={() => setCollapsed(v => !v)}
-        className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/40 transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
+        className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full bg-card border border-white/5 flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/40 transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
       >
         {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
       </button>
