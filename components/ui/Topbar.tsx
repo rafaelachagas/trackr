@@ -1,11 +1,15 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { Eye, Sun, Edit2, LayoutDashboard, Moon, EyeOff, LogOut, ChevronDown, Building2, Check } from 'lucide-react'
+import { Eye, Sun, Edit2, LayoutDashboard, Moon, EyeOff, LogOut, ChevronDown, Building2, Check, Users, CreditCard } from 'lucide-react'
 import FiltrosDashboard from '@/components/dashboard/FiltrosDashboard'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useState, useRef, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+
+const ModalUsuarios = dynamic(() => import('@/components/org/ModalUsuarios'), { ssr: false })
+const ModalAssinatura = dynamic(() => import('@/components/org/ModalAssinatura'), { ssr: false })
 
 export default function Topbar() {
   const pathname = usePathname()
@@ -15,6 +19,8 @@ export default function Topbar() {
 
   const [orgMenuOpen, setOrgMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [modalUsuarios, setModalUsuarios] = useState(false)
+  const [modalAssinatura, setModalAssinatura] = useState(false)
   const orgRef = useRef<HTMLDivElement>(null)
   const userRef = useRef<HTMLDivElement>(null)
 
@@ -99,6 +105,26 @@ export default function Topbar() {
                       {activeOrg.org_id === org.org_id && <Check className="w-3 h-3" />}
                     </button>
                   ))}
+
+                  {activeOrg.role === 'admin' && (
+                    <>
+                      <div className="my-1 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+                      <button
+                        onClick={() => { setOrgMenuOpen(false); setModalUsuarios(true) }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left text-muted-foreground hover:text-foreground"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        Gerenciar usuários
+                      </button>
+                      <button
+                        onClick={() => { setOrgMenuOpen(false); setModalAssinatura(true) }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left text-muted-foreground hover:text-foreground"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        Gerenciar assinatura
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -145,6 +171,20 @@ export default function Topbar() {
 
         </div>
       </div>
+
+      {modalUsuarios && activeOrg && user && (
+        <ModalUsuarios
+          activeOrg={activeOrg}
+          currentUserId={user.id}
+          onClose={() => setModalUsuarios(false)}
+        />
+      )}
+      {modalAssinatura && activeOrg && (
+        <ModalAssinatura
+          activeOrg={activeOrg}
+          onClose={() => setModalAssinatura(false)}
+        />
+      )}
 
       {isOverview && (
         <div className="px-10 py-8 bg-background flex items-end justify-between gap-8 animate-in slide-in-from-top duration-500">
