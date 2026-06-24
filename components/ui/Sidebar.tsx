@@ -182,11 +182,10 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Toggle button */}
+      {/* Toggle button — centralizado na borda direita da sidebar */}
       <button
         onClick={() => setCollapsed(v => !v)}
-        style={{ left: collapsed ? '44px' : '248px' }}
-        className="fixed top-1/2 -translate-y-1/2 z-50 w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/40 transition-all duration-300 shadow-md"
+        className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/40 transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
       >
         {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
       </button>
