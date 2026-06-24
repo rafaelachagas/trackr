@@ -275,40 +275,67 @@ function extrairFaseDoCampaign(campaignName: string): string | null {
 
 async function fetchAdThumbnails(accountId: string, accessToken: string): Promise<{ map: Map<string, string>; debug: any[] }> {
   const map = new Map<string, string>()
-  const params = new URLSearchParams({
+  const debug: any[] = []
+
+  // Step 1: fetch all ads with creative IDs + inline fields (works for image ads)
+  let url = `${META_API_BASE}/${accountId}/ads?${new URLSearchParams({
     fields: 'name,creative{id,thumbnail_url,image_url,object_story_spec{link_data{picture},photo_data{url},video_data{image_url,thumbnail_url}}}',
     limit: '500',
     access_token: accessToken,
-  })
-  const res = await fetch(`${META_API_BASE}/${accountId}/ads?${params}`)
-  const json = await res.json()
-  const debug: any[] = []
-  for (const ad of (json.data ?? []).slice(0, 5)) {
-    const c = ad.creative
-    const url =
-      c?.thumbnail_url ??
-      c?.image_url ??
-      c?.object_story_spec?.link_data?.picture ??
-      c?.object_story_spec?.photo_data?.url ??
-      c?.object_story_spec?.video_data?.image_url ??
-      c?.object_story_spec?.video_data?.thumbnail_url ??
-      null
-    debug.push({ name: ad.name, creative_id: c?.id, fields_returned: c ? Object.keys(c) : [], url_found: !!url })
-    if (url) map.set(ad.name, url)
+  })}`
+
+  const adCreativeIds: { adName: string; creativeId: string }[] = []
+
+  while (url) {
+    const res = await fetch(url)
+    const json = await res.json()
+    for (const ad of json.data ?? []) {
+      const c = ad.creative
+      const inlineUrl =
+        c?.thumbnail_url ||
+        c?.image_url ||
+        c?.object_story_spec?.link_data?.picture ||
+        c?.object_story_spec?.photo_data?.url ||
+        c?.object_story_spec?.video_data?.image_url ||
+        c?.object_story_spec?.video_data?.thumbnail_url ||
+        null
+      if (inlineUrl) {
+        map.set(ad.name, inlineUrl)
+      } else if (c?.id) {
+        adCreativeIds.push({ adName: ad.name, creativeId: c.id })
+      }
+    }
+    url = json.paging?.next ?? null
   }
-  // process remaining without debug
-  for (const ad of (json.data ?? []).slice(5)) {
-    const c = ad.creative
-    const url =
-      c?.thumbnail_url ??
-      c?.image_url ??
-      c?.object_story_spec?.link_data?.picture ??
-      c?.object_story_spec?.photo_data?.url ??
-      c?.object_story_spec?.video_data?.image_url ??
-      c?.object_story_spec?.video_data?.thumbnail_url ??
-      null
-    if (url) map.set(ad.name, url)
+
+  // Step 2: batch-fetch thumbnails for video creatives (thumbnail_url requires explicit dimensions)
+  const BATCH_SIZE = 50
+  for (let i = 0; i < adCreativeIds.length; i += BATCH_SIZE) {
+    const batch = adCreativeIds.slice(i, i + BATCH_SIZE)
+    const batchBody = new URLSearchParams({
+      access_token: accessToken,
+      batch: JSON.stringify(
+        batch.map(({ creativeId }) => ({
+          method: 'GET',
+          relative_url: `${creativeId}?fields=thumbnail_url,image_url&thumbnail_width=500&thumbnail_height=500`,
+        }))
+      ),
+    })
+    const batchRes = await fetch(`https://graph.facebook.com/`, { method: 'POST', body: batchBody })
+    const batchJson: any[] = await batchRes.json()
+    for (let j = 0; j < batchJson.length; j++) {
+      const item = batchJson[j]
+      if (item?.code === 200) {
+        try {
+          const body = JSON.parse(item.body)
+          const thumbUrl = body.thumbnail_url || body.image_url || null
+          if (thumbUrl) map.set(batch[j].adName, thumbUrl)
+          debug.push({ adName: batch[j].adName, creative_id: batch[j].creativeId, url_found: !!thumbUrl })
+        } catch {}
+      }
+    }
   }
+
   return { map, debug }
 }
 
