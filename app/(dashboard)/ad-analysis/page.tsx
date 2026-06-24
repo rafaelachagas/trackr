@@ -304,8 +304,8 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
     <div className="rounded-xl overflow-hidden transition-colors group flex flex-col" style={{ backgroundColor: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
 
       {/* Thumbnail */}
-      <div className="px-3 pt-3">
-        <div className="relative rounded-xl overflow-hidden" style={{ height: '192px', backgroundColor: '#0d1117' }}>
+      <div className="flex justify-center pt-3 px-3">
+        <div className="relative rounded-xl overflow-hidden w-full" style={{ height: '192px', maxWidth: '340px', backgroundColor: '#0d1117' }}>
           {hasThumb ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
