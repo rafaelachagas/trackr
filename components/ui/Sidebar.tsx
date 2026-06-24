@@ -176,7 +176,7 @@ export default function Sidebar() {
         </nav>
 
         {/* Bottom */}
-        <div className="p-2 mb-3 mx-2 bg-background border border-white/5 rounded-xl space-y-3">
+        <div className="p-2 mb-3 mx-2 border border-white/5 rounded-xl space-y-3" style={{ backgroundColor: '#181e21' }}>
           <button
             onClick={sincronizarTudo}
             disabled={sincronizando}

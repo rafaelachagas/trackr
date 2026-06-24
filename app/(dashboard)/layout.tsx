@@ -9,7 +9,7 @@ export default function DashboardLayout({
 }) {
   return (
     <DashboardProvider>
-      <div className="flex min-h-screen bg-background text-foreground transition-colors duration-400">
+      <div className="flex min-h-screen text-foreground transition-colors duration-400" style={{ backgroundColor: '#121212' }}>
         <Sidebar />
         <main className="flex-1 min-h-screen flex flex-col transition-colors duration-300 overflow-hidden">
           <Topbar />
