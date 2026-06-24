@@ -101,11 +101,11 @@ function CalendarRangePicker({
   }
 
   return (
-    <div className="absolute right-0 top-full mt-2 z-50 bg-card border border-border rounded-2xl shadow-xl overflow-hidden w-[320px]">
-      <div className="grid grid-cols-3 gap-px p-3 border-b border-border bg-background/50">
+    <div className="absolute right-0 top-full mt-2 z-50 rounded-2xl shadow-2xl overflow-hidden w-[320px]" style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="grid grid-cols-3 gap-px p-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#151c1e' }}>
         {presets.map(p => (
           <button key={p.label} onClick={() => { onRangeChange(p.s, p.e); onClose() }}
-            className="px-2 py-1.5 rounded-lg text-xs text-foreground hover:bg-muted/60 transition text-center">
+            className="px-2 py-1.5 rounded-lg text-xs font-medium transition text-center hover:bg-white/5" style={{ color: '#6b7980' }}>
             {p.label}
           </button>
         ))}
@@ -583,16 +583,18 @@ export default function AdAnalysisPage() {
 
             <div ref={sortRef} className="relative">
               <button onClick={() => setShowSort(v => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted/50 transition">
-                <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-white/5"
+                style={{ border: '1px solid rgba(255,255,255,0.07)', backgroundColor: '#1a2022', color: '#e2e8f0' }}>
+                <ArrowUpDown className="w-3.5 h-3.5" style={{ color: '#6b7980' }} />
                 {SORT_OPTIONS.find(s => s.key === sortKey)?.label}
-                <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${showSort ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-3 h-3 transition-transform ${showSort ? 'rotate-180' : ''}`} style={{ color: '#6b7980' }} />
               </button>
               {showSort && (
-                <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-xl shadow-xl p-1 w-40">
+                <div className="absolute right-0 top-full mt-1 z-50 rounded-xl shadow-2xl p-1 w-40" style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.07)' }}>
                   {SORT_OPTIONS.map(s => (
                     <button key={s.key} onClick={() => toggleSort(s.key)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs transition ${sortKey === s.key ? 'text-primary font-semibold' : 'text-foreground hover:bg-muted/40'}`}>
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs transition hover:bg-white/5 ${sortKey === s.key ? 'font-semibold' : ''}`}
+                      style={{ color: sortKey === s.key ? '#00aeef' : '#e2e8f0' }}>
                       {s.label}
                     </button>
                   ))}
