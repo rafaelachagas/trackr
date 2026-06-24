@@ -382,29 +382,15 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
         <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
       </div>
 
-      {/* ROAS section (if available) */}
-      {hasRoas && (
-        <>
-          <div className="h-px bg-border/40 mx-4 my-3" />
-          <div className="px-4 pb-2">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">ROAS</p>
-            <p className={`text-lg font-bold tabular-nums mb-2 ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
-            {m.receita > 0 && (
-              <>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Receita</p>
-                <p className="text-base font-semibold text-emerald-400 tabular-nums">{fmtBRL(m.receita)}</p>
-              </>
-            )}
-          </div>
-        </>
-      )}
-
       {/* Rolling ROAS section */}
       {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
         <>
           <div className="h-px bg-border/40 mx-4 my-3" />
           <div className="px-4 pb-3 space-y-2.5">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">ROAS Rolling</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS Rolling</p>
+              {hasRoas && <span className={`text-[11px] font-bold tabular-nums ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x período</span>}
+            </div>
             {([
               { label: 'Últ. 7d', value: m.roas_7d },
               { label: 'Últ. 3d', value: m.roas_3d },
