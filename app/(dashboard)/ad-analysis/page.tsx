@@ -517,7 +517,8 @@ export default function AdAnalysisPage() {
           <div ref={dateRef} className="relative">
             <button
               onClick={() => setShowDatePicker(v => !v)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card text-sm text-foreground hover:bg-muted/50 transition"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition hover:bg-white/5"
+              style={{ border: '1px solid rgba(255,255,255,0.07)', backgroundColor: '#1a2022', color: '#e2e8f0' }}
             >
               <Calendar className="w-4 h-4 text-muted-foreground" />
               <span className="font-medium">{fmtDate(dataInicio)}</span>
