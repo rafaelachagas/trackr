@@ -303,7 +303,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/30 transition-colors group flex flex-col">
 
-      {/* Thumbnail */}
+      {/* Thumbnail — 4:3 aspect */}
       <div className="relative bg-[#0d1117] overflow-hidden" style={{ aspectRatio: '4/3' }}>
         {hasThumb ? (
           <>
@@ -362,71 +362,83 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
         </div>
       </div>
 
-      {/* Stats section — flat, like Odin */}
-      <div className="px-4 py-3 flex gap-0">
-        {/* Left: Gasto + Impressões */}
-        <div className="flex-1 pr-4">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Gasto</p>
-          <p className="text-sm font-bold text-foreground tabular-nums mt-0.5">{fmtBRL2(m.spend)}</p>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-2">Impressões</p>
-          <p className="text-sm font-semibold text-foreground tabular-nums mt-0.5">{fmtK(m.impressions)}</p>
+      {/* Main stats — Gasto + Impressões */}
+      <div className="px-4 py-4 space-y-3">
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Gasto</p>
+          <p className="text-2xl font-bold text-rose-500 tabular-nums">{fmtBRL2(m.spend)}</p>
         </div>
-        {/* Vertical divider */}
-        <div className="w-px bg-border/60 self-stretch" />
-        {/* Right: Conversões / ROAS */}
-        <div className="flex-1 pl-4 flex flex-col justify-center">
-          {hasRoas ? (
-            <>
-              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS</p>
-              <p className={`text-sm font-bold tabular-nums mt-0.5 ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
-              {m.receita > 0 && (
-                <>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-2">Receita</p>
-                  <p className="text-sm font-semibold text-emerald-400 tabular-nums mt-0.5">{fmtBRL(m.receita)}</p>
-                </>
-              )}
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground/50 italic">Sem conversões</p>
-          )}
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Impressões</p>
+          <p className="text-base font-semibold text-foreground tabular-nums">{fmtK(m.impressions)}</p>
         </div>
       </div>
 
-      {/* Metric bars */}
-      <div className="px-4 pb-3 space-y-2 border-t border-border/40 pt-3">
+      {/* Divider */}
+      <div className="px-4">
+        <div className="h-px bg-border/40" />
+      </div>
+
+      {/* Metric bars section */}
+      <div className="px-4 py-3 space-y-2">
         <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} />
         <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
         <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
       </div>
 
-      {/* Rolling ROAS */}
-      {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
-        <div className="px-4 pb-3 space-y-2 border-t border-border/40 pt-3">
-          {([
-            { label: 'Últ. 7d', value: m.roas_7d },
-            { label: 'Últ. 3d', value: m.roas_3d },
-            { label: 'Últ. 1d', value: m.roas_1d },
-          ] as const).map(({ label, value }) => (
-            <div key={label} className="flex items-center gap-2 text-[11px]">
-              <span className="w-[60px] shrink-0 text-muted-foreground">{label}</span>
-              <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
-                {value !== null && (
-                  <div
-                    className={`h-full rounded-full ${roasBg(value)}`}
-                    style={{ width: `${Math.min((value / 5) * 100, 100)}%` }}
-                  />
-                )}
-              </div>
-              <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
-                {value !== null ? `${value.toFixed(2)}x` : '—'}
-              </span>
-            </div>
-          ))}
-        </div>
+      {/* ROAS section (if available) */}
+      {hasRoas && (
+        <>
+          <div className="px-4">
+            <div className="h-px bg-border/40" />
+          </div>
+          <div className="px-4 py-3">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">ROAS</p>
+            <p className={`text-lg font-bold tabular-nums mb-2 ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
+            {m.receita > 0 && (
+              <>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Receita</p>
+                <p className="text-base font-semibold text-emerald-400 tabular-nums">{fmtBRL(m.receita)}</p>
+              </>
+            )}
+          </div>
+        </>
       )}
 
-      {/* Footer */}
-      <div className="px-4 pb-3 border-t border-border/40 pt-2.5">
+      {/* Rolling ROAS section */}
+      {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
+        <>
+          <div className="px-4">
+            <div className="h-px bg-border/40" />
+          </div>
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS Rolling</p>
+            {([
+              { label: 'Últ. 7d', value: m.roas_7d },
+              { label: 'Últ. 3d', value: m.roas_3d },
+              { label: 'Últ. 1d', value: m.roas_1d },
+            ] as const).map(({ label, value }) => (
+              <div key={label} className="flex items-center gap-2 text-[11px]">
+                <span className="w-[60px] shrink-0 text-muted-foreground">{label}</span>
+                <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
+                  {value !== null && (
+                    <div
+                      className={`h-full rounded-full ${roasBg(value)}`}
+                      style={{ width: `${Math.min((value / 5) * 100, 100)}%` }}
+                    />
+                  )}
+                </div>
+                <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
+                  {value !== null ? `${value.toFixed(2)}x` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Footer — Número de anúncios */}
+      <div className="px-4 py-3 border-t border-border/40 mt-auto">
         <span className="text-[11px] text-muted-foreground">1 anúncio</span>
       </div>
     </div>
