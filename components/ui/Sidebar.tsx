@@ -176,32 +176,44 @@ export default function Sidebar() {
         </nav>
 
         {/* Bottom */}
-        <div className="p-2 mb-3 mx-2 border border-white/5 rounded-xl space-y-3" style={{ backgroundColor: '#181e21' }}>
-          <button
-            onClick={sincronizarTudo}
-            disabled={sincronizando}
-            title={collapsed ? 'Sincronizar Dados' : undefined}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all bg-primary/10 text-primary hover:bg-primary hover:text-white border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            <RefreshCw className={`w-4 h-4 flex-shrink-0 ${sincronizando ? 'animate-spin' : ''}`} />
-            <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[200px] opacity-100'}`}>
-              {sincronizando ? 'Sincronizando...' : 'Sincronizar Dados'}
-            </span>
-          </button>
-
-          <div className="pt-2 border-t border-white/5 flex items-center gap-3 px-1">
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-muted-foreground shadow-md flex-shrink-0">
+        {collapsed ? (
+          <div className="p-2 mb-3 mx-2 border border-white/5 rounded-xl flex flex-col items-center gap-2" style={{ backgroundColor: '#181e21' }}>
+            <button
+              onClick={sincronizarTudo}
+              disabled={sincronizando}
+              title="Sincronizar Dados"
+              className="w-full flex items-center justify-center py-2.5 rounded-lg text-sm font-semibold transition-all bg-primary/10 text-primary hover:bg-primary hover:text-white border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 ${sincronizando ? 'animate-spin' : ''}`} />
+            </button>
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-muted-foreground shadow-md">
               RC
             </div>
-            <div className={`overflow-hidden transition-all duration-300 flex-1 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[200px] opacity-100'}`}>
-              <p className="text-xs font-semibold text-foreground truncate">Sua Conta</p>
-              <p className="text-[10px] text-muted-foreground font-medium tracking-wide">Administrador</p>
-            </div>
-            <button className={`text-muted-foreground hover:text-rose-400 transition-all duration-300 flex-shrink-0 ${collapsed ? 'max-w-0 opacity-0 overflow-hidden' : 'max-w-[20px] opacity-100'}`}>
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
-        </div>
+        ) : (
+          <div className="p-2 mb-3 mx-2 border border-white/5 rounded-xl space-y-3" style={{ backgroundColor: '#181e21' }}>
+            <button
+              onClick={sincronizarTudo}
+              disabled={sincronizando}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all bg-primary/10 text-primary hover:bg-primary hover:text-white border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 flex-shrink-0 ${sincronizando ? 'animate-spin' : ''}`} />
+              <span>{sincronizando ? 'Sincronizando...' : 'Sincronizar Dados'}</span>
+            </button>
+            <div className="pt-2 border-t border-white/5 flex items-center gap-3 px-1">
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-muted-foreground shadow-md flex-shrink-0">
+                RC
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-foreground truncate">Sua Conta</p>
+                <p className="text-[10px] text-muted-foreground font-medium tracking-wide">Administrador</p>
+              </div>
+              <button className="text-muted-foreground hover:text-rose-400 transition-colors flex-shrink-0">
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* Toggle button — centralizado na borda direita da sidebar */}
