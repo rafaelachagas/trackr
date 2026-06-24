@@ -19,9 +19,9 @@ export default function Topbar() {
   }
 
   return (
-    <header className="border-b border-border bg-background sticky top-0 z-50">
+    <header className="sticky top-0 z-50" style={{ borderBottom: '1px solid hsla(0,0%,100%,.05)', backgroundColor: '#13181a' }}>
       {/* breadcrumb bar */}
-      <div className="h-20 px-10 flex items-center justify-between border-b border-border bg-card/50 backdrop-blur-md">
+      <div className="h-12 px-6 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3 text-muted-foreground">
             <span className="text-[12px] font-black uppercase tracking-[0.2em] opacity-80">Dashboard - Principal</span>

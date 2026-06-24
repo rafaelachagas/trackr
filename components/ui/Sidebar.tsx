@@ -84,16 +84,13 @@ export default function Sidebar() {
         style={{ backgroundColor: '#13181a', borderRight: '1px solid hsla(0,0%,100%,.05)', boxShadow: '4px 0 24px rgba(0,0,0,.4)' }}
       >
         {/* Logo */}
-        <div className="pt-6 pb-6 flex flex-col items-center border-b border-white/5 px-3">
-          <div className="w-10 h-10 rounded-2xl bg-card border border-white/5 flex items-center justify-center shadow-lg shadow-black/5 flex-shrink-0 relative overflow-hidden">
+        <div className="h-12 flex items-center px-3 flex-shrink-0 border-b border-white/5">
+          <div className="w-7 h-7 rounded-xl bg-card border border-white/5 flex items-center justify-center flex-shrink-0 relative overflow-hidden">
             <div className="absolute inset-0 bg-primary/10" />
-            <Zap className="w-5 h-5 text-primary relative z-10" strokeWidth={2.5} />
+            <Zap className="w-3.5 h-3.5 text-primary relative z-10" strokeWidth={2.5} />
           </div>
-          <div className={`overflow-hidden transition-all duration-300 text-center ${collapsed ? 'max-h-0 opacity-0 mt-0' : 'max-h-20 opacity-100 mt-2'}`}>
-            <h1 className="text-xl font-black italic uppercase tracking-tighter text-foreground whitespace-nowrap">TRACKR</h1>
-            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5 whitespace-nowrap">
-              Painel de Gestão de Performance
-            </p>
+          <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-2'}`}>
+            <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground whitespace-nowrap">TRACKR</h1>
           </div>
         </div>
 
