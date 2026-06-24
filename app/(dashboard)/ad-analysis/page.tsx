@@ -304,61 +304,63 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
     <div className="rounded-xl overflow-hidden transition-colors group flex flex-col" style={{ backgroundColor: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
 
       {/* Thumbnail */}
-      <div className="relative bg-[#0d1117] overflow-hidden" style={{ height: '180px' }}>
-        {hasThumb ? (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={thumbSrc!}
-              alt={m.criativo}
-              onError={() => setImgErr(true)}
-              className="w-full h-full object-cover"
-            />
-          </>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <ImageOff className="w-8 h-8 text-muted-foreground/20" />
-          </div>
-        )}
-
-        {/* Gradient overlay for text legibility */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-
-        {/* Action buttons — top right */}
-        <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={onExpand}
-            className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition"
-            title="Ver detalhes"
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-white" />
-          </button>
-          {m.link_anuncio && (
-            <a
-              href={m.link_anuncio}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition"
-              title="Abrir no Instagram"
-              onClick={e => e.stopPropagation()}
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-white" />
-            </a>
+      <div className="px-3 pt-3">
+        <div className="relative rounded-xl overflow-hidden" style={{ height: '180px', backgroundColor: '#0d1117' }}>
+          {hasThumb ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={thumbSrc!}
+                alt={m.criativo}
+                onError={() => setImgErr(true)}
+                className="w-full h-full object-cover"
+              />
+            </>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <ImageOff className="w-8 h-8 text-muted-foreground/20" />
+            </div>
           )}
-        </div>
 
-        {/* Fase badge — top left */}
-        {m.fase && (
-          <span className={`absolute top-2 left-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${FASE_BADGE[m.fase] ?? 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'}`}>
-            {m.fase}
-          </span>
-        )}
+          {/* Gradient overlay for text legibility */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-        {/* Name overlaid at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 px-3 pb-2.5 pt-8">
-          <p className="text-[11px] font-semibold text-white leading-snug line-clamp-2" title={m.criativo}>
-            {m.criativo}
-          </p>
+          {/* Action buttons — top right */}
+          <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={onExpand}
+              className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition"
+              title="Ver detalhes"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-white" />
+            </button>
+            {m.link_anuncio && (
+              <a
+                href={m.link_anuncio}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-lg bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition"
+                title="Abrir no Instagram"
+                onClick={e => e.stopPropagation()}
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-white" />
+              </a>
+            )}
+          </div>
+
+          {/* Fase badge — top left */}
+          {m.fase && (
+            <span className={`absolute top-2 left-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${FASE_BADGE[m.fase] ?? 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'}`}>
+              {m.fase}
+            </span>
+          )}
+
+          {/* Name overlaid at bottom */}
+          <div className="absolute bottom-0 left-0 right-0 px-3 pb-2.5 pt-8">
+            <p className="text-[11px] font-semibold text-white leading-snug line-clamp-2" title={m.criativo}>
+              {m.criativo}
+            </p>
+          </div>
         </div>
       </div>
 
