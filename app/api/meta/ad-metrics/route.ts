@@ -287,7 +287,7 @@ async function fetchAdThumbnails(accountId: string, accessToken: string): Promis
   const adCreativeIds: { adName: string; creativeId: string }[] = []
 
   while (url) {
-    const res = await fetch(url)
+    const res: Response = await fetch(url)
     const json = await res.json()
     if (json.error) {
       debug.push({ step: 'fetch_ads', error: json.error })
