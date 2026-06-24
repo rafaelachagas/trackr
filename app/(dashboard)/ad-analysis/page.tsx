@@ -301,15 +301,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
   const hasRoas = m.roas !== null && m.roas > 0
 
   return (
-    <div
-      className="rounded-xl shadow-lg overflow-hidden transition-colors group flex flex-col"
-      style={{
-        background: 'linear-gradient(135deg, #111827 0%, #111827 60%, rgba(28,104,135,0.2) 100%)',
-        border: '1px solid rgba(85,182,247,0.1)',
-      }}
-      onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(85,182,247,0.25)'}
-      onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(85,182,247,0.1)'}
-    >
+    <div className="rounded-xl overflow-hidden transition-colors group flex flex-col" style={{ backgroundColor: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
 
       {/* Thumbnail */}
       <div className="relative bg-[#0d1117] overflow-hidden" style={{ height: '180px' }}>
@@ -567,7 +559,7 @@ export default function AdAnalysisPage() {
         </div>
       )}
 
-      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#0d1117', border: '1px solid rgba(85,182,247,0.08)' }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #111827 0%, #111827 60%, rgba(28,104,135,0.18) 100%)', border: '1px solid rgba(85,182,247,0.12)' }}>
         {/* Toolbar */}
         <div className="flex items-center justify-between px-5 py-3 flex-wrap gap-2" style={{ borderBottom: '1px solid rgba(85,182,247,0.08)' }}>
           <div className="flex items-center gap-1 flex-wrap">
