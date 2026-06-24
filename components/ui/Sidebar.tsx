@@ -80,7 +80,8 @@ export default function Sidebar() {
   return (
     <>
       <aside
-        className={`${collapsed ? 'w-[60px]' : 'w-64'} bg-card border-r border-border text-foreground flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar transition-all duration-300 z-40`}
+        className={`${collapsed ? 'w-[60px]' : 'w-64'} border-r border-border text-foreground flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar transition-all duration-300 z-40`}
+        style={{ backgroundColor: '#13181a' }}
       >
         {/* Logo */}
         <div className="pt-6 pb-6 flex flex-col items-center border-b border-border px-3">
