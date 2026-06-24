@@ -301,7 +301,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
   const hasRoas = m.roas !== null && m.roas > 0
 
   return (
-    <div className="rounded-xl transition-colors group flex flex-col p-3" style={{ backgroundColor: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
+    <div className="rounded-2xl transition-colors group flex flex-col p-3" style={{ backgroundColor: '#1a2035', border: '1px solid rgba(255,255,255,0.07)' }}>
 
       {/* Thumbnail */}
       <div className="relative rounded-xl overflow-hidden mb-3" style={{ height: '192px' }}>
@@ -316,7 +316,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
               />
             </>
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
+            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: '#0f1623' }}>
               <ImageOff className="w-8 h-8 text-muted-foreground/20" />
             </div>
           )}
@@ -359,24 +359,38 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
           )}
       </div>
 
-      {/* Main stats — Gasto + Impressões empilhados */}
-      <div className="px-4 pt-3 pb-1 flex gap-4">
-        <div className="flex-1">
+      {/* Main stats — mini-cards lado a lado */}
+      <div className="flex gap-2 mb-3">
+        {/* Mini-card: Gasto + Impressões empilhados */}
+        <div className="flex-1 rounded-xl p-3" style={{ backgroundColor: '#0f1623' }}>
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Gasto</p>
-          <p className="text-lg font-bold text-rose-500 tabular-nums leading-tight">{fmtBRL2(m.spend)}</p>
-        </div>
-        <div className="flex-1">
+          <p className="text-base font-bold text-rose-500 tabular-nums leading-tight">{fmtBRL2(m.spend)}</p>
+          <div className="h-px my-2" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Impressões</p>
-          <p className="text-lg font-semibold text-foreground tabular-nums leading-tight">{fmtK(m.impressions)}</p>
+          <p className="text-base font-semibold text-foreground tabular-nums leading-tight">{fmtK(m.impressions)}</p>
         </div>
-        {!hasRoas && <p className="text-[11px] text-muted-foreground/50 italic self-end pb-0.5">Sem conversões</p>}
+        {/* Mini-card direito: Sem conversões ou ROAS */}
+        <div className="flex-1 rounded-xl p-3 flex items-center justify-center" style={{ backgroundColor: '#0f1623' }}>
+          {hasRoas ? (
+            <div className="w-full">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">ROAS</p>
+              <p className={`text-base font-bold tabular-nums ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
+              {m.receita > 0 && (
+                <>
+                  <div className="h-px my-2" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Receita</p>
+                  <p className="text-base font-semibold text-emerald-400 tabular-nums">{fmtBRL(m.receita)}</p>
+                </>
+              )}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground/50 italic">Sem conversões</p>
+          )}
+        </div>
       </div>
 
-      {/* Divider */}
-      <div className="h-px bg-border/40 mx-4 my-3" />
-
       {/* Metric bars section */}
-      <div className="px-4 pb-2 space-y-2.5">
+      <div className="px-1 pb-2 space-y-2.5">
         <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} />
         <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
         <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
@@ -385,12 +399,9 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       {/* Rolling ROAS section */}
       {(m.roas_1d !== null || m.roas_3d !== null || m.roas_7d !== null) && (
         <>
-          <div className="h-px bg-border/40 mx-4 my-3" />
-          <div className="px-4 pb-3 space-y-2.5">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ROAS Rolling</p>
-              {hasRoas && <span className={`text-[11px] font-bold tabular-nums ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x período</span>}
-            </div>
+          <div className="h-px mx-1 my-3" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
+          <div className="px-1 pb-3 space-y-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">ROAS Rolling</p>
             {([
               { label: 'Últ. 7d', value: m.roas_7d },
               { label: 'Últ. 3d', value: m.roas_3d },
@@ -416,7 +427,7 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
       )}
 
       {/* Footer — Número de anúncios */}
-      <div className="px-4 py-2.5 border-t border-border/40 mt-auto">
+      <div className="px-1 py-2 border-t mt-auto" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <span className="text-[11px] text-muted-foreground">1 anúncio</span>
       </div>
     </div>
