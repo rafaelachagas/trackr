@@ -16,7 +16,6 @@ import {
   getProdutos,
 } from '@/app/actions/lancamento'
 import { listarCriativosAtivos } from '@/app/actions/criativos'
-import { useAuth } from '@/hooks/useAuth'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
@@ -37,7 +36,6 @@ type EditVendaState = { id: string; data: string; produto: string; valor: string
 type EditGastoState = { id: string; data: string; valor_gasto: string } | null
 
 export default function LancamentoPage() {
-  const { activeOrg } = useAuth()
   const [produtos, setProdutos] = useState<string[]>([])
   const [criativosAtivos, setCriativosAtivos] = useState<{ nome: string; campaign_name: string; fase: string | null }[]>([])
   const [vendasList, setVendasList] = useState<any[]>([])
@@ -135,10 +133,6 @@ export default function LancamentoPage() {
   async function handleLancar(e: React.FormEvent) {
     e.preventDefault()
     if (!form.criativo) return
-    if (!activeOrg?.org_id) {
-      setErros(['Organização não carregada. Aguarde um momento e tente novamente.'])
-      return
-    }
     setSaving(true)
     setErros([])
 
