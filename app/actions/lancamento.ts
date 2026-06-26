@@ -1,7 +1,27 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { createSupabaseServer } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+
+async function getActiveOrgId(passedOrgId?: string): Promise<string | null> {
+  // Se veio um UUID válido do cliente, usa
+  if (passedOrgId && /^[0-9a-f-]{36}$/i.test(passedOrgId)) return passedOrgId
+
+  // Fallback: pega a primeira org do usuário logado via sessão do servidor
+  const supabase = await createSupabaseServer()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data } = await supabaseAdmin
+    .from('organization_members')
+    .select('org_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .single()
+
+  return data?.org_id ?? null
+}
 
 export async function adicionarVenda(payload: {
   data: string
@@ -26,6 +46,9 @@ export async function adicionarVenda(payload: {
     return { success: false, error: `Já existe um lançamento de "${payload.produto}" para este criativo nesta data.` }
   }
 
+  const orgId = await getActiveOrgId(payload.org_id)
+  if (!orgId) return { success: false, error: 'Organização não encontrada.' }
+
   const { error } = await supabaseAdmin.from('vendas').insert({
     data: `${payload.data}T12:00:00`,
     criativo: payload.criativo,
@@ -35,7 +58,7 @@ export async function adicionarVenda(payload: {
     status: 'approved',
     tipo: 'front',
     transaction_id: `manual_${Date.now()}`,
-    org_id: payload.org_id,
+    org_id: orgId,
   })
   if (error) return { success: false, error: error.message }
   revalidatePath('/lancamento')
@@ -63,6 +86,9 @@ export async function adicionarGasto(payload: {
     return { success: false, error: `Já existe um gasto lançado para este criativo nesta data.` }
   }
 
+  const orgId = await getActiveOrgId(payload.org_id)
+  if (!orgId) return { success: false, error: 'Organização não encontrada.' }
+
   const { error } = await supabaseAdmin.from('gastos').insert({
     data: payload.data,
     criativo: payload.criativo,
@@ -71,7 +97,7 @@ export async function adicionarGasto(payload: {
     valor_gasto: payload.valor_gasto,
     impressions: 0,
     clicks: 0,
-    org_id: payload.org_id,
+    org_id: orgId,
   })
   if (error) return { success: false, error: error.message }
   revalidatePath('/lancamento')

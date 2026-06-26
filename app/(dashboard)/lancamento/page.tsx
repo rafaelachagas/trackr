@@ -135,6 +135,10 @@ export default function LancamentoPage() {
   async function handleLancar(e: React.FormEvent) {
     e.preventDefault()
     if (!form.criativo) return
+    if (!activeOrg?.org_id) {
+      setErros(['Organização não carregada. Aguarde um momento e tente novamente.'])
+      return
+    }
     setSaving(true)
     setErros([])
 
