@@ -144,7 +144,7 @@ export default function LancamentoPage() {
       const valor = parseFloat(linha.valor)
       if (!linha.valor || isNaN(valor) || valor <= 0) continue
       promises.push(
-        adicionarVenda({ data: form.data, criativo: form.criativo, produto: linha.produto, valor, org_id: activeOrg?.org_id ?? '' })
+        adicionarVenda({ data: form.data, criativo: form.criativo, produto: linha.produto, valor, org_id: '' })
           .then(r => { if (!r.success) novosErros.push(r.error ?? 'Erro ao salvar venda') })
       )
     }
@@ -153,7 +153,7 @@ export default function LancamentoPage() {
     const valorGasto = parseFloat(form.valorGasto)
     if (form.valorGasto && !isNaN(valorGasto) && valorGasto > 0) {
       promises.push(
-        adicionarGasto({ data: form.data, criativo: form.criativo, campanha: form.campanha || undefined, valor_gasto: valorGasto, org_id: activeOrg?.org_id ?? '' })
+        adicionarGasto({ data: form.data, criativo: form.criativo, campanha: form.campanha || undefined, valor_gasto: valorGasto, org_id: '' })
           .then(r => { if (!r.success) novosErros.push(r.error ?? 'Erro ao salvar gasto') })
       )
     }
