@@ -16,6 +16,7 @@ import {
   getProdutos,
 } from '@/app/actions/lancamento'
 import { listarCriativosAtivos } from '@/app/actions/criativos'
+import { useAuth } from '@/hooks/useAuth'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
@@ -36,6 +37,7 @@ type EditVendaState = { id: string; data: string; produto: string; valor: string
 type EditGastoState = { id: string; data: string; valor_gasto: string } | null
 
 export default function LancamentoPage() {
+  const { activeOrg } = useAuth()
   const [produtos, setProdutos] = useState<string[]>([])
   const [criativosAtivos, setCriativosAtivos] = useState<{ nome: string; campaign_name: string; fase: string | null }[]>([])
   const [vendasList, setVendasList] = useState<any[]>([])
@@ -144,7 +146,7 @@ export default function LancamentoPage() {
       const valor = parseFloat(linha.valor)
       if (!linha.valor || isNaN(valor) || valor <= 0) continue
       promises.push(
-        adicionarVenda({ data: form.data, criativo: form.criativo, produto: linha.produto, valor })
+        adicionarVenda({ data: form.data, criativo: form.criativo, produto: linha.produto, valor, org_id: activeOrg?.org_id ?? '' })
           .then(r => { if (!r.success) novosErros.push(r.error ?? 'Erro ao salvar venda') })
       )
     }
@@ -153,7 +155,7 @@ export default function LancamentoPage() {
     const valorGasto = parseFloat(form.valorGasto)
     if (form.valorGasto && !isNaN(valorGasto) && valorGasto > 0) {
       promises.push(
-        adicionarGasto({ data: form.data, criativo: form.criativo, campanha: form.campanha || undefined, valor_gasto: valorGasto })
+        adicionarGasto({ data: form.data, criativo: form.criativo, campanha: form.campanha || undefined, valor_gasto: valorGasto, org_id: activeOrg?.org_id ?? '' })
           .then(r => { if (!r.success) novosErros.push(r.error ?? 'Erro ao salvar gasto') })
       )
     }

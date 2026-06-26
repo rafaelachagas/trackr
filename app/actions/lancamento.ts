@@ -8,6 +8,7 @@ export async function adicionarVenda(payload: {
   criativo: string
   produto: string
   valor: number
+  org_id: string
 }) {
   // Trava: não permite duplicata de criativo+produto no mesmo dia
   const { data: existente } = await supabaseAdmin
@@ -34,6 +35,7 @@ export async function adicionarVenda(payload: {
     status: 'approved',
     tipo: 'front',
     transaction_id: `manual_${Date.now()}`,
+    org_id: payload.org_id,
   })
   if (error) return { success: false, error: error.message }
   revalidatePath('/lancamento')
@@ -45,6 +47,7 @@ export async function adicionarGasto(payload: {
   criativo: string
   campanha?: string
   valor_gasto: number
+  org_id: string
 }) {
   // Trava: não permite duplicata de criativo no mesmo dia
   const { data: existente } = await supabaseAdmin
@@ -68,6 +71,7 @@ export async function adicionarGasto(payload: {
     valor_gasto: payload.valor_gasto,
     impressions: 0,
     clicks: 0,
+    org_id: payload.org_id,
   })
   if (error) return { success: false, error: error.message }
   revalidatePath('/lancamento')
