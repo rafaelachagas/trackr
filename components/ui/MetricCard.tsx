@@ -31,14 +31,14 @@ export default function MetricCard({ titulo, valor, subtitulo, cor = 'default', 
     default: 'text-foreground',
     green: 'text-emerald-400',
     red: 'text-rose-400',
-    blue: 'text-emerald-400',
+    blue: 'text-primary',
   }
 
   const borderMap = {
     default: 'border-border',
     green: 'border-emerald-500/20',
     red: 'border-rose-500/20',
-    blue: 'border-emerald-500/20',
+    blue: 'border-primary/20',
   }
 
   return (
