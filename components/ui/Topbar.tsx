@@ -43,10 +43,8 @@ export default function Topbar() {
   return (
     <>
       {/* Topbar fina — não sticky, flui com o conteúdo */}
-      <header style={{ border: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0e1315', padding: '20px', margin: '30px', borderRadius: '10px' }}>
-
-        {/* Linha superior: label + ações + org + usuário */}
-        <div className="h-10 px-0 flex items-center justify-between">
+      <header style={{ border: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0e1315', padding: '0 20px', margin: '30px 30px 0 30px', borderRadius: '10px' }}>
+        <div className="h-10 flex items-center justify-between">
 
           {/* Esquerda: título + ações */}
           <div className="flex items-center gap-3">
@@ -186,10 +184,12 @@ export default function Topbar() {
 
           </div>
         </div>
+      </header>
 
-        {/* Título + filtros (só na overview) */}
-        {isOverview && (
-          <div className="flex items-end justify-between gap-8 mt-5 pt-5" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+      {/* Card separado: título + filtros */}
+      {isOverview && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0e1315', padding: '20px', margin: '10px 30px 0 30px', borderRadius: '10px' }}>
+          <div className="flex items-end justify-between gap-8">
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.25em] mb-1" style={{ color: '#00aeef' }}>
                 Tracka
@@ -205,8 +205,8 @@ export default function Topbar() {
               <FiltrosDashboard />
             </div>
           </div>
-        )}
-      </header>
+        </div>
+      )}
 
       {/* Modais */}
       {modalUsuarios && activeOrg && user && (
