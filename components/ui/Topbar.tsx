@@ -43,8 +43,8 @@ export default function Topbar() {
   return (
     <>
       {/* Topbar fina — não sticky, flui com o conteúdo */}
-      <header style={{ border: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0e1315', padding: '0 20px', margin: '30px 30px 0 30px', borderRadius: '10px' }}>
-        <div className="h-10 flex items-center justify-between">
+      <header style={{ border: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0e1315', padding: '50px', margin: '30px 30px 0 30px', borderRadius: '10px' }}>
+        <div className="flex items-center justify-between">
 
           {/* Esquerda: título + ações */}
           <div className="flex items-center gap-3">
