@@ -9,12 +9,14 @@ export default function DashboardLayout({
 }) {
   return (
     <DashboardProvider>
-      <div className="flex min-h-screen text-foreground transition-colors duration-400" style={{ backgroundColor: '#121212' }}>
+      <div className="flex min-h-screen text-foreground transition-colors duration-400" style={{ backgroundColor: '#0e1315' }}>
         <Sidebar />
         <main className="flex-1 min-h-screen flex flex-col transition-colors duration-300 overflow-hidden">
           <Topbar />
-          <div className="flex-1 py-8 px-10 overflow-y-auto overflow-x-hidden">
-            {children}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: '#13181a' }}>
+            <div className="py-8 px-8">
+              {children}
+            </div>
           </div>
         </main>
       </div>

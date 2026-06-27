@@ -49,8 +49,8 @@ export default function OverviewPage() {
   }, [lastUpdate, dateRange])
 
   return (
-    <div className="relative space-y-8 w-full mx-auto text-foreground px-10">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="relative space-y-6 w-full mx-auto text-foreground">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <MetricCard
           titulo="Receita Total"
           valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
