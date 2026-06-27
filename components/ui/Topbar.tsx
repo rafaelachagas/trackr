@@ -188,7 +188,7 @@ export default function Topbar() {
 
       {/* Card separado: filtros */}
       {isOverview && (
-        <div style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', padding: '20px', margin: '10px 30px 0 30px', borderRadius: '10px' }}>
+        <div style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', padding: '20px', margin: '10px 30px 25px 30px', borderRadius: '10px' }}>
           <FiltrosDashboard />
         </div>
       )}
