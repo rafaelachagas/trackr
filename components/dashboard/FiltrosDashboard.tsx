@@ -29,7 +29,7 @@ export default function FiltrosDashboard() {
   ]
 
   return (
-    <div className="flex items-end justify-end gap-4 bg-background p-1 rounded-xl w-full">
+    <div className="flex items-end justify-start gap-4 w-full">
       {/* Período de Visualização */}
       <div className="flex flex-col gap-2 min-w-[200px]">
         <div className="flex items-center gap-1.5 px-1">

@@ -186,25 +186,10 @@ export default function Topbar() {
         </div>
       </header>
 
-      {/* Card separado: título + filtros */}
+      {/* Card separado: filtros */}
       {isOverview && (
-        <div style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#0e1315', padding: '20px', margin: '10px 30px 0 30px', borderRadius: '10px' }}>
-          <div className="flex items-end justify-between gap-8">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.25em] mb-1" style={{ color: '#00aeef' }}>
-                Tracka
-              </p>
-              <h1 className="text-2xl font-black text-foreground tracking-tighter uppercase leading-none">
-                Dashboard de Gestão
-              </h1>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.15em] mt-1.5 opacity-70">
-                Controle tático · Análise de performance
-              </p>
-            </div>
-            <div className="flex-1 max-w-4xl">
-              <FiltrosDashboard />
-            </div>
-          </div>
+        <div style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', padding: '20px', margin: '10px 30px 0 30px', borderRadius: '10px' }}>
+          <FiltrosDashboard />
         </div>
       )}
 
