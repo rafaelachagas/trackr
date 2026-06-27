@@ -40,6 +40,11 @@ export default function LancamentoPage() {
   const [criativosAtivos, setCriativosAtivos] = useState<{ nome: string; campaign_name: string; fase: string | null }[]>([])
   const [vendasList, setVendasList] = useState<any[]>([])
   const [gastosList, setGastosList] = useState<any[]>([])
+  const [vendasPage, setVendasPage] = useState(0)
+  const [gastosPage, setGastosPage] = useState(0)
+  const [vendasHasMore, setVendasHasMore] = useState(false)
+  const [gastosHasMore, setGastosHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [tab, setTab] = useState<Tab>('vendas')
   const [busca, setBusca] = useState('')
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set())
@@ -69,20 +74,42 @@ export default function LancamentoPage() {
   async function carregar() {
     const [prods, vendas, gastos, criativos] = await Promise.all([
       getProdutos(),
-      listarVendasManuais(),
-      listarGastosManuais(),
+      listarVendasManuais(0),
+      listarGastosManuais(0),
       listarCriativosAtivos(),
     ])
     setProdutos(prods)
     setCriativosAtivos(criativos)
     setVendasList(vendas.data)
     setGastosList(gastos.data)
+    setVendasPage(0)
+    setGastosPage(0)
+    setVendasHasMore(vendas.hasMore)
+    setGastosHasMore(gastos.hasMore)
     const firstV = vendas.data[0]?.data?.substring(0, 10)
     const firstG = gastos.data[0]?.data?.substring(0, 10)
     const initial = new Set<string>()
     if (firstV) initial.add(`v_${firstV}`)
     if (firstG) initial.add(`g_${firstG}`)
     setExpandedDates(initial)
+  }
+
+  async function carregarMais() {
+    setLoadingMore(true)
+    if (tab === 'vendas') {
+      const nextPage = vendasPage + 1
+      const res = await listarVendasManuais(nextPage)
+      setVendasList(prev => [...prev, ...res.data])
+      setVendasPage(nextPage)
+      setVendasHasMore(res.hasMore)
+    } else {
+      const nextPage = gastosPage + 1
+      const res = await listarGastosManuais(nextPage)
+      setGastosList(prev => [...prev, ...res.data])
+      setGastosPage(nextPage)
+      setGastosHasMore(res.hasMore)
+    }
+    setLoadingMore(false)
   }
 
   function toggleDate(key: string) {
@@ -289,7 +316,7 @@ export default function LancamentoPage() {
           </div>
         ) : (
           <div className="divide-y divide-border/50">
-            {activeList.map(grupo => {
+            {activeList.map((grupo: any) => {
               const isOpen = expandedDates.has(grupo.key)
               return (
                 <div key={grupo.key}>
@@ -370,6 +397,19 @@ export default function LancamentoPage() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* Botão Ver mais */}
+        {(tab === 'vendas' ? vendasHasMore : gastosHasMore) && (
+          <div className="flex justify-center py-4 border-t border-border/50">
+            <button
+              onClick={carregarMais}
+              disabled={loadingMore}
+              className="px-6 py-2 text-xs font-semibold text-primary border border-primary/30 rounded-xl hover:bg-primary/5 transition disabled:opacity-50"
+            >
+              {loadingMore ? 'Carregando...' : 'Ver mais'}
+            </button>
           </div>
         )}
       </div>

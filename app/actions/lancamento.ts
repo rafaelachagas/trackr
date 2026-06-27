@@ -124,26 +124,32 @@ export async function editarGasto(id: string, payload: { valor_gasto: number; da
   return { success: true }
 }
 
-export async function listarVendasManuais() {
+const PAGE_SIZE = 1000
+
+export async function listarVendasManuais(page = 0) {
+  const from = page * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
   const { data, error } = await supabaseAdmin
     .from('vendas')
     .select('id, data, criativo, produto, valor')
     .like('transaction_id', 'manual_%')
     .order('data', { ascending: false })
-    .limit(5000)
-  if (error) return { success: false, data: [] }
-  return { success: true, data: data ?? [] }
+    .range(from, to)
+  if (error) return { success: false, data: [], hasMore: false }
+  return { success: true, data: data ?? [], hasMore: (data?.length ?? 0) === PAGE_SIZE }
 }
 
-export async function listarGastosManuais() {
+export async function listarGastosManuais(page = 0) {
+  const from = page * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
   const { data, error } = await supabaseAdmin
     .from('gastos')
     .select('id, data, criativo, campaign_name, valor_gasto')
     .is('ad_id', null)
     .order('data', { ascending: false })
-    .limit(5000)
-  if (error) return { success: false, data: [] }
-  return { success: true, data: data ?? [] }
+    .range(from, to)
+  if (error) return { success: false, data: [], hasMore: false }
+  return { success: true, data: data ?? [], hasMore: (data?.length ?? 0) === PAGE_SIZE }
 }
 
 export async function deletarVenda(id: string) {
