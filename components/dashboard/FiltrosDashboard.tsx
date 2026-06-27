@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Info, ChevronDown, ChevronLeft, ChevronRight, RefreshCcw } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import {
@@ -117,7 +117,7 @@ export default function FiltrosDashboard() {
     const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 })
     const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 })
 
-    const days: JSX.Element[] = []
+    const days: React.ReactElement[] = []
     let d = gridStart
     while (d <= gridEnd) {
       const day = d
