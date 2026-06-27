@@ -43,8 +43,10 @@ export default function Topbar() {
   return (
     <>
       {/* Topbar fina — não sticky, flui com o conteúdo */}
-      <header style={{ borderBottom: '1px solid hsla(0,0%,100%,.06)', backgroundColor: '#0e1315' }}>
-        <div className="h-10 px-5 flex items-center justify-between">
+      <header style={{ border: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0e1315', padding: '20px', margin: '30px', borderRadius: '10px' }}>
+
+        {/* Linha superior: label + ações + org + usuário */}
+        <div className="h-10 px-0 flex items-center justify-between">
 
           {/* Esquerda: título + ações */}
           <div className="flex items-center gap-3">
@@ -184,23 +186,10 @@ export default function Topbar() {
 
           </div>
         </div>
-      </header>
 
-      {/* Modais */}
-      {modalUsuarios && activeOrg && user && (
-        <ModalUsuarios activeOrg={activeOrg} currentUserId={user.id} onClose={() => setModalUsuarios(false)} />
-      )}
-      {modalAssinatura && activeOrg && (
-        <ModalAssinatura activeOrg={activeOrg} onClose={() => setModalAssinatura(false)} />
-      )}
-
-      {/* Cabeçalho do dashboard — parte "descolada", integrada ao conteúdo */}
-      {isOverview && (
-        <div
-          className="px-8 pt-6 pb-5"
-          style={{ backgroundColor: '#0e1315', borderBottom: '1px solid hsla(0,0%,100%,.04)' }}
-        >
-          <div className="flex items-end justify-between gap-8">
+        {/* Título + filtros (só na overview) */}
+        {isOverview && (
+          <div className="flex items-end justify-between gap-8 mt-5 pt-5" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.25em] mb-1" style={{ color: '#00aeef' }}>
                 Tracka
@@ -216,7 +205,15 @@ export default function Topbar() {
               <FiltrosDashboard />
             </div>
           </div>
-        </div>
+        )}
+      </header>
+
+      {/* Modais */}
+      {modalUsuarios && activeOrg && user && (
+        <ModalUsuarios activeOrg={activeOrg} currentUserId={user.id} onClose={() => setModalUsuarios(false)} />
+      )}
+      {modalAssinatura && activeOrg && (
+        <ModalAssinatura activeOrg={activeOrg} onClose={() => setModalAssinatura(false)} />
       )}
     </>
   )
