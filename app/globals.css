@@ -41,7 +41,7 @@
   --accent-foreground: #f8fafc;
   --destructive: #ef4444;
   --destructive-foreground: #f8fafc;
-  --border: #1e293b;
+  --border: rgba(255, 255, 255, 0.05);
   --input: #1e293b;
   --ring: #00aeef;
 }

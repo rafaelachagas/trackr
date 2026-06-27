@@ -43,7 +43,7 @@ export default function Topbar() {
   return (
     <>
       {/* Topbar fina — não sticky, flui com o conteúdo */}
-      <header style={{ border: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0e1315', padding: '50px', margin: '30px 30px 0 30px', borderRadius: '10px' }}>
+      <header style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#0e1315', padding: '50px', margin: '30px 30px 0 30px', borderRadius: '10px' }}>
         <div className="flex items-center justify-between">
 
           {/* Esquerda: título + ações */}
@@ -115,7 +115,7 @@ export default function Topbar() {
                     </div>
                     {activeOrg.role === 'admin' && (
                       <>
-                        <div className="border-t mx-1.5" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+                        <div className="border-t mx-1.5" style={{ borderColor: 'rgba(255,255,255,0.05)' }} />
                         <div className="p-1.5">
                           <button
                             onClick={() => { setOrgMenuOpen(false); setModalUsuarios(true) }}
@@ -167,7 +167,7 @@ export default function Topbar() {
                   className="absolute right-0 top-full mt-1.5 z-50 rounded-xl shadow-2xl p-1 w-44"
                   style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
-                  <div className="px-3 py-2.5 border-b mb-1" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div className="px-3 py-2.5 border-b mb-1" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
                     <p className="text-[11px] font-bold text-foreground truncate">{firstName}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
                   </div>
@@ -188,7 +188,7 @@ export default function Topbar() {
 
       {/* Card separado: título + filtros */}
       {isOverview && (
-        <div style={{ border: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0e1315', padding: '20px', margin: '10px 30px 0 30px', borderRadius: '10px' }}>
+        <div style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#0e1315', padding: '20px', margin: '10px 30px 0 30px', borderRadius: '10px' }}>
           <div className="flex items-end justify-between gap-8">
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.25em] mb-1" style={{ color: '#00aeef' }}>
