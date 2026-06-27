@@ -48,69 +48,51 @@ export default function OverviewPage() {
       .catch(() => {})
   }, [lastUpdate, dateRange])
 
-  const cardStyle: React.CSSProperties = {
-    backgroundColor: '#0e1315',
-    border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: '10px',
-    padding: '20px',
-    marginBottom: '20px',
-  }
-
   return (
-    <div className="relative w-full mx-auto text-foreground">
-
-      {/* Métricas */}
-      <div style={cardStyle}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          <MetricCard
-            titulo="Receita Total"
-            valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-            cor="green"
-            icone={<DollarSign className="w-5 h-5 text-slate-300" />}
-            tendencia="+0%"
-            subtitulo="vs mês anterior"
-          />
-          <MetricCard
-            titulo="Gasto Meta Ads"
-            valor={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-            cor="red"
-            icone={<Target className="w-5 h-5 text-slate-300" />}
-          />
-          <MetricCard
-            titulo="ROAS Global"
-            valor={`${metrics.roas.toFixed(2)}x`}
-            cor="blue"
-            icone={<TrendingUp className="w-5 h-5 text-slate-300" />}
-          />
-          <MetricCard
-            titulo="Nº de Vendas"
-            valor={`${metrics.salesCount}`}
-            cor="default"
-            icone={<Users className="w-5 h-5 text-slate-300" />}
-          />
-        </div>
+    <div className="relative space-y-6 w-full mx-auto text-foreground">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <MetricCard
+          titulo="Receita Total"
+          valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          cor="green"
+          icone={<DollarSign className="w-5 h-5 text-slate-300" />}
+          tendencia="+0%"
+          subtitulo="vs mês anterior"
+        />
+        <MetricCard
+          titulo="Gasto Meta Ads"
+          valor={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          cor="red"
+          icone={<Target className="w-5 h-5 text-slate-300" />}
+        />
+        <MetricCard
+          titulo="ROAS Global"
+          valor={`${metrics.roas.toFixed(2)}x`}
+          cor="blue"
+          icone={<TrendingUp className="w-5 h-5 text-slate-300" />}
+        />
+        <MetricCard
+          titulo="Nº de Vendas"
+          valor={`${metrics.salesCount}`}
+          cor="default"
+          icone={<Users className="w-5 h-5 text-slate-300" />}
+        />
       </div>
 
-      {/* Gráficos */}
-      <div style={cardStyle}>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <GraficoDiario dados={chartData} />
-          </div>
-          <GraficoTipoVendas />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <GraficoDiario dados={chartData} />
         </div>
+        <GraficoTipoVendas />
       </div>
 
-      {/* Tabela criativos */}
-      <div style={cardStyle}>
+      <div>
         <TabelaCriativos dados={criativos} />
       </div>
 
-      {/* Histórico */}
-      <div style={{ ...cardStyle, marginBottom: '0' }}>
+      <div className="pb-12">
         <HistoricoCriativos />
       </div>
-
     </div>
   )
 }
