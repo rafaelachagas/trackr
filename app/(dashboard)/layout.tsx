@@ -14,7 +14,7 @@ export default function DashboardLayout({
         <main className="flex-1 min-h-screen flex flex-col transition-colors duration-300 overflow-hidden">
           <Topbar />
           <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: '#13181a' }}>
-            <div className="py-8 px-8">
+            <div className="px-8 pb-8">
               {children}
             </div>
           </div>
