@@ -85,42 +85,47 @@ export default function Topbar() {
 
               {orgMenuOpen && (
                 <div
-                  className="absolute right-0 top-full mt-1 z-50 rounded-xl shadow-2xl p-1 w-52"
-                  style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.07)' }}
+                  className="absolute right-0 top-full mt-2 z-50 rounded-xl shadow-2xl overflow-hidden w-56"
+                  style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
-                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground px-3 pt-2 pb-1">
-                    Seus workspaces
-                  </p>
-                  {orgs.map(org => (
-                    <button
-                      key={org.org_id}
-                      onClick={() => { setActiveOrg(org); setOrgMenuOpen(false) }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left"
-                      style={{ color: activeOrg.org_id === org.org_id ? '#00aeef' : '#e2e8f0' }}
-                    >
-                      <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="flex-1 truncate">{org.org_name}</span>
-                      {activeOrg.org_id === org.org_id && <Check className="w-3 h-3" />}
-                    </button>
-                  ))}
+                  {/* Orgs */}
+                  <div className="p-1.5">
+                    {orgs.map(org => (
+                      <button
+                        key={org.org_id}
+                        onClick={() => { setActiveOrg(org); setOrgMenuOpen(false) }}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold transition hover:bg-white/5 text-left"
+                        style={{
+                          color: activeOrg.org_id === org.org_id ? '#00aeef' : '#e2e8f0',
+                          backgroundColor: activeOrg.org_id === org.org_id ? 'rgba(0,174,239,0.06)' : undefined,
+                        }}
+                      >
+                        <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="flex-1 truncate">{org.org_name}</span>
+                        {activeOrg.org_id === org.org_id && <Check className="w-3 h-3" />}
+                      </button>
+                    ))}
+                  </div>
 
                   {activeOrg.role === 'admin' && (
                     <>
-                      <div className="my-1 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-                      <button
-                        onClick={() => { setOrgMenuOpen(false); setModalUsuarios(true) }}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left text-muted-foreground hover:text-foreground"
-                      >
-                        <Users className="w-3.5 h-3.5" />
-                        Gerenciar usuários
-                      </button>
-                      <button
-                        onClick={() => { setOrgMenuOpen(false); setModalAssinatura(true) }}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left text-muted-foreground hover:text-foreground"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" />
-                        Gerenciar assinatura
-                      </button>
+                      <div className="border-t mx-1.5" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+                      <div className="p-1.5">
+                        <button
+                          onClick={() => { setOrgMenuOpen(false); setModalUsuarios(true) }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left text-muted-foreground hover:text-foreground"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          Gerenciar usuários
+                        </button>
+                        <button
+                          onClick={() => { setOrgMenuOpen(false); setModalAssinatura(true) }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left text-muted-foreground hover:text-foreground"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          Gerenciar assinatura
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>

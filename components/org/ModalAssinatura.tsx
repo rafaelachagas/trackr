@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Loader2, CheckCircle2, AlertCircle, CreditCard, Calendar, Hash, User, Mail } from 'lucide-react'
+import { X, Loader2, CheckCircle2, AlertCircle, CreditCard, Calendar, Hash, User, Mail, RefreshCw, Building2 } from 'lucide-react'
 import type { OrgMembership } from '@/hooks/useAuth'
 
 interface Subscription {
@@ -12,6 +12,7 @@ interface Subscription {
   access_until: string | null
   transaction_id: string | null
   subscriber_code: string | null
+  recurrence_number: number | null
   max_members: number | null
   max_criativos: number | null
 }
@@ -22,13 +23,18 @@ interface Props {
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  active: { label: 'Ativo', color: '#10b981', bg: 'rgba(16,185,129,0.1)' },
-  inactive: { label: 'Inativo', color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
-  cancelled: { label: 'Cancelado', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
-  overdue: { label: 'Em atraso', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+  active: { label: 'Ativo', color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+  inactive: { label: 'Inativo', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
+  cancelled: { label: 'Cancelado', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  overdue: { label: 'Em atraso', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
 }
 
 function fmt(date: string | null) {
+  if (!date) return '—'
+  return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtShort(date: string | null) {
   if (!date) return '—'
   return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
@@ -53,24 +59,24 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div
         className="relative z-10 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-        style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.07)' }}
+        style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Plano</p>
-            <h2 className="text-base font-black text-foreground tracking-tight">Assinatura</h2>
+        <div className="flex items-center gap-3 px-6 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0,174,239,0.1)' }}>
+            <CreditCard className="w-4 h-4 text-primary" />
           </div>
+          <h2 className="text-base font-black text-foreground tracking-tight flex-1">Gerenciar Assinatura</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/5 text-muted-foreground transition">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 max-h-[75vh] overflow-y-auto">
           {loading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -81,69 +87,95 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
               <p className="text-sm text-muted-foreground">Nenhuma assinatura encontrada para esta organização.</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Status + Plano */}
-              <div
-                className="flex items-center justify-between p-4 rounded-xl"
-                style={{ backgroundColor: '#1a2022' }}
-              >
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1">Plano</p>
-                  <p className="text-lg font-black text-foreground tracking-tight">{sub.plan_name ?? '—'}</p>
+            <div className="space-y-3">
+
+              {/* Card: Informações da Assinatura */}
+              <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Informações da Assinatura</p>
                 </div>
-                {status && (
-                  <span
-                    className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg"
-                    style={{ color: status.color, backgroundColor: status.bg }}
-                  >
-                    {status.label}
-                  </span>
-                )}
+                <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                  {[
+                    { label: 'Plano', value: sub.plan_name },
+                    { label: 'Status', value: status ? (
+                      <span className="flex items-center gap-1.5 text-xs font-bold" style={{ color: status.color }}>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {status.label}
+                      </span>
+                    ) : '—' },
+                    { label: 'Email', value: sub.subscriber_email },
+                    { label: 'Data de Compra', value: fmtShort(sub.purchase_date) },
+                    { label: 'Recorrência', value: sub.recurrence_number != null ? `${sub.recurrence_number}ª` : '—' },
+                    { label: 'Transaction ID', value: sub.transaction_id },
+                    { label: 'Subscriber Code', value: sub.subscriber_code },
+                    { label: 'Acesso até', value: sub.access_until ? (
+                      <span className="text-xs font-bold" style={{ color: '#f59e0b' }}>{fmt(sub.access_until)}</span>
+                    ) : '—' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-center justify-between px-4 py-2.5 gap-4">
+                      <p className="text-[11px] text-muted-foreground flex-shrink-0">{label}:</p>
+                      <div className="text-xs font-semibold text-foreground text-right truncate">{value ?? '—'}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {/* Detalhes */}
-              {[
-                { icon: Mail, label: 'E-mail do assinante', value: sub.subscriber_email },
-                { icon: Calendar, label: 'Data da compra', value: fmt(sub.purchase_date) },
-                { icon: Calendar, label: 'Acesso até', value: fmt(sub.access_until) },
-                { icon: Hash, label: 'ID da transação', value: sub.transaction_id },
-                { icon: User, label: 'Código do assinante', value: sub.subscriber_code },
-              ].map(({ icon: Icon, label, value }) => (
-                <div
-                  key={label}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                  style={{ backgroundColor: '#1a2022' }}
-                >
-                  <Icon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
-                    <p className="text-xs font-semibold text-foreground truncate mt-0.5">{value ?? '—'}</p>
+              {/* Card: Limites */}
+              {sub.max_members != null && (
+                <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Limites da Assinatura</p>
+                  </div>
+                  <div className="px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Organizações Permitidas:</span>
+                      <span className="font-bold text-foreground">1 / 1</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                      <div className="h-full rounded-full" style={{ width: '100%', backgroundColor: '#00aeef' }} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Este plano permite apenas 1 organização</p>
                   </div>
                 </div>
-              ))}
-
-              {/* Limites do plano */}
-              {(sub.max_members != null || sub.max_criativos != null) && (
-                <div
-                  className="flex gap-3 px-4 py-3 rounded-xl"
-                  style={{ backgroundColor: '#1a2022' }}
-                >
-                  {sub.max_members != null && (
-                    <div className="flex-1 text-center">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Membros</p>
-                      <p className="text-xl font-black text-foreground mt-1">{sub.max_members}</p>
-                    </div>
-                  )}
-                  {sub.max_criativos != null && (
-                    <div className="flex-1 text-center border-l" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Criativos</p>
-                      <p className="text-xl font-black text-foreground mt-1">{sub.max_criativos}</p>
-                    </div>
-                  )}
-                </div>
               )}
+
+              {/* Card: Organização vinculada */}
+              <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Organizações Vinculadas</p>
+                </div>
+                <div className="px-4 py-3">
+                  <div
+                    className="flex items-center justify-between px-3 py-2.5 rounded-lg"
+                    style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.06)' }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-xs font-semibold text-foreground">{activeOrg.org_name}</span>
+                    </div>
+                    <span
+                      className="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded"
+                      style={{ backgroundColor: 'rgba(0,174,239,0.1)', color: '#00aeef' }}
+                    >
+                      Atual
+                    </span>
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t flex justify-end" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <button
+            onClick={onClose}
+            className="px-5 py-2 rounded-lg text-xs font-bold transition"
+            style={{ backgroundColor: 'rgba(0,174,239,0.1)', color: '#00aeef', border: '1px solid rgba(0,174,239,0.2)' }}
+          >
+            Fechar
+          </button>
         </div>
       </div>
     </div>

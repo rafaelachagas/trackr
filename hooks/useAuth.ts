@@ -19,36 +19,42 @@ export function useAuth() {
   useEffect(() => {
     const supabase = createSupabaseBrowser()
 
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
+    async function loadOrgs(userId: string) {
+      const { data } = await supabase
+        .from('organization_members')
+        .select('org_id, role, organizations(id, name)')
+        .eq('user_id', userId)
 
-      if (user) {
-        const { data } = await supabase
-          .from('organization_members')
-          .select('org_id, role, organizations(id, name)')
-          .eq('user_id', user.id)
+      const memberships: OrgMembership[] = (data ?? []).map((m: any) => ({
+        org_id: m.org_id,
+        org_name: m.organizations?.name ?? '',
+        role: m.role,
+      }))
 
-        const memberships: OrgMembership[] = (data ?? []).map((m: any) => ({
-          org_id: m.org_id,
-          org_name: m.organizations?.name ?? '',
-          role: m.role,
-        }))
+      setOrgs(memberships)
 
-        setOrgs(memberships)
+      const saved = localStorage.getItem('activeOrgId')
+      const found = memberships.find(m => m.org_id === saved) ?? memberships[0] ?? null
+      setActiveOrgState(found)
+    }
 
-        // Restaura a org ativa do localStorage ou usa a primeira
-        const saved = localStorage.getItem('activeOrgId')
-        const found = memberships.find(m => m.org_id === saved) ?? memberships[0] ?? null
-        setActiveOrgState(found)
+    // onAuthStateChange é a fonte de verdade — dispara com INITIAL_SESSION na carga inicial
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = session?.user ?? null
+      setUser(currentUser)
+
+      if (currentUser && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) {
+        await loadOrgs(currentUser.id)
+      }
+
+      if (event === 'SIGNED_OUT') {
+        setOrgs([])
+        setActiveOrgState(null)
       }
 
       setLoading(false)
-    }
+    })
 
-    load()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load())
     return () => subscription.unsubscribe()
   }, [])
 
@@ -58,9 +64,8 @@ export function useAuth() {
   }
 
   async function signOut() {
-    const supabase = createSupabaseBrowser()
-    await supabase.auth.signOut()
-    window.location.href = '/login'
+    await fetch('/api/auth/signout', { method: 'POST' })
+    window.location.replace('/login')
   }
 
   return { user, orgs, activeOrg, setActiveOrg, loading, signOut }
