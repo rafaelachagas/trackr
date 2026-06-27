@@ -32,27 +32,32 @@ export function useAuth() {
       }))
 
       setOrgs(memberships)
-
       const saved = localStorage.getItem('activeOrgId')
       const found = memberships.find(m => m.org_id === saved) ?? memberships[0] ?? null
       setActiveOrgState(found)
     }
 
-    // onAuthStateChange é a fonte de verdade — dispara com INITIAL_SESSION na carga inicial
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-
-      if (currentUser && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) {
-        await loadOrgs(currentUser.id)
+    // Carrega imediatamente com getUser (não depende de evento)
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setUser(user)
+        loadOrgs(user.id).finally(() => setLoading(false))
+      } else {
+        setLoading(false)
       }
+    })
 
+    // Listener só para login/logout explícitos
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user)
+        loadOrgs(session.user.id)
+      }
       if (event === 'SIGNED_OUT') {
+        setUser(null)
         setOrgs([])
         setActiveOrgState(null)
       }
-
-      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
