@@ -1,7 +1,21 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { createSupabaseServer } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+
+async function getActiveOrgId(): Promise<string | null> {
+  const supabase = await createSupabaseServer()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await supabaseAdmin
+    .from('organization_members')
+    .select('org_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .single()
+  return data?.org_id ?? null
+}
 
 export type Criativo = {
   id: string
@@ -54,8 +68,11 @@ export async function listarCriativosAtivos() {
 }
 
 export async function criarCriativo(payload: NovoCriativo) {
+  const org_id = await getActiveOrgId()
+  if (!org_id) return { success: false, error: 'Organização não encontrada. Faça login novamente.' }
   const campaign_name = buildCampaignName(payload.prefixo, payload.tipo_campanha, payload.objetivo, payload.fase)
   const { error } = await supabaseAdmin.from('criativos').insert({
+    org_id,
     nome: payload.nome,
     prefixo: payload.prefixo,
     tipo_campanha: payload.tipo_campanha,
