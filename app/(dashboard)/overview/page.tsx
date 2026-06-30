@@ -8,7 +8,6 @@ import HistoricoCriativos from '@/components/dashboard/HistoricoCriativos'
 import GraficoTipoVendas from '@/components/dashboard/GraficoTipoVendas'
 import { RoasPorCriativo } from '@/types'
 import { FrameworkData } from '@/app/api/framework/route'
-import { DollarSign, Target, TrendingUp, Users } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 
 export default function OverviewPage() {
@@ -54,8 +53,6 @@ export default function OverviewPage() {
         <MetricCard
           titulo="Faturamento Líquido"
           valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          cor="green"
-          icone={<DollarSign className="w-5 h-5 text-slate-300" />}
           tendencia="+0%"
           subtitulo="vs mês anterior"
           tooltip="Faturamento líquido das vendas aprovadas. Fat. Líq. = Venda Aprovada − Taxa do Gateway de Pagamentos − Taxas de Coprodutores e Afiliados"
@@ -63,20 +60,14 @@ export default function OverviewPage() {
         <MetricCard
           titulo="Gasto Meta Ads"
           valor={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          cor="red"
-          icone={<Target className="w-5 h-5 text-slate-300" />}
         />
         <MetricCard
           titulo="ROAS Global"
           valor={`${metrics.roas.toFixed(2)}x`}
-          cor="blue"
-          icone={<TrendingUp className="w-5 h-5 text-slate-300" />}
         />
         <MetricCard
           titulo="Nº de Vendas"
           valor={`${metrics.salesCount}`}
-          cor="default"
-          icone={<Users className="w-5 h-5 text-slate-300" />}
         />
       </div>
 
