@@ -52,12 +52,13 @@ export default function OverviewPage() {
     <div className="relative space-y-6 w-full mx-auto text-foreground">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <MetricCard
-          titulo="Receita Total"
+          titulo="Faturamento Líquido"
           valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
           cor="green"
           icone={<DollarSign className="w-5 h-5 text-slate-300" />}
           tendencia="+0%"
           subtitulo="vs mês anterior"
+          tooltip="Faturamento líquido das vendas aprovadas. Fat. Líq. = Venda Aprovada − Taxa do Gateway de Pagamentos − Taxas de Coprodutores e Afiliados"
         />
         <MetricCard
           titulo="Gasto Meta Ads"
