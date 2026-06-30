@@ -16,8 +16,6 @@ export default function VendasPage() {
   const [aba, setAba] = useState<'visao-geral' | 'ultimas-vendas'>('visao-geral')
   const [instrucaoAberta, setInstrucaoAberta] = useState(false)
 
-  const [hotmartClientId, setHotmartClientId] = useState('')
-  const [hotmartClientSecret, setHotmartClientSecret] = useState('')
   const [hotmartBasic, setHotmartBasic] = useState('')
   const [showSecrets, setShowSecrets] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -40,8 +38,6 @@ export default function VendasPage() {
     ])
 
     configs?.forEach(c => {
-      if (c.chave === 'hotmart_client_id') setHotmartClientId(c.valor || '')
-      if (c.chave === 'hotmart_client_secret') setHotmartClientSecret(c.valor || '')
       if (c.chave === 'hotmart_basic') setHotmartBasic(c.valor || '')
     })
 
@@ -60,8 +56,6 @@ export default function VendasPage() {
     setSaving(true)
     try {
       const updates = [
-        { chave: 'hotmart_client_id', valor: hotmartClientId },
-        { chave: 'hotmart_client_secret', valor: hotmartClientSecret },
         { chave: 'hotmart_basic', valor: hotmartBasic },
       ]
       for (const item of updates) {
@@ -229,26 +223,6 @@ export default function VendasPage() {
                     </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Client ID</label>
-                    <input
-                      type={showSecrets ? 'text' : 'password'}
-                      value={hotmartClientId}
-                      onChange={e => setHotmartClientId(e.target.value)}
-                      className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary transition"
-                      placeholder="786c40e7-..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Client Secret</label>
-                    <input
-                      type={showSecrets ? 'text' : 'password'}
-                      value={hotmartClientSecret}
-                      onChange={e => setHotmartClientSecret(e.target.value)}
-                      className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary transition"
-                      placeholder="dd7e9623-..."
-                    />
-                  </div>
                   <div>
                     <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Basic Token</label>
                     <input
