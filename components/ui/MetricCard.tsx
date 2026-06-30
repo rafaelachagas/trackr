@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react'
+import { useState } from 'react'
 import { Info } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 
@@ -6,13 +6,12 @@ interface Props {
   titulo: string
   valor: string
   subtitulo?: string
-  cor?: 'default' | 'green' | 'red' | 'blue'
-  icone?: ReactNode
   tendencia?: string
   tooltip?: string
+  verde?: boolean
 }
 
-export default function MetricCard({ titulo, valor, subtitulo, tendencia, tooltip }: Props) {
+export default function MetricCard({ titulo, valor, subtitulo, tendencia, tooltip, verde }: Props) {
   const { isPrivate } = useDashboard()
   const [showTooltip, setShowTooltip] = useState(false)
 
@@ -31,7 +30,7 @@ export default function MetricCard({ titulo, valor, subtitulo, tendencia, toolti
           </div>
         )}
       </div>
-      <h3 className={`text-2xl font-black tracking-tighter text-white ${isPrivate ? 'blur-md select-none opacity-50' : ''}`}>
+      <h3 className={`text-2xl font-black tracking-tighter ${verde ? 'text-emerald-400' : 'text-white'} ${isPrivate ? 'blur-md select-none opacity-50' : ''}`}>
         {isPrivate ? '••••••' : valor}
       </h3>
       {(tendencia || subtitulo) && (

@@ -53,21 +53,23 @@ export default function OverviewPage() {
         <MetricCard
           titulo="Faturamento Líquido"
           valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          tendencia="+0%"
-          subtitulo="vs mês anterior"
           tooltip="Faturamento líquido das vendas aprovadas. Fat. Líq. = Venda Aprovada − Taxa do Gateway de Pagamentos − Taxas de Coprodutores e Afiliados"
         />
         <MetricCard
-          titulo="Gasto Meta Ads"
+          titulo="Gastos com anúncios"
           valor={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
         />
         <MetricCard
-          titulo="ROAS Global"
-          valor={`${metrics.roas.toFixed(2)}x`}
+          titulo="ROAS"
+          valor={`${metrics.roas.toFixed(2)}`}
+          verde
+          tooltip="Retorno sobre o investimento em anúncios. ROAS = Faturamento Bruto / Gastos com anúncios"
         />
         <MetricCard
-          titulo="Nº de Vendas"
-          valor={`${metrics.salesCount}`}
+          titulo="Lucro"
+          valor={`R$ ${(metrics.revenue - metrics.spend).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          verde
+          tooltip="Lucro calculado. Lucro = Faturamento Líquido − Gastos com anúncios − Despesas adicionais"
         />
       </div>
 
