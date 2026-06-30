@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, RefreshCw, Settings2, Eye, EyeOff, Link2, LogOut } from 'lucide-react'
+import { Save, RefreshCw, Settings2, Eye, EyeOff, Link2, LogOut, CheckCircle2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AcaoOtimizacao } from '@/types'
 
