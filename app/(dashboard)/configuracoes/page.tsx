@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, RefreshCw, CheckCircle2, Settings2, Eye, EyeOff, Link2, LogOut } from 'lucide-react'
+import { Save, RefreshCw, Settings2, Eye, EyeOff, Link2, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AcaoOtimizacao } from '@/types'
 
@@ -45,17 +45,12 @@ export default function ConfiguracoesPage() {
   const [saving, setSaving] = useState(false)
   const [plataformaSelecionada, setPlataformaSelecionada] = useState<Plataforma>('hotmart')
 
-  const [hotmartClientId, setHotmartClientId] = useState('')
-  const [hotmartClientSecret, setHotmartClientSecret] = useState('')
-  const [hotmartBasic, setHotmartBasic] = useState('')
   const [metaAccessToken, setMetaAccessToken] = useState('')
   const [adAccountId, setAdAccountId] = useState('')
   const [roasMinimo, setRoasMinimo] = useState('1.0')
   const [syncing, setSyncing] = useState(false)
-  const [syncingHotmart, setSyncingHotmart] = useState(false)
   const [diasSync, setDiasSync] = useState('7')
   const [showToken, setShowToken] = useState(false)
-  const [showHotmartSecrets, setShowHotmartSecrets] = useState(false)
   const [metaConectando, setMetaConectando] = useState(false)
   const [metaContas, setMetaContas] = useState<{ id: string; name: string }[]>([])
   const [produtosFront, setProdutosFront] = useState('')
@@ -72,9 +67,6 @@ export default function ConfiguracoesPage() {
       const { data: configs } = await supabase.from('configuracoes').select('*')
       if (configs) {
         configs.forEach(c => {
-          if (c.chave === 'hotmart_client_id') setHotmartClientId(c.valor || '')
-          if (c.chave === 'hotmart_client_secret') setHotmartClientSecret(c.valor || '')
-          if (c.chave === 'hotmart_basic') setHotmartBasic(c.valor || '')
           if (c.chave === 'meta_access_token') setMetaAccessToken(c.valor || '')
           if (c.chave === 'meta_ad_account_id') setAdAccountId(c.valor || '')
           if (c.chave === 'roas_minimo') setRoasMinimo(c.valor || '1.0')
@@ -102,9 +94,6 @@ export default function ConfiguracoesPage() {
     setSaving(true)
     try {
       const updates = [
-        { chave: 'hotmart_client_id', valor: hotmartClientId },
-        { chave: 'hotmart_client_secret', valor: hotmartClientSecret },
-        { chave: 'hotmart_basic', valor: hotmartBasic },
         { chave: 'meta_access_token', valor: metaAccessToken },
         { chave: 'meta_ad_account_id', valor: adAccountId },
         { chave: 'roas_minimo', valor: roasMinimo },
@@ -125,31 +114,6 @@ export default function ConfiguracoesPage() {
       alert('Erro ao salvar =/')
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function sincronizarHotmart() {
-    setSyncingHotmart(true)
-    try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 55000)
-      let res: Response
-      try {
-        res = await fetch('/api/hotmart/sync', { method: 'POST', signal: controller.signal })
-      } finally {
-        clearTimeout(timer)
-      }
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Erro desconhecido')
-      alert(`Sincronização concluída! ${json.total_registros} vendas importadas.`)
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
-        alert('Timeout: a sincronização demorou mais de 55 segundos. Verifique o terminal do servidor para mais detalhes.')
-      } else {
-        alert(`Erro na sincronização: ${e.message}`)
-      }
-    } finally {
-      setSyncingHotmart(false)
     }
   }
 
@@ -246,83 +210,6 @@ export default function ConfiguracoesPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* HOTMART */}
-        <div className="bg-[#131b2f] border border-slate-800 rounded-2xl p-6 shadow-lg">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center border border-orange-500/30">
-              <span className="font-bold text-orange-500 text-lg">H</span>
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-white">Hotmart</h2>
-              <p className="text-xs text-slate-400">Recepção de vendas e comissões</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="border-t border-slate-700/50 pt-4 first:border-0 first:pt-0">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">API Hotmart (Sincronização de Vendas)</span>
-                <button
-                  type="button"
-                  onClick={() => setShowHotmartSecrets(v => !v)}
-                  className="text-slate-500 hover:text-slate-300 transition"
-                >
-                  {showHotmartSecrets ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Client ID</label>
-                  <input
-                    type={showHotmartSecrets ? 'text' : 'password'}
-                    value={hotmartClientId}
-                    onChange={e => setHotmartClientId(e.target.value)}
-                    className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition"
-                    placeholder="786c40e7-..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Client Secret</label>
-                  <input
-                    type={showHotmartSecrets ? 'text' : 'password'}
-                    value={hotmartClientSecret}
-                    onChange={e => setHotmartClientSecret(e.target.value)}
-                    className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition"
-                    placeholder="dd7e9623-..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Basic Token</label>
-                  <input
-                    type={showHotmartSecrets ? 'text' : 'password'}
-                    value={hotmartBasic}
-                    onChange={e => setHotmartBasic(e.target.value)}
-                    className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono"
-                    placeholder="Nzg2YzQw..."
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">Gerado pela Hotmart ao criar a credencial.</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-slate-800/30 border border-slate-800 rounded-xl">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className={`w-4 h-4 ${hotmartBasic ? 'text-emerald-500' : 'text-slate-600'}`} />
-                <span className="text-sm font-medium text-slate-300">{hotmartBasic ? 'API configurada' : 'API não configurada'}</span>
-              </div>
-              <button
-                onClick={sincronizarHotmart}
-                disabled={syncingHotmart || !hotmartBasic}
-                className="flex items-center gap-2 text-xs font-semibold text-orange-400 hover:text-orange-300 transition px-3 py-1.5 bg-orange-500/10 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${syncingHotmart ? 'animate-spin' : ''}`} />
-                {syncingHotmart ? 'Sincronizando...' : 'Sincronizar Vendas'}
-              </button>
-            </div>
-
-          </div>
-        </div>
 
         {/* META ADS */}
         <div className="bg-[#131b2f] border border-slate-800 rounded-2xl p-6 shadow-lg">
