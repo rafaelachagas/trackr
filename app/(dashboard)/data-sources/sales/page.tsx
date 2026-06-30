@@ -31,9 +31,12 @@ export default function VendasPage() {
   }, [])
 
   async function carregarDados() {
-    const [{ data: configs }, { data: vendas30d }, { data: vendas }] = await Promise.all([
+    const inicio30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+    const [{ data: configs }, { count: countVendas }, { data: dadosReceita }, { data: vendas }] = await Promise.all([
       supabase.from('configuracoes').select('*'),
-      supabase.from('vendas').select('valor, buyer_email').eq('status', 'approved').gte('data', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+      supabase.from('vendas').select('*', { count: 'exact', head: true }).eq('status', 'approved').gte('data', inicio30d),
+      supabase.from('vendas').select('valor, buyer_email').eq('status', 'approved').gte('data', inicio30d).limit(10000),
       supabase.from('vendas').select('*').eq('status', 'approved').order('data', { ascending: false }).limit(50),
     ])
 
@@ -41,12 +44,13 @@ export default function VendasPage() {
       if (c.chave === 'hotmart_basic') setHotmartBasic(c.valor || '')
     })
 
-    if (vendas30d) {
-      setTotalEventos(vendas30d.length)
-      setReceitaTotal(vendas30d.reduce((acc, v) => acc + Number(v.valor), 0))
-      const emails = new Set(vendas30d.map((v: any) => v.buyer_email).filter(Boolean))
+    setTotalVendas(countVendas ?? 0)
+    setTotalEventos(countVendas ?? 0)
+
+    if (dadosReceita) {
+      setReceitaTotal(dadosReceita.reduce((acc, v) => acc + Number(v.valor), 0))
+      const emails = new Set(dadosReceita.map((v: any) => v.buyer_email).filter(Boolean))
       setTotalClientes(emails.size)
-      setTotalVendas(vendas30d.length)
     }
 
     if (vendas) setUltimasVendas(vendas)
@@ -55,16 +59,10 @@ export default function VendasPage() {
   async function salvar() {
     setSaving(true)
     try {
-      const updates = [
-        { chave: 'hotmart_basic', valor: hotmartBasic },
-      ]
-      for (const item of updates) {
-        if (!item.valor) continue
-        await supabase.from('configuracoes').upsert(
-          { chave: item.chave, valor: item.valor, updated_at: new Date().toISOString() },
-          { onConflict: 'chave' }
-        )
-      }
+      await supabase.from('configuracoes').upsert(
+        { chave: 'hotmart_basic', valor: hotmartBasic, updated_at: new Date().toISOString() },
+        { onConflict: 'chave' }
+      )
       alert('Credenciais salvas!')
     } catch {
       alert('Erro ao salvar.')
@@ -86,11 +84,11 @@ export default function VendasPage() {
       }
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido')
-      alert(`Sincronizacao concluida! ${json.total_registros} vendas importadas.`)
+      alert(`Sincronização concluída! ${json.total_registros} vendas importadas.`)
       carregarDados()
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        alert('Timeout: a sincronizacao demorou mais de 55 segundos.')
+        alert('Timeout: a sincronização demorou mais de 55 segundos.')
       } else {
         alert(`Erro: ${e.message}`)
       }
@@ -104,7 +102,6 @@ export default function VendasPage() {
   return (
     <div className="max-w-5xl mx-auto text-foreground pb-12 mt-10">
 
-      {/* Cabecalho */}
       <div className="flex items-start justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Vendas</h1>
@@ -126,7 +123,6 @@ export default function VendasPage() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-6 border-b border-border mb-6">
         {(['visao-geral', 'ultimas-vendas'] as const).map(t => (
           <button
@@ -136,19 +132,18 @@ export default function VendasPage() {
               aba === t ? 'border-primary text-white' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t === 'visao-geral' ? 'Visao Geral' : 'Ultimas vendas'}
+            {t === 'visao-geral' ? 'Visão Geral' : 'Últimas vendas'}
           </button>
         ))}
       </div>
 
       {aba === 'visao-geral' && (
         <>
-          {/* Stats */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             {[
               { label: 'RECEITA TOTAL', value: `R$ ${receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: '💰' },
-              { label: 'TOTAL DE CLIENTES', value: `${totalClientes}`, icon: '👥' },
-              { label: 'TOTAL DE VENDAS', value: `${totalVendas}`, icon: '🛒' },
+              { label: 'TOTAL DE CLIENTES', value: `${totalClientes.toLocaleString('pt-BR')}`, icon: '👥' },
+              { label: 'TOTAL DE VENDAS', value: `${totalVendas.toLocaleString('pt-BR')}`, icon: '🛒' },
             ].map(s => (
               <div key={s.label} className="bg-card border border-border rounded-2xl p-5">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">{s.label}</p>
@@ -162,38 +157,35 @@ export default function VendasPage() {
             ))}
           </div>
 
-          {/* Integracoes */}
           <div className="bg-card border border-border rounded-2xl p-6">
-            <h2 className="text-base font-bold text-white mb-1">Integracoes</h2>
-            <p className="text-xs text-muted-foreground mb-5">Gerencie suas integracoes com gateways de pagamento</p>
+            <h2 className="text-base font-bold text-white mb-1">Integrações</h2>
+            <p className="text-xs text-muted-foreground mb-5">Gerencie suas integrações com gateways de pagamento</p>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* Card Hotmart */}
               <div className="bg-muted/30 border border-border rounded-xl p-5 flex flex-col gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-muted border border-border flex items-center justify-center">
                     {hotmartIcon}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-white">Integracao Hotmart</p>
+                    <p className="text-sm font-semibold text-white">Integração Hotmart</p>
                     {conectada ? (
                       <span className="text-xs text-emerald-400">Conectada</span>
                     ) : (
-                      <span className="text-xs text-amber-400">Nao configurada</span>
+                      <span className="text-xs text-amber-400">Não configurada</span>
                     )}
                   </div>
                 </div>
 
                 <div className="text-xs text-muted-foreground">
-                  <span className="text-foreground font-medium">{totalEventos}</span> eventos recebidos (ultimos 30 dias)
+                  <span className="text-foreground font-medium">{totalEventos.toLocaleString('pt-BR')}</span> eventos recebidos (últimos 30 dias)
                 </div>
 
-                {/* Toggle instrucoes de instalacao */}
                 <button
                   onClick={() => setInstrucaoAberta(!instrucaoAberta)}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-white transition pt-2 border-t border-border"
                 >
-                  Ver instrucoes de instalacao
+                  Ver instruções de instalação
                   {instrucaoAberta ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
 
@@ -202,7 +194,7 @@ export default function VendasPage() {
                     <p className="font-semibold text-foreground">Como integrar com Hotmart:</p>
                     <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                       <li>Acesse sua conta no Hotmart</li>
-                      <li>Va em <strong className="text-foreground">Ferramentas Webhooks</strong></li>
+                      <li>Vá em <strong className="text-foreground">Ferramentas → Webhooks</strong></li>
                       <li>Adicione a URL abaixo como endpoint</li>
                       <li>Selecione os eventos de compra</li>
                     </ol>
@@ -214,7 +206,6 @@ export default function VendasPage() {
                   </div>
                 )}
 
-                {/* Formulario de credenciais */}
                 <div className="border-t border-border pt-4 space-y-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">API Hotmart</span>
@@ -238,7 +229,7 @@ export default function VendasPage() {
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className={`w-4 h-4 ${conectada ? 'text-emerald-500' : 'text-muted-foreground/40'}`} />
-                      <span className="text-xs text-muted-foreground">{conectada ? 'API configurada' : 'API nao configurada'}</span>
+                      <span className="text-xs text-muted-foreground">{conectada ? 'API configurada' : 'API não configurada'}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -262,7 +253,6 @@ export default function VendasPage() {
                 </div>
               </div>
 
-              {/* Card adicionar */}
               <button
                 disabled
                 className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 border-dashed border-border/60 text-muted-foreground/50 cursor-not-allowed min-h-[160px]"
@@ -270,7 +260,7 @@ export default function VendasPage() {
                 <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center">
                   <Plus className="w-5 h-5" />
                 </div>
-                <span className="text-sm font-medium">Adicionar Integracao</span>
+                <span className="text-sm font-medium">Adicionar Integração</span>
               </button>
             </div>
           </div>
@@ -282,7 +272,7 @@ export default function VendasPage() {
           {ultimasVendas.length === 0 ? (
             <div className="p-10 text-center">
               <p className="text-muted-foreground text-sm">Nenhuma venda registrada ainda.</p>
-              <p className="text-muted-foreground/50 text-xs mt-1">Configure a integracao Hotmart para comecar a receber dados.</p>
+              <p className="text-muted-foreground/50 text-xs mt-1">Configure a integração Hotmart para começar a receber dados.</p>
             </div>
           ) : (
             <table className="w-full text-sm">
