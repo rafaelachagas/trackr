@@ -25,7 +25,7 @@ import { useDashboard } from '@/context/DashboardContext'
 
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
-  { href: '/vendas', label: 'Sales', icon: ShoppingCart },
+  { href: '/sales', label: 'Sales', icon: ShoppingCart },
   { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
   { href: '/framework', label: 'Framework', icon: TrendingUp },
   { href: '/criativos', label: 'Criativos', icon: Film },

@@ -13,7 +13,7 @@ const ModalAssinatura = dynamic(() => import('@/components/org/ModalAssinatura')
 
 export default function Topbar() {
   const pathname = usePathname()
-  const isOverview = pathname === '/overview' || pathname === '/' || pathname === '/vendas'
+  const isOverview = pathname === '/overview' || pathname === '/' || pathname === '/sales'
   const { theme, setTheme, isPrivate, setIsPrivate } = useDashboard()
   const { user, orgs, activeOrg, setActiveOrg, signOut } = useAuth()
 

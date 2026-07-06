@@ -50,26 +50,33 @@ export async function getVendasStats(
   produto?: string
 ) {
   try {
-    let query = supabaseAdmin
-      .from('vendas')
-      .select('valor, valor_liquido', { count: 'exact' })
-      .eq('status', 'approved')
-      .like('transaction_id', 'manual_%')
-      .gte('data', startDate)
-      .lte('data', endDate)
+    // Vendas REAIS aprovadas (exclui lançamentos manuais). Pagina para somar a
+    // receita sem o corte de 1000 linhas do PostgREST.
+    let approvedCount = 0
+    let totalRevenue = 0
+    for (let offset = 0; ; offset += 1000) {
+      let query = supabaseAdmin
+        .from('vendas')
+        .select('valor, valor_liquido', { count: 'exact' })
+        .eq('status', 'approved')
+        .not('transaction_id', 'like', 'manual_%')
+        .gte('data', startDate)
+        .lte('data', endDate)
+        .range(offset, offset + 999)
 
-    if (produto && produto !== 'Qualquer') {
-      query = query.ilike('produto', `%${produto}%`)
+      if (produto && produto !== 'Qualquer') {
+        query = query.ilike('produto', `%${produto}%`)
+      }
+
+      const { data, error, count } = await query
+      if (error) return { success: false, error: error.message }
+      if (count != null) approvedCount = count
+      const rows = data ?? []
+      totalRevenue += rows.reduce((acc, v) => acc + (v.valor_liquido ?? v.valor ?? 0), 0)
+      if (rows.length < 1000) break
     }
 
-    const { data, error, count } = await query
-    if (error) return { success: false, error: error.message }
-
-    const totalRevenue = (data ?? []).reduce(
-      (acc, v) => acc + (v.valor_liquido ?? v.valor ?? 0),
-      0
-    )
-    return { success: true, approvedCount: count ?? 0, totalRevenue }
+    return { success: true, approvedCount, totalRevenue }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
@@ -84,10 +91,11 @@ export async function getVendas(
   pageSize = 50
 ) {
   try {
+    // Histórico de transações REAIS da Hotmart (exclui lançamentos manuais).
     let query = supabaseAdmin
       .from('vendas')
       .select('*', { count: 'exact' })
-      .like('transaction_id', 'manual_%')
+      .not('transaction_id', 'like', 'manual_%')
       .gte('data', startDate)
       .lte('data', endDate)
       .order('data', { ascending: false })
