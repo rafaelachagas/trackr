@@ -143,7 +143,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       result.vendas?.forEach((v: any) => {
         const d = format(new Date(v.data), 'dd/MM');
         if (!days[d]) days[d] = { name: d, receita: 0, gasto: 0 };
-        days[d].receita += Number(v.valor);
+        days[d].receita += Number(v.valor_liquido ?? v.valor);
       });
       result.gastos?.forEach((g: any) => {
         const d = format(new Date(g.data), 'dd/MM');
