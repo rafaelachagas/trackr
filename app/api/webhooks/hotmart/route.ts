@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { extrairCriativo } from '@/lib/utils'
+import { extrairCriativo, extrairFase, extrairCampanha } from '@/lib/utils'
 import { HotmartWebhookPayload } from '@/types'
 
 // Eventos Hotmart que processamos
@@ -54,6 +54,21 @@ export async function POST(request: NextRequest) {
     }
     const status = statusMap[event] ?? 'pending'
 
+    // 3.1. Resolver organização (single-tenant: usa a org existente).
+    // O webhook é público (sem sessão de usuário), então não dá para derivar do login.
+    // TODO: se virar multi-tenant, associar a org à credencial Hotmart (ex: configuracoes.org_id).
+    const { data: org } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single()
+    const orgId = org?.id
+    if (!orgId) {
+      console.error('[Hotmart] Nenhuma organização encontrada para associar a venda')
+      return NextResponse.json({ error: 'Organização não encontrada' }, { status: 500 })
+    }
+
     // 4. Verificar se é front ou upsell
     const { data: mapeamentos } = await supabaseAdmin
       .from('produtos_mapeamento')
@@ -76,29 +91,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 5. Extrair SCK e criativo
-    const sck = purchase.sckPaymentLink ?? null
+    // 5. Extrair SCK e criativo (payload 2.0.0: purchase.tracking.source_sck)
+    const sck = purchase.tracking?.source_sck ?? purchase.sckPaymentLink ?? null
     const criativo = extrairCriativo(sck)
 
-    // 6. Calcular valor
+    // 6. Calcular valor (bruto) e valor líquido (comissão do produtor = "Receita
+    // Líquida" da Hotmart: preço − taxa Hotmart − comissão coprodutor/afiliado)
     const valorCentavos = Math.round((purchase.original_offer_price?.value ?? purchase.price?.value ?? 0) * 100)
     const valor = valorCentavos / 100
 
+    const comissaoProdutor = (data.commissions ?? []).find((c) => c.source === 'PRODUCER')
+    const valorLiquido = comissaoProdutor
+      ? Number(
+          typeof comissaoProdutor.value === 'object'
+            ? comissaoProdutor.value?.value
+            : comissaoProdutor.value
+        )
+      : null
+
     // 7. Preparar registro
     const novaVenda = {
+      org_id: orgId,
       transaction_id: purchase.transaction,
-      data: new Date(purchase.order_date).toISOString(),
+      data: new Date(purchase.approved_date ?? purchase.order_date).toISOString(),
       valor,
       valor_centavos: valorCentavos,
-      moeda: purchase.original_offer_price?.currency_value ?? 'BRL',
+      valor_liquido: Number.isFinite(valorLiquido as number) ? valorLiquido : null,
+      moeda: purchase.original_offer_price?.currency_value ?? purchase.price?.currency_value ?? 'BRL',
       produto: product.name,
       tipo,
       status,
       buyer_email: buyer?.email ?? null,
       sck,
       criativo,
+      fase: extrairFase(sck),
+      campanha: extrairCampanha(sck),
       vsl: null as string | null, // será preenchido via VTurb
-      raw_payload: payload as unknown as Record<string, unknown>,
     }
 
     // 8. Upsert (atualiza se a transação já existe)

@@ -87,6 +87,18 @@ export async function POST() {
 
     const accessToken = await getAccessToken(basicToken)
 
+    // Resolver organização (single-tenant). Coluna org_id é NOT NULL na tabela vendas.
+    const { data: org } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single()
+    const orgId = org?.id
+    if (!orgId) {
+      return NextResponse.json({ error: 'Organização não encontrada' }, { status: 500 })
+    }
+
     const { data: mapeamentos } = await supabaseAdmin
       .from('produtos_mapeamento')
       .select('*')
@@ -154,6 +166,7 @@ export async function POST() {
         const valorCentavos = Math.round(valorBruto * 100)
 
         batch.push({
+          org_id: orgId,
           transaction_id: purchase.transaction,
           data: new Date(purchase.approved_date ?? purchase.order_date).toISOString(),
           valor: valorCentavos / 100,

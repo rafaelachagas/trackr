@@ -173,15 +173,23 @@ export interface HotmartWebhookPayload {
     purchase: {
       transaction: string
       order_date: number
-      original_offer_price: {
+      approved_date?: number
+      original_offer_price?: {
         value: number
         currency_value: string
       }
       price?: {
         value: number
+        currency_value?: string
       }
       status: string
       sckPaymentLink?: string
+      tracking?: {
+        source_sck?: string
+        source?: string
+        utm_campaign?: string
+        utm_content?: string
+      }
       payment?: {
         installments_number?: number
         type?: string
@@ -197,6 +205,12 @@ export interface HotmartWebhookPayload {
       email: string
       checkout_phone?: string
     }
+    commissions?: Array<{
+      source?: string
+      // No webhook o valor costuma vir como número direto; deixamos flexível.
+      value?: number | { value?: number }
+      currency_value?: string
+    }>
   }
 }
 
