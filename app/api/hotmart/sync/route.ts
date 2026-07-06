@@ -12,6 +12,7 @@ const STATUS_MAP: Record<string, string> = {
   APPROVED: 'approved',
   REFUNDED: 'refunded',
   CHARGEBACK: 'chargeback',
+  PROTESTED: 'reclamada',
   CANCELLED: 'cancelled',
   CANCELED: 'cancelled',
 }
