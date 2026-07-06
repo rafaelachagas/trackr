@@ -13,6 +13,7 @@ const STATUS_MAP: Record<string, string> = {
   REFUNDED: 'refunded',
   CHARGEBACK: 'chargeback',
   PROTESTED: 'reclamada',
+  EXPIRED: 'expired',
   CANCELLED: 'cancelled',
   CANCELED: 'cancelled',
 }

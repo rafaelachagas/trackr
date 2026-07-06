@@ -11,6 +11,7 @@ const EVENTOS_ACEITOS = [
   'PURCHASE_CHARGEBACK',
   'PURCHASE_CANCELED',
   'PURCHASE_PROTEST', // reclamada / disputa
+  'PURCHASE_EXPIRED',
 ]
 
 export async function POST(request: NextRequest) {
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
       PURCHASE_CHARGEBACK: 'chargeback',
       PURCHASE_CANCELED: 'cancelled',
       PURCHASE_PROTEST: 'reclamada',
+      PURCHASE_EXPIRED: 'expired',
     }
     const status = statusMap[event] ?? 'pending'
 

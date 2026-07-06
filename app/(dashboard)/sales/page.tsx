@@ -14,6 +14,7 @@ const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   chargeback: { label: 'Chargeback',  className: 'bg-red-500/10 text-red-400 border-red-500/20' },
   reclamada:  { label: 'Reclamada',   className: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
   cancelled:  { label: 'Cancelado',   className: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' },
+  expired:    { label: 'Expirado',    className: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20' },
   pending:    { label: 'Pendente',    className: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
 }
 
@@ -129,6 +130,7 @@ export default function VendasPage() {
           <option value="chargeback">Chargeback</option>
           <option value="reclamada">Reclamada</option>
           <option value="cancelled">Cancelado</option>
+          <option value="expired">Expirado</option>
           <option value="pending">Pendente</option>
         </select>
       </div>
