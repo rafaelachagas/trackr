@@ -16,6 +16,7 @@ import {
   getProdutos,
 } from '@/app/actions/lancamento'
 import { listarCriativosAtivos } from '@/app/actions/criativos'
+import ImportarLote from '@/components/lancamento/ImportarLote'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
@@ -261,13 +262,16 @@ export default function LancamentoPage() {
           <h1 className="text-2xl font-bold text-foreground">Lançamento Manual</h1>
           <p className="text-sm text-muted-foreground mt-1">Registre vendas e gastos por criativo</p>
         </div>
-        <button
-          onClick={abrirModal}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Lançamento
-        </button>
+        <div className="flex items-center gap-2">
+          <ImportarLote onImported={carregar} />
+          <button
+            onClick={abrirModal}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Lançamento
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}

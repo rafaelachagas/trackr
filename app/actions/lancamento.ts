@@ -183,3 +183,106 @@ export async function getProdutos() {
     .order('nome_produto')
   return data?.map(p => p.nome_produto) ?? []
 }
+
+export async function getProdutosMapeamento() {
+  const { data } = await supabaseAdmin
+    .from('produtos_mapeamento')
+    .select('nome_produto, tipo')
+    .order('tipo', { ascending: false }) // 'front' antes de 'upsell'
+  return data ?? []
+}
+
+type ItemImport = {
+  criativo: string
+  campanha?: string | null
+  vendaFront?: number
+  vendaUpsell?: number
+  gasto?: number
+}
+
+// Importa um lote inteiro de lançamentos de uma vez (mesma data para todos).
+// Reaproveita as mesmas travas de duplicata do lançamento manual.
+export async function importarLancamentosEmLote(payload: {
+  data: string
+  produtoFront: string
+  produtoUpsell: string
+  itens: ItemImport[]
+}) {
+  const orgId = await getActiveOrgId()
+  if (!orgId) return { success: false, error: 'Organização não encontrada.', resumo: null }
+
+  const resumo = {
+    vendasInseridas: 0,
+    gastosInseridos: 0,
+    ignorados: 0, // duplicados ou linhas sem criativo
+    erros: [] as string[],
+  }
+  let seq = 0
+
+  async function lancarVenda(criativo: string, produto: string, valor?: number) {
+    if (!valor || valor <= 0) return
+    const { data: existente } = await supabaseAdmin
+      .from('vendas')
+      .select('id')
+      .like('transaction_id', 'manual_%')
+      .eq('criativo', criativo)
+      .eq('produto', produto)
+      .gte('data', `${payload.data}T00:00:00`)
+      .lte('data', `${payload.data}T23:59:59`)
+      .limit(1)
+      .maybeSingle()
+    if (existente) { resumo.ignorados++; return }
+
+    const { error } = await supabaseAdmin.from('vendas').insert({
+      data: `${payload.data}T12:00:00`,
+      criativo,
+      produto,
+      valor,
+      valor_liquido: valor,
+      status: 'approved',
+      tipo: 'front',
+      transaction_id: `manual_${Date.now()}_${seq++}`,
+      org_id: orgId,
+    })
+    if (error) resumo.erros.push(`${criativo} / ${produto}: ${error.message}`)
+    else resumo.vendasInseridas++
+  }
+
+  for (const item of payload.itens) {
+    const criativo = item.criativo?.trim()
+    if (!criativo) { resumo.ignorados++; continue }
+
+    await lancarVenda(criativo, payload.produtoFront, item.vendaFront)
+    await lancarVenda(criativo, payload.produtoUpsell, item.vendaUpsell)
+
+    if (item.gasto && item.gasto > 0) {
+      const { data: existente } = await supabaseAdmin
+        .from('gastos')
+        .select('id')
+        .is('ad_id', null)
+        .eq('criativo', criativo)
+        .eq('data', payload.data)
+        .limit(1)
+        .maybeSingle()
+      if (existente) {
+        resumo.ignorados++
+      } else {
+        const { error } = await supabaseAdmin.from('gastos').insert({
+          data: payload.data,
+          criativo,
+          ad_name: `${criativo}_manual_${Date.now()}_${seq++}`,
+          campaign_name: item.campanha ?? null,
+          valor_gasto: item.gasto,
+          impressions: 0,
+          clicks: 0,
+          org_id: orgId,
+        })
+        if (error) resumo.erros.push(`${criativo} gasto: ${error.message}`)
+        else resumo.gastosInseridos++
+      }
+    }
+  }
+
+  revalidatePath('/lancamento')
+  return { success: resumo.erros.length === 0, resumo }
+}

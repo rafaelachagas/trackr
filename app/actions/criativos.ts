@@ -67,6 +67,17 @@ export async function listarCriativosAtivos() {
   return data ?? []
 }
 
+// Todos os criativos (ativos + pausados) — usado pela importação em massa,
+// já que um lote pode conter gasto/venda histórico de criativo já pausado.
+export async function listarCriativosParaImport() {
+  const { data, error } = await supabaseAdmin
+    .from('criativos')
+    .select('nome, campaign_name, status')
+    .order('nome')
+  if (error) return []
+  return data ?? []
+}
+
 export async function criarCriativo(payload: NovoCriativo) {
   const org_id = await getActiveOrgId()
   if (!org_id) return { success: false, error: 'Organização não encontrada. Faça login novamente.' }
