@@ -170,7 +170,8 @@ export async function POST() {
         batch.push({
           org_id: orgId,
           transaction_id: purchase.transaction,
-          data: new Date(purchase.approved_date ?? purchase.order_date).toISOString(),
+          // Data da COMPRA (order_date) — é como a Hotmart agrupa o faturamento diário.
+          data: new Date(purchase.order_date).toISOString(),
           valor: valorCentavos / 100,
           valor_centavos: valorCentavos,
           moeda: purchase.original_offer_price?.currency_value ?? 'BRL',

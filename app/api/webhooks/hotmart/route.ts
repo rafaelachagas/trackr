@@ -117,7 +117,8 @@ export async function POST(request: NextRequest) {
     const novaVenda = {
       org_id: orgId,
       transaction_id: purchase.transaction,
-      data: new Date(purchase.approved_date ?? purchase.order_date).toISOString(),
+      // Data da COMPRA (order_date) — é como a Hotmart agrupa o faturamento diário.
+      data: new Date(purchase.order_date).toISOString(),
       valor,
       valor_centavos: valorCentavos,
       valor_liquido: Number.isFinite(valorLiquido as number) ? valorLiquido : null,
