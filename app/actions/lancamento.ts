@@ -104,10 +104,17 @@ export async function adicionarGasto(payload: {
   return { success: true }
 }
 
-export async function editarVenda(id: string, payload: { valor: number; produto: string; data: string }) {
+export async function editarVenda(id: string, payload: { valor: number; produto: string; data: string; criativo?: string }) {
+  const update: Record<string, unknown> = {
+    valor: payload.valor,
+    valor_liquido: payload.valor,
+    produto: payload.produto,
+    data: `${payload.data}T12:00:00`,
+  }
+  if (payload.criativo !== undefined) update.criativo = payload.criativo
   const { error } = await supabaseAdmin
     .from('vendas')
-    .update({ valor: payload.valor, valor_liquido: payload.valor, produto: payload.produto, data: `${payload.data}T12:00:00` })
+    .update(update)
     .eq('id', id)
   if (error) return { success: false, error: error.message }
   revalidatePath('/lancamento')

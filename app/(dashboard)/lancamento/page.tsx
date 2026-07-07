@@ -15,7 +15,7 @@ import {
   editarGasto,
   getProdutos,
 } from '@/app/actions/lancamento'
-import { listarCriativosAtivos } from '@/app/actions/criativos'
+import { listarCriativosAtivos, listarCriativosParaImport } from '@/app/actions/criativos'
 import ImportarLote from '@/components/lancamento/ImportarLote'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
@@ -33,12 +33,13 @@ type ModalLancamento = {
   valorGasto: string
 }
 
-type EditVendaState = { id: string; data: string; produto: string; valor: string } | null
+type EditVendaState = { id: string; data: string; produto: string; valor: string; criativo: string } | null
 type EditGastoState = { id: string; data: string; valor_gasto: string } | null
 
 export default function LancamentoPage() {
   const [produtos, setProdutos] = useState<string[]>([])
   const [criativosAtivos, setCriativosAtivos] = useState<{ nome: string; campaign_name: string; fase: string | null }[]>([])
+  const [criativosTodos, setCriativosTodos] = useState<{ nome: string }[]>([])
   const [vendasList, setVendasList] = useState<any[]>([])
   const [gastosList, setGastosList] = useState<any[]>([])
   const [vendasPage, setVendasPage] = useState(0)
@@ -73,14 +74,16 @@ export default function LancamentoPage() {
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
-    const [prods, vendas, gastos, criativos] = await Promise.all([
+    const [prods, vendas, gastos, criativos, todos] = await Promise.all([
       getProdutos(),
       listarVendasManuais(0),
       listarGastosManuais(0),
       listarCriativosAtivos(),
+      listarCriativosParaImport(),
     ])
     setProdutos(prods)
     setCriativosAtivos(criativos)
+    setCriativosTodos(todos)
     setVendasList(vendas.data)
     setGastosList(gastos.data)
     setVendasPage(0)
@@ -202,7 +205,7 @@ export default function LancamentoPage() {
     e.preventDefault()
     if (!editVenda) return
     setSavingEditVenda(true)
-    const res = await editarVenda(editVenda.id, { valor: parseFloat(editVenda.valor), produto: editVenda.produto, data: editVenda.data })
+    const res = await editarVenda(editVenda.id, { valor: parseFloat(editVenda.valor), produto: editVenda.produto, data: editVenda.data, criativo: editVenda.criativo })
     setSavingEditVenda(false)
     if (res.success) { setEditVenda(null); carregar() }
     else alert('Erro: ' + res.error)
@@ -353,7 +356,7 @@ export default function LancamentoPage() {
                                 <td className="px-6 py-3 text-right font-bold text-emerald-400">R$ {Number(v.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-4 py-3 text-right">
                                   <div className="flex items-center justify-end gap-1">
-                                    <button onClick={() => setEditVenda({ id: v.id, data: v.data.substring(0, 10), produto: v.produto, valor: String(v.valor) })} className="text-muted-foreground hover:text-primary transition p-1 rounded">
+                                    <button onClick={() => setEditVenda({ id: v.id, data: v.data.substring(0, 10), produto: v.produto, valor: String(v.valor), criativo: v.criativo ?? '' })} className="text-muted-foreground hover:text-primary transition p-1 rounded">
                                       <Pencil className="w-3.5 h-3.5" />
                                     </button>
                                     <button onClick={async () => { await deletarVenda(v.id); setVendasList(x => x.filter(i => i.id !== v.id)) }} className="text-muted-foreground hover:text-red-400 transition p-1 rounded">
@@ -517,6 +520,15 @@ export default function LancamentoPage() {
               <div>
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data</label>
                 <input type="date" value={editVenda.data} onChange={e => setEditVenda(v => v && ({ ...v, data: e.target.value }))} className={inputClass} required />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Criativo</label>
+                <select value={editVenda.criativo} onChange={e => setEditVenda(v => v && ({ ...v, criativo: e.target.value }))} className={inputClass}>
+                  {editVenda.criativo && !criativosTodos.some(c => c.nome === editVenda.criativo) && (
+                    <option value={editVenda.criativo}>{editVenda.criativo}</option>
+                  )}
+                  {criativosTodos.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+                </select>
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Produto</label>
