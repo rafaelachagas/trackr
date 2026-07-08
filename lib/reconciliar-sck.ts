@@ -37,31 +37,41 @@ export async function reconciliarSck(opts: {
   const endDate = opts.endDate ?? Date.now()
   const maxPages = opts.maxPages ?? 100
 
-  // 1. Coleta transaction -> sck da API
-  const apiSck = new Map<string, string>()
-  let pageToken: string | null = null
-  let pages = 0
-  do {
-    const p = new URLSearchParams({
-      max_results: '100',
-      start_date: String(opts.startDate),
-      end_date: String(endDate),
-    })
-    if (pageToken) p.set('page_token', pageToken)
+  // A API sales/history, sem transaction_status, só devolve vendas aprovadas.
+  // Para reconciliar também canceladas/reembolsos/reclamadas/chargeback é
+  // preciso consultar cada status explicitamente. ''= padrão (aprovadas).
+  const STATUSES = ['', 'CANCELLED', 'REFUNDED', 'PROTESTED', 'CHARGEBACK', 'EXPIRED']
 
-    const r = await fetch(`${SALES_URL}?${p}`, {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    })
-    if (!r.ok) break
-    const j = await r.json()
-    for (const it of j.items ?? []) {
-      const tx = it.purchase?.transaction
-      const sck = it.purchase?.tracking?.source_sck
-      if (tx && sck) apiSck.set(tx, sck)
-    }
-    pageToken = j.page_info?.next_page_token ?? null
-    pages++
-  } while (pageToken && pages < maxPages)
+  // 1. Coleta transaction -> sck da API (todos os status)
+  const apiSck = new Map<string, string>()
+  let pages = 0
+  for (const status of STATUSES) {
+    let pageToken: string | null = null
+    let statusPages = 0
+    do {
+      const p = new URLSearchParams({
+        max_results: '100',
+        start_date: String(opts.startDate),
+        end_date: String(endDate),
+      })
+      if (status) p.set('transaction_status', status)
+      if (pageToken) p.set('page_token', pageToken)
+
+      const r = await fetch(`${SALES_URL}?${p}`, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      })
+      if (!r.ok) break
+      const j = await r.json()
+      for (const it of j.items ?? []) {
+        const tx = it.purchase?.transaction
+        const sck = it.purchase?.tracking?.source_sck
+        if (tx && sck) apiSck.set(tx, sck)
+      }
+      pageToken = j.page_info?.next_page_token ?? null
+      statusPages++
+      pages++
+    } while (pageToken && statusPages < maxPages)
+  }
 
   if (apiSck.size === 0) return { atualizadas: 0, coletadas: 0, pages }
 
