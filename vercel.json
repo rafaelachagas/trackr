@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/hotmart/reconciliar-sck", "schedule": "0 * * * *" }
+  ]
+}
