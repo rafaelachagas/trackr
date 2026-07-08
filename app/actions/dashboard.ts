@@ -31,7 +31,9 @@ export async function getDashboardData(product: string, startDate: string, endDa
       return todas
     }
 
-    let queryGastos = supabaseAdmin.from('gastos').select('valor_gasto, data').is('ad_id', null)
+    // Gasto com anúncios vem da conexão com a Meta (registros com ad_id preenchido).
+    // Os lançamentos manuais (ad_id null) ficam de fora para não duplicar o gasto.
+    let queryGastos = supabaseAdmin.from('gastos').select('valor_gasto, data').not('ad_id', 'is', null)
     if (startDate) queryGastos = queryGastos.gte('data', startDate)
     if (endDate) queryGastos = queryGastos.lte('data', endDate)
 

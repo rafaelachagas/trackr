@@ -181,10 +181,10 @@ export default function FiltrosDashboard() {
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', marginBottom: '16px' }} />
 
       {/* Linha 2: Filtros */}
-      <div className="flex items-end gap-3">
+      <div className="grid grid-cols-2 gap-3 md:flex md:items-end">
 
         {/* Período (especial — tem calendar) */}
-        <div className="flex-1 min-w-0" ref={periodRef}>
+        <div className="col-span-2 md:flex-1 min-w-0" ref={periodRef}>
           <div className="flex items-center gap-1 mb-1.5">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Período de Visualização</span>
             <Info className="w-3 h-3 text-muted-foreground opacity-40 flex-shrink-0" />

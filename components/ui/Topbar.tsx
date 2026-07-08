@@ -42,8 +42,8 @@ export default function Topbar() {
 
   return (
     <>
-      {/* Topbar fina — não sticky, flui com o conteúdo */}
-      <header style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', padding: '20px', margin: '30px 30px 15px 30px', borderRadius: '10px' }}>
+      {/* Topbar fina — não sticky, flui com o conteúdo. Escondida no mobile (MobileNav cobre). */}
+      <header className="hidden md:block" style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', padding: '20px', margin: '30px 30px 15px 30px', borderRadius: '10px' }}>
         <div className="flex items-center justify-between">
 
           {/* Esquerda: título + ações */}
@@ -188,7 +188,10 @@ export default function Topbar() {
 
       {/* Card separado: filtros */}
       {isOverview && (
-        <div style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', padding: '20px', margin: '10px 30px 25px 30px', borderRadius: '10px' }}>
+        <div
+          className="mx-4 md:mx-[30px] mt-3 mb-5 md:mt-2.5 md:mb-[25px] p-4 md:p-5"
+          style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', borderRadius: '10px' }}
+        >
           <FiltrosDashboard />
         </div>
       )}

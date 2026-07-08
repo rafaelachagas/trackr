@@ -23,7 +23,7 @@ export async function reconciliarSck(opts: {
   startDate: number
   endDate?: number
   maxPages?: number
-}): Promise<{ atualizadas: number; coletadas: number; pages: number }> {
+}): Promise<{ atualizadas: number; coletadas: number; pages: number; upsellsVinculados: number }> {
   const { data: cfg } = await supabaseAdmin
     .from('configuracoes')
     .select('valor')
@@ -73,8 +73,6 @@ export async function reconciliarSck(opts: {
     } while (pageToken && statusPages < maxPages)
   }
 
-  if (apiSck.size === 0) return { atualizadas: 0, coletadas: 0, pages }
-
   // 2. Atualiza somente as vendas que estão sem sck
   const txs = [...apiSck.keys()]
   let atualizadas = 0
@@ -107,5 +105,57 @@ export async function reconciliarSck(opts: {
     )
   }
 
-  return { atualizadas, coletadas: apiSck.size, pages }
+  // 3. Upsells sem sck: muitas vezes a pessoa compra o upsell por link de checkout
+  // à parte que não carrega o sck. Se houver um front com o MESMO email na janela
+  // de 48h, herda o sck/criativo do front e marca atribuicao_manual (asterisco na UI).
+  const upsellsVinculados = await vincularUpsellsSemSck(opts.startDate, endDate)
+
+  return { atualizadas, coletadas: apiSck.size, pages, upsellsVinculados }
+}
+
+async function vincularUpsellsSemSck(startDate: number, endDate: number): Promise<number> {
+  const { data: upsells } = await supabaseAdmin
+    .from('vendas')
+    .select('id, buyer_email, data')
+    .eq('tipo', 'upsell')
+    .is('sck', null)
+    .not('buyer_email', 'is', null)
+    .gte('data', new Date(startDate).toISOString())
+    .lte('data', new Date(endDate).toISOString())
+
+  if (!upsells?.length) return 0
+
+  let vinculados = 0
+  for (const up of upsells) {
+    const janela = new Date(new Date(up.data).getTime() - 48 * 60 * 60 * 1000).toISOString()
+    const { data: front } = await supabaseAdmin
+      .from('vendas')
+      .select('id, criativo, fase, campanha, sck, vsl')
+      .eq('buyer_email', up.buyer_email)
+      .eq('tipo', 'front')
+      .not('sck', 'is', null)
+      .gte('data', janela)
+      .lte('data', up.data)
+      .order('data', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (front?.sck) {
+      const { error } = await supabaseAdmin
+        .from('vendas')
+        .update({
+          venda_front_id: front.id,
+          sck: front.sck,
+          criativo: front.criativo,
+          fase: front.fase,
+          campanha: front.campanha,
+          vsl: front.vsl,
+          atribuicao_manual: true,
+        })
+        .eq('id', up.id)
+        .is('sck', null)
+      if (!error) vinculados++
+    }
+  }
+  return vinculados
 }

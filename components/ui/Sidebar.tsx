@@ -25,7 +25,7 @@ import { useDashboard } from '@/context/DashboardContext'
 
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
-  { href: '/sales', label: 'Sales', icon: ShoppingCart },
+  { href: '/sales', label: 'Vendas', icon: ShoppingCart },
   { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
   { href: '/framework', label: 'Framework', icon: TrendingUp },
   { href: '/criativos', label: 'Criativos', icon: Film },
@@ -80,7 +80,7 @@ export default function Sidebar() {
   return (
     <>
       <aside
-        className={`${collapsed ? 'w-[60px]' : 'w-64'} text-foreground flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar transition-all duration-300 z-40`}
+        className={`${collapsed ? 'w-[60px]' : 'w-64'} text-foreground hidden md:flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar transition-all duration-300 z-40`}
         style={{ backgroundColor: '#13181a', borderRight: '1px solid hsla(0,0%,100%,.05)', boxShadow: '4px 0 24px rgba(0,0,0,.4)' }}
       >
         {/* Logo */}
@@ -216,7 +216,7 @@ export default function Sidebar() {
       {/* Toggle button — centralizado na borda direita da sidebar */}
       <button
         onClick={() => setCollapsed(v => !v)}
-        className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
+        className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full hidden md:flex items-center justify-center transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
         style={{ backgroundColor: '#181e21', border: '1px solid hsla(0,0%,100%,.08)', color: '#71777a' }}
         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#00aeef'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,174,239,0.4)' }}
         onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#71777a'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'hsla(0,0%,100%,.08)' }}
@@ -225,7 +225,7 @@ export default function Sidebar() {
       </button>
 
       {/* Spacer */}
-      <div className={`${collapsed ? 'w-[60px]' : 'w-64'} flex-shrink-0 transition-all duration-300`} aria-hidden />
+      <div className={`${collapsed ? 'w-[60px]' : 'w-64'} hidden md:block flex-shrink-0 transition-all duration-300`} aria-hidden />
     </>
   )
 }

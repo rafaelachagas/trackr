@@ -42,6 +42,19 @@ async function sincronizarMeta(request: NextRequest) {
       )
     }
 
+    // Resolver organização (single-tenant). Coluna org_id é NOT NULL em gastos —
+    // sem isso o upsert falha e a tabela fica vazia.
+    const { data: org } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single()
+    const orgId = org?.id
+    if (!orgId) {
+      return NextResponse.json({ error: 'Organização não encontrada' }, { status: 500 })
+    }
+
     // Determinar período (padrão: últimos 7 dias)
     const searchParams = request.nextUrl?.searchParams ?? new URL(request.url).searchParams
     const diasParam = searchParams.get('dias') ?? '7'
@@ -104,7 +117,7 @@ async function sincronizarMeta(request: NextRequest) {
             existente.impressions += parseInt(insight.impressions) || 0
             existente.clicks += parseInt(insight.clicks) || 0
           } else {
-            mapaRegistros.set(chave, buildRegistro(insight))
+            mapaRegistros.set(chave, buildRegistro(insight, orgId))
           }
         }
         const registros = Array.from(mapaRegistros.values())
@@ -147,8 +160,9 @@ async function sincronizarMeta(request: NextRequest) {
   }
 }
 
-function buildRegistro(insight: MetaAdInsight) {
+function buildRegistro(insight: MetaAdInsight, orgId: string) {
   return {
+    org_id: orgId,
     data: insight.date_start,
     campaign_id: insight.campaign_id,
     campaign_name: insight.campaign_name,
