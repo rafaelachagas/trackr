@@ -137,7 +137,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         const vendas = result.vendas ?? []
         const frontCount = vendas.filter((v: any) => v.tipo === 'front').length
         const upsellCount = vendas.filter((v: any) => v.tipo === 'upsell').length
-        setMetrics({ imposto: 0, ...result.metrics, frontCount, upsellCount });
+        setMetrics({ ...result.metrics, frontCount, upsellCount });
       }
 
       // Process chart data (simple example grouping by day)
