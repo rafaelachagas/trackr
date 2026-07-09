@@ -57,6 +57,7 @@ export interface CriativoV2 {
   ad_name: string
   campaign_name: string | null
   fase: string | null
+  chave: string        // código|fase|flags — usado pra listar as vendas (prova real)
   // Headline = janela de 7 DIAS FECHADOS (terminando ONTEM). Hoje fica de fora.
   gasto_7d: number
   receita_7d: number
@@ -207,7 +208,7 @@ export async function GET(request: Request) {
     const diaSP = (iso: string) => format(toZonedTime(new Date(iso), TIMEZONE), 'yyyy-MM-dd')
 
     const linhas: CriativoV2[] = []
-    for (const e of mapa.values()) {
+    for (const [chave, e] of mapa.entries()) {
       const gasto7d = e.gastos.filter(g => g.data >= d7 && g.data <= ontem).reduce((a, g) => a + g.valor, 0)
       const gasto3d = e.gastos.filter(g => g.data >= d3 && g.data <= ontem).reduce((a, g) => a + g.valor, 0)
       const gasto1d = e.gastos.filter(g => g.data === d1).reduce((a, g) => a + g.valor, 0)
@@ -239,6 +240,7 @@ export async function GET(request: Request) {
         ad_name: adNameRep,
         campaign_name: e.campaign_name,
         fase: e.fase ?? detectarFaseCampaign(e.campaign_name),
+        chave,
         gasto_7d: gasto7d,
         receita_7d: receita7d,
         lucro_7d: receita7d - gasto7d,

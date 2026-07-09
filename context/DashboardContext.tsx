@@ -33,6 +33,7 @@ interface DashboardContextType {
   sincronizarTudo: () => Promise<void>;
   lastUpdate: Date;
   isRefreshing: boolean;
+  firstLoadDone: boolean;
   theme: 'light' | 'dark';
   setTheme: (theme: 'light' | 'dark') => void;
   isPrivate: boolean;
@@ -61,6 +62,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [chartData, setChartData] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Só vira true depois do 1º ciclo completo (sync da Meta + refresh) — evita
+  // mostrar os cards com "Gastos R$0" antes do gasto de hoje sincronizar.
+  const [firstLoadDone, setFirstLoadDone] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [isPrivate, setIsPrivate] = useState(false);
 
@@ -177,6 +181,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       console.error('Erro ao sincronizar:', error);
     } finally {
       setIsRefreshing(false);
+      setFirstLoadDone(true);
     }
   };
 
@@ -222,6 +227,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         sincronizarTudo,
         lastUpdate,
         isRefreshing,
+        firstLoadDone,
         theme,
         setTheme,
         isPrivate,

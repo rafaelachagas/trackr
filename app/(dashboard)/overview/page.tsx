@@ -13,7 +13,7 @@ import { FrameworkData } from '@/app/api/framework/route'
 import { useDashboard } from '@/context/DashboardContext'
 
 export default function OverviewPage() {
-  const { metrics, chartData, lastUpdate, dateRange } = useDashboard()
+  const { metrics, chartData, lastUpdate, dateRange, firstLoadDone } = useDashboard()
   const [criativos, setCriativos] = useState<RoasPorCriativo[]>([])
 
   useEffect(() => {
@@ -53,6 +53,16 @@ export default function OverviewPage() {
 
   return (
     <div className="relative space-y-6 w-full mx-auto text-foreground">
+      {!firstLoadDone ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="bg-card border border-border p-5 rounded-[10px] shadow-sm animate-pulse">
+              <div className="h-2.5 w-24 bg-muted rounded mb-4" />
+              <div className="h-7 w-32 bg-muted rounded" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5">
         <MetricCard
           titulo="Faturamento Líquido"
@@ -81,6 +91,7 @@ export default function OverviewPage() {
           tooltip="Imposto sobre gastos em anúncios (Meta). Alíquota configurável em Fontes de dados → Contas de anúncios, aplicada sobre o gasto das contas em BRL — a conta em dólar fica de fora. Não é somado ao card de Gastos."
         />
       </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
