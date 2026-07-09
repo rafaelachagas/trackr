@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { formatarMoeda, corDaAcao, iconeAcao } from '@/lib/utils'
 import { useDashboard } from '@/context/DashboardContext'
 import type { CriativoV2 } from '@/app/api/performance-v2/route'
-import { Zap } from 'lucide-react'
+import { Zap, ExternalLink } from 'lucide-react'
 
 const COR_FASE: Record<string, string> = {
   FASE01: 'bg-blue-500/15 text-blue-400 border border-blue-500/25',
@@ -93,8 +93,20 @@ export default function TabelaCriativosV2() {
             <tbody className="divide-y divide-border">
               {filtrados.map((row) => (
                 <tr key={`${row.criativo}__${row.campaign_name}`} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 font-mono font-semibold text-foreground max-w-[240px] truncate" title={row.ad_name}>
-                    {row.ad_name}
+                  <td className="px-4 py-3 font-mono font-semibold text-foreground max-w-[260px]">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate" title={row.ad_name}>{row.ad_name}</span>
+                      <a
+                        href={`/api/criativos/instagram?codigo=${row.criativo}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-primary/60 hover:text-primary transition shrink-0"
+                        title="Ver post no Instagram (prova real)"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-center">
                     {row.fase ? (
