@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { format } from 'date-fns'
 import { formatarMoeda, corDaAcao, iconeAcao } from '@/lib/utils'
 import { useDashboard } from '@/context/DashboardContext'
 import type { CriativoV2 } from '@/app/api/performance-v2/route'
@@ -28,38 +27,34 @@ function BadgeRoas({ valor }: { valor: number | null }) {
 }
 
 export default function TabelaCriativosV2() {
-  const { isPrivate, dateRange, lastUpdate } = useDashboard()
+  const { isPrivate, lastUpdate } = useDashboard()
   const [dados, setDados] = useState<CriativoV2[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroAcao, setFiltroAcao] = useState('')
 
+  // Sempre em FORMATO FRAMEWORK: 7 dias fechados terminando ontem (hoje fora).
+  // Ignora o filtro de período do topo de propósito — a decisão é sobre dias
+  // completos, não sobre o dia corrente incompleto.
   useEffect(() => {
-    const params = new URLSearchParams()
-    try {
-      // format() usa o fuso LOCAL — toISOString() é UTC e virava o dia seguinte,
-      // puxando 1 dia extra de gasto no fim do período.
-      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', format(dateRange.start, 'yyyy-MM-dd'))
-      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', format(dateRange.end, 'yyyy-MM-dd'))
-    } catch { return }
-
     setLoading(true)
-    fetch(`/api/performance-v2?${params}`)
+    fetch('/api/performance-v2')
       .then(r => r.json())
       .then(({ criativos }: { criativos: CriativoV2[] }) => setDados(criativos ?? []))
       .catch(() => setDados([]))
       .finally(() => setLoading(false))
-  }, [lastUpdate, dateRange])
+  }, [lastUpdate])
 
   const filtrados = dados.filter(row => !filtroAcao || row.acao === filtroAcao)
 
   return (
     <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden text-foreground">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-sm font-semibold text-foreground">Performance por Criativo</h3>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-primary/15 text-primary border border-primary/25">
             <Zap className="w-3 h-3" /> v2 · automático
           </span>
+          <span className="text-[11px] text-muted-foreground">· Framework — últimos 7 dias fechados (até ontem, sem o dia de hoje)</span>
         </div>
         <select
           value={filtroAcao}
@@ -76,7 +71,7 @@ export default function TabelaCriativosV2() {
         </div>
       ) : filtrados.length === 0 ? (
         <div className="p-8 text-center text-muted-foreground">
-          <p>Nenhuma venda por anúncio no período.</p>
+          <p>Sem gasto nem venda por anúncio nos últimos 7 dias fechados.</p>
           <p className="text-sm mt-1">Sincronize os gastos da Meta e aguarde vendas com sck de anúncio.</p>
         </div>
       ) : (
@@ -86,13 +81,12 @@ export default function TabelaCriativosV2() {
               <tr>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Criativo</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fase</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Gasto</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fat. líq.</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Lucro</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">ROAS</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">7d</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">3d</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">1d</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Gasto 7d</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fat. líq. 7d</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Lucro 7d</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">ROAS 7d</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">ROAS 3d</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">ROAS 1d</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ação</th>
               </tr>
             </thead>
@@ -108,16 +102,13 @@ export default function TabelaCriativosV2() {
                     ) : <span className="text-muted-foreground text-xs">—</span>}
                   </td>
                   <td className={`px-4 py-3 text-right font-medium text-rose-500 ${isPrivate ? 'blur-sm select-none' : ''}`}>
-                    {isPrivate ? 'R$ ••••' : formatarMoeda(row.gasto_periodo)}
+                    {isPrivate ? 'R$ ••••' : formatarMoeda(row.gasto_7d)}
                   </td>
                   <td className={`px-4 py-3 text-right font-medium text-emerald-400 ${isPrivate ? 'blur-sm select-none' : ''}`}>
-                    {isPrivate ? 'R$ ••••' : formatarMoeda(row.receita_periodo)}
+                    {isPrivate ? 'R$ ••••' : formatarMoeda(row.receita_7d)}
                   </td>
-                  <td className={`px-4 py-3 text-right font-medium ${row.lucro_periodo >= 0 ? 'text-foreground' : 'text-rose-400'} ${isPrivate ? 'blur-sm select-none' : ''}`}>
-                    {isPrivate ? 'R$ ••••' : formatarMoeda(row.lucro_periodo)}
-                  </td>
-                  <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>
-                    {isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_periodo} />}
+                  <td className={`px-4 py-3 text-right font-medium ${row.lucro_7d >= 0 ? 'text-foreground' : 'text-rose-400'} ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                    {isPrivate ? 'R$ ••••' : formatarMoeda(row.lucro_7d)}
                   </td>
                   <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_7d} />}</td>
                   <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_3d} />}</td>

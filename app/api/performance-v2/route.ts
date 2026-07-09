@@ -57,12 +57,11 @@ export interface CriativoV2 {
   ad_name: string
   campaign_name: string | null
   fase: string | null
-  gasto_periodo: number
-  receita_periodo: number
-  roas_periodo: number | null
-  lucro_periodo: number
-  vendas_periodo: number
+  // Headline = janela de 7 DIAS FECHADOS (terminando ONTEM). Hoje fica de fora.
   gasto_7d: number
+  receita_7d: number
+  lucro_7d: number
+  vendas_7d: number
   gasto_3d: number
   gasto_1d: number
   roas_7d: number | null
@@ -89,14 +88,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const agora = toZonedTime(new Date(), TIMEZONE)
 
+    // FORMATO FRAMEWORK: janelas de DIAS FECHADOS terminando ONTEM. HOJE (dia
+    // incompleto) NUNCA entra — é o dia em que a decisão é tomada. O filtro de
+    // período do topo é ignorado aqui de propósito (real-time fica pra outra visão).
     const hoje = format(agora, 'yyyy-MM-dd')
-    const ontem = format(subDays(agora, 1), 'yyyy-MM-dd')
-    const d7 = format(subDays(agora, 7), 'yyyy-MM-dd')
-    const d3 = format(subDays(agora, 3), 'yyyy-MM-dd')
-    const d1 = ontem
-
-    const dInicio = searchParams.get('d_inicio') ?? d7
-    const dFim = searchParams.get('d_fim') ?? hoje
+    const ontem = format(subDays(agora, 1), 'yyyy-MM-dd')       // fim de todas as janelas
+    const d7 = format(subDays(agora, 7), 'yyyy-MM-dd')          // 7 dias fechados: [d7 .. ontem]
+    const d3 = format(subDays(agora, 3), 'yyyy-MM-dd')          // 3 dias fechados: [d3 .. ontem]
+    const d1 = ontem                                            // 1 dia fechado: ontem
 
     // ROAS mínimo + regras do framework (config compartilhada)
     const { data: configs } = await supabaseAdmin
@@ -113,21 +112,21 @@ export async function GET(request: Request) {
       if (cfgRegras?.valor) { try { regras = JSON.parse(cfgRegras.valor) } catch {} }
     }
 
-    // Janela ampla o suficiente para cobrir período custom + rolling 7d
-    const desde = dInicio < d7 ? dInicio : d7
-    const ate = dFim > hoje ? dFim : hoje
-
     type GastoRow = { criativo: string | null; campaign_name: string | null; ad_name: string | null; valor_gasto: number; data: string }
     type VendaRow = { criativo: string | null; fase: string | null; campanha: string | null; valor: number; valor_liquido: number | null; data: string; tipo: string | null }
 
+    // gastos.data já é DATE em SP (date_start da Meta). vendas.data é timestamptz
+    // (UTC): busco de d7 até o fim de HOJE em UTC e depois bucketo pela DATA de
+    // São Paulo — senão vendas perto da meia-noite caem no dia errado e o ROAS
+    // (principalmente o de 1D) sai furado.
     const [gastos, vendas] = await Promise.all([
       fetchAll<GastoRow>((from, to) =>
         supabaseAdmin
           .from('gastos')
           .select('criativo, campaign_name, ad_name, valor_gasto, data')
           .not('ad_id', 'is', null)
-          .gte('data', desde)
-          .lte('data', ate)
+          .gte('data', d7)
+          .lte('data', ontem)
           .range(from, to)
       ),
       fetchAll<VendaRow>((from, to) =>
@@ -137,8 +136,8 @@ export async function GET(request: Request) {
           .eq('status', 'approved')
           .not('transaction_id', 'like', 'manual_%')
           .not('criativo', 'is', null)
-          .gte('data', `${desde}T00:00:00`)
-          .lte('data', `${ate}T23:59:59`)
+          .gte('data', `${d7}T00:00:00`)
+          .lte('data', `${hoje}T23:59:59`)
           .range(from, to)
       ),
     ])
@@ -178,37 +177,39 @@ export async function GET(request: Request) {
       if (!e.faseSck) e.faseSck = v.fase ?? extrairFase(v.campanha)
     }
 
-    const dia = (iso: string) => iso.substring(0, 10)
+    // DATA da venda no fuso de São Paulo (não a data UTC crua do timestamptz).
+    const diaSP = (iso: string) => format(toZonedTime(new Date(iso), TIMEZONE), 'yyyy-MM-dd')
 
     const linhas: CriativoV2[] = []
     for (const e of mapa.values()) {
-      const gastoPeriodo = e.gastos.filter(g => g.data >= dInicio && g.data <= dFim).reduce((a, g) => a + g.valor, 0)
       const gasto7d = e.gastos.filter(g => g.data >= d7 && g.data <= ontem).reduce((a, g) => a + g.valor, 0)
       const gasto3d = e.gastos.filter(g => g.data >= d3 && g.data <= ontem).reduce((a, g) => a + g.valor, 0)
       const gasto1d = e.gastos.filter(g => g.data === d1).reduce((a, g) => a + g.valor, 0)
 
-      const receitaPeriodo = e.vendas.filter(v => dia(v.data) >= dInicio && dia(v.data) <= dFim).reduce((a, v) => a + v.liquido, 0)
-      const receita7d = e.vendas.filter(v => dia(v.data) >= d7 && dia(v.data) <= ontem).reduce((a, v) => a + v.liquido, 0)
-      const receita3d = e.vendas.filter(v => dia(v.data) >= d3 && dia(v.data) <= ontem).reduce((a, v) => a + v.liquido, 0)
-      const receita1d = e.vendas.filter(v => dia(v.data) === d1).reduce((a, v) => a + v.liquido, 0)
-      const vendasPeriodo = e.vendas.filter(v => dia(v.data) >= dInicio && dia(v.data) <= dFim).length
+      const vend7d = e.vendas.filter(v => { const d = diaSP(v.data); return d >= d7 && d <= ontem })
+      const vend3d = e.vendas.filter(v => { const d = diaSP(v.data); return d >= d3 && d <= ontem })
+      const vend1d = e.vendas.filter(v => diaSP(v.data) === d1)
+
+      const receita7d = vend7d.reduce((a, v) => a + v.liquido, 0)
+      const receita3d = vend3d.reduce((a, v) => a + v.liquido, 0)
+      const receita1d = vend1d.reduce((a, v) => a + v.liquido, 0)
 
       const roas7d = gasto7d > 0 ? calcularRoas(receita7d, gasto7d) : null
       const roas3d = gasto3d > 0 ? calcularRoas(receita3d, gasto3d) : null
       const roas1d = gasto1d > 0 ? calcularRoas(receita1d, gasto1d) : null
-      const roasPeriodo = gastoPeriodo > 0 ? calcularRoas(receitaPeriodo, gastoPeriodo) : null
+
+      // Só entra na tabela quem teve gasto OU venda na janela de 7 dias fechados.
+      if (gasto7d === 0 && vend7d.length === 0) continue
 
       linhas.push({
         criativo: e.criativo,
         ad_name: e.ad_name ?? e.criativo,
         campaign_name: e.campaign_name,
         fase: e.faseSck ?? detectarFaseCampaign(e.campaign_name),
-        gasto_periodo: gastoPeriodo,
-        receita_periodo: receitaPeriodo,
-        roas_periodo: roasPeriodo,
-        lucro_periodo: receitaPeriodo - gastoPeriodo,
-        vendas_periodo: vendasPeriodo,
         gasto_7d: gasto7d,
+        receita_7d: receita7d,
+        lucro_7d: receita7d - gasto7d,
+        vendas_7d: vend7d.length,
         gasto_3d: gasto3d,
         gasto_1d: gasto1d,
         roas_7d: roas7d,
@@ -218,8 +219,8 @@ export async function GET(request: Request) {
       })
     }
 
-    // Ordena por gasto do período (maior primeiro) — foco no que consome verba
-    linhas.sort((a, b) => b.gasto_periodo - a.gasto_periodo)
+    // Ordena por gasto de 7d (maior primeiro) — foco no que consome verba
+    linhas.sort((a, b) => b.gasto_7d - a.gasto_7d)
 
     return NextResponse.json({ criativos: linhas, roasMinimo: ROAS_MINIMO })
   } catch (err) {
