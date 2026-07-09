@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extrairCriativo } from '@/lib/utils'
+import { resolverFatoresGasto } from '@/lib/meta-fatores'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
     const { data: configs, error: configError } = await supabaseAdmin
       .from('configuracoes')
       .select('chave, valor')
-      .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id'])
+      .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id', 'usd_brl_rate', 'meta_imposto_pct'])
 
     if (configError) {
       return NextResponse.json({ error: 'Erro ao buscar configurações', detail: configError.message }, { status: 500 })
@@ -163,8 +164,13 @@ export async function GET(request: NextRequest) {
     const adNameToThumb = new Map<string, string>()
     let thumbDebug: any[] = []
 
+    // Mesmos fatores do sync: USD→BRL nas contas em dólar, imposto nas BRL.
+    // O gasto ao vivo daqui precisa bater com o valor_gasto gravado no banco.
+    const fatores = await resolverFatoresGasto(accessToken, adAccountIds, configMap)
+
     for (const adAccountId of adAccountIds) {
       const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`
+      const fator = fatores.get(adAccountId.replace('act_', '')) ?? 1
 
       const [thumbResult, primeiroLote] = await Promise.all([
         fetchAdThumbnails(accountId, accessToken).catch((err) => { console.error('[thumb] error:', err); return { map: new Map<string, string>(), debug: [{ error: String(err) }] } }),
@@ -184,7 +190,7 @@ export async function GET(request: NextRequest) {
           const freq = parseFloat(row.frequency) || 0
           const existente = mapaMetricas.get(chave)
           if (existente) {
-            existente.spend += parseFloat(row.spend) || 0
+            existente.spend += (parseFloat(row.spend) || 0) * fator
             existente.impressions += parseInt(row.impressions) || 0
             existente.clicks += parseInt(row.clicks) || 0
             existente.frequency_total += freq
@@ -193,7 +199,7 @@ export async function GET(request: NextRequest) {
             mapaMetricas.set(chave, {
               ad_name: row.ad_name,
               campaign_name: row.campaign_name,
-              spend: parseFloat(row.spend) || 0,
+              spend: (parseFloat(row.spend) || 0) * fator,
               impressions: parseInt(row.impressions) || 0,
               clicks: parseInt(row.clicks) || 0,
               frequency_total: freq,

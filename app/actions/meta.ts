@@ -60,6 +60,30 @@ export async function salvarContasAnuncio(ids: string[]) {
   return { success: true, contas: limpos }
 }
 
+/**
+ * Salva a alíquota do imposto sobre gastos em anúncios (Meta), em %.
+ * Aplicada só às contas BRL, no momento do sync (ver lib/meta-fatores).
+ * Aceita vírgula ou ponto ("13,83" / "13.83"). Zero desliga o imposto.
+ */
+export async function salvarImpostoMeta(aliquota: string) {
+  const org_id = await resolveOrgId()
+  if (!org_id) return { success: false, error: 'Organização não encontrada. Faça login novamente.' }
+
+  const pct = parseFloat(String(aliquota).replace(',', '.'))
+  if (isNaN(pct) || pct < 0 || pct > 100) {
+    return { success: false, error: 'Alíquota inválida — use um número entre 0 e 100 (ex: 13,83).' }
+  }
+
+  const { error } = await supabaseAdmin.from('configuracoes').upsert(
+    { chave: 'meta_imposto_pct', valor: String(pct), org_id, updated_at: new Date().toISOString() },
+    { onConflict: 'chave' }
+  )
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath('/data-sources/ad-accounts')
+  return { success: true, pct }
+}
+
 export async function desconectarContaMeta() {
   const org_id = await resolveOrgId()
   if (!org_id) return { success: false, error: 'Organização não encontrada. Faça login novamente.' }

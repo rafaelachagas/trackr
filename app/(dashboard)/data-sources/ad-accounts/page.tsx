@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Search, X, Check, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { salvarContasAnuncio, desconectarContaMeta } from '@/app/actions/meta'
+import { salvarContasAnuncio, desconectarContaMeta, salvarImpostoMeta } from '@/app/actions/meta'
 
 type Conta = { id: string; name: string; account_status?: number; currency?: string }
 type GastoMensal = { mes: string; total: number }
@@ -22,6 +22,8 @@ export default function ContasAnunciosPage() {
   const [sincronizandoHistorico, setSincronizandoHistorico] = useState(false)
   const [carregandoContas, setCarregandoContas] = useState(false)
   const [gastosMensais, setGastosMensais] = useState<GastoMensal[]>([])
+  const [impostoPct, setImpostoPct] = useState('')
+  const [salvandoImposto, setSalvandoImposto] = useState(false)
 
   useEffect(() => { carregar(); carregarGastos() }, [])
 
@@ -45,6 +47,7 @@ export default function ContasAnunciosPage() {
           if (c.chave === 'meta_ad_account_ids') {
             try { setAdAccountIds(JSON.parse(c.valor || '[]')) } catch { setAdAccountIds([]) }
           }
+          if (c.chave === 'meta_imposto_pct' && c.valor) setImpostoPct(c.valor.replace('.', ','))
           // compatibilidade com campo antigo (single account)
           if (c.chave === 'meta_ad_account_id' && c.valor) {
             // será sobrescrito por meta_ad_account_ids se existir
@@ -146,6 +149,32 @@ export default function ContasAnunciosPage() {
     if (!res.success) { alert(`Erro ao salvar contas: ${res.error}`); return }
     setAdAccountIds(res.contas ?? selecionadas)
     setModalAberto(false)
+  }
+
+  async function salvarImposto() {
+    setSalvandoImposto(true)
+    const res = await salvarImpostoMeta(impostoPct || '0')
+    if (!res.success) {
+      setSalvandoImposto(false)
+      alert(`Erro ao salvar imposto: ${res.error}`)
+      return
+    }
+    // O imposto entra no valor_gasto no momento do sync — re-sincroniza os
+    // últimos 90 dias pra nova alíquota valer também no histórico.
+    try {
+      const r = await fetch('/api/meta/sync?dias=90', { method: 'POST' })
+      const j = await r.json()
+      if (j.success) {
+        await carregarGastos()
+        alert(`Imposto de ${res.pct}% salvo e aplicado aos últimos 90 dias (${j.total_registros} registros).`)
+      } else {
+        alert(`Imposto salvo, mas o re-sync falhou: ${j.error}. Use "Sincronizar 90 dias" pra aplicar.`)
+      }
+    } catch (e: any) {
+      alert(`Imposto salvo, mas o re-sync falhou: ${e.message}. Use "Sincronizar 90 dias" pra aplicar.`)
+    } finally {
+      setSalvandoImposto(false)
+    }
   }
 
   async function sincronizarHistorico() {
@@ -302,6 +331,47 @@ export default function ContasAnunciosPage() {
           )}
         </div>
       </div>
+
+      {/* Imposto sobre gastos em anúncios */}
+      {metaAccessToken && (
+        <div className="bg-[#0f1623] border border-slate-800 rounded-2xl overflow-hidden mb-4">
+          <div className="px-6 py-4 border-b border-slate-800">
+            <p className="text-sm font-semibold text-white">Imposto</p>
+            <p className="text-xs text-slate-500 mt-0.5">Configure o imposto dos seus gastos com anúncios</p>
+          </div>
+          <div className="px-6 py-5">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Imposto sobre gastos em anúncios (Meta)</p>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Alíquota (%)</label>
+                <div className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 w-36 focus-within:border-primary transition">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={impostoPct}
+                    onChange={e => setImpostoPct(e.target.value)}
+                    placeholder="13,83"
+                    className="bg-transparent text-sm text-white flex-1 min-w-0 outline-none"
+                  />
+                  <span className="text-xs text-slate-500">%</span>
+                </div>
+              </div>
+              <button
+                onClick={salvarImposto}
+                disabled={salvandoImposto || sincronizandoHistorico}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-semibold transition disabled:opacity-50"
+              >
+                {salvandoImposto && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                {salvandoImposto ? 'Aplicando...' : 'Salvar e aplicar'}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-3">
+              Aplicado <span className="text-slate-300 font-medium">apenas às contas em BRL</span> — a conta em dólar (BMUS) fica de fora.
+              O imposto entra no gasto no momento da sincronização; ao salvar, os últimos 90 dias são re-sincronizados com a nova alíquota.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Modal de seleção de contas */}
       {modalAberto && (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extrairCriativo } from '@/lib/utils'
+import { resolverFatoresGasto } from '@/lib/meta-fatores'
 import { MetaAdInsight } from '@/types'
 import { subDays, format } from 'date-fns'
 
@@ -21,7 +22,7 @@ async function sincronizarMeta(request: NextRequest) {
     const { data: configs } = await supabaseAdmin
       .from('configuracoes')
       .select('chave, valor')
-      .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id', 'usd_brl_rate'])
+      .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id', 'usd_brl_rate', 'meta_imposto_pct'])
 
     const configMap = Object.fromEntries(configs?.map((c) => [c.chave, c.valor]) ?? [])
     const accessToken = configMap['meta_access_token']
@@ -78,11 +79,9 @@ async function sincronizarMeta(request: NextRequest) {
       .lte('data', dataFim)
       .not('ad_id', 'is', null)
 
-    // Moeda de cada conta + cotação USD→BRL. Contas em dólar (BMUS) têm o gasto
-    // convertido pra real no momento do sync, senão o ROAS quebra (faturamento é BRL).
-    const currencyMap = await buscarMoedasContas(accessToken, adAccountIds)
-    const temUSD = [...currencyMap.values()].some((c) => c === 'USD')
-    const usdBrlRate = temUSD ? await getUsdBrlRate(configMap['usd_brl_rate']) : 1
+    // Fator por conta: USD converte pra BRL (cotação do dia); BRL aplica o
+    // imposto sobre gastos em anúncios (meta_imposto_pct). Ver lib/meta-fatores.
+    const fatores = await resolverFatoresGasto(accessToken, adAccountIds, configMap)
 
     // Agrega por (data, ad_name) sobre TODAS as contas selecionadas.
     // O mapa vive FORA do loop de contas: se o mesmo ad_name roda em duas
@@ -92,7 +91,7 @@ async function sincronizarMeta(request: NextRequest) {
 
     for (const adAccountId of adAccountIds) {
       const idLimpo = adAccountId.replace('act_', '')
-      const fator = currencyMap.get(idLimpo) === 'USD' ? usdBrlRate : 1
+      const fator = fatores.get(idLimpo) ?? 1
       // Coleta TODOS os insights de todas as páginas antes de agregar
       // (evita o bug onde page2 sobrescreve page1 para o mesmo ad_name+data)
       const todosInsights: MetaAdInsight[] = []
@@ -186,39 +185,6 @@ function buildRegistro(insight: MetaAdInsight, orgId: string, fator = 1) {
     clicks: parseInt(insight.clicks) || 0,
     cpc: insight.cpc ? parseFloat(insight.cpc) * fator : null,
   }
-}
-
-// Moeda por conta (sem "act_") a partir da Graph API.
-async function buscarMoedasContas(accessToken: string, adAccountIds: string[]): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
-  try {
-    const r = await fetch(`${META_API_BASE}/me/adaccounts?fields=id,currency&limit=200&access_token=${accessToken}`)
-    const j = await r.json()
-    for (const a of j.data ?? []) {
-      if (a.id) map.set(String(a.id).replace('act_', ''), a.currency)
-    }
-  } catch (e) {
-    console.error('[Meta] Erro ao buscar moedas das contas:', e)
-  }
-  return map
-}
-
-// Cotação USD→BRL: tenta a AwesomeAPI (fonte BR, sem chave); cai para o valor
-// configurado manualmente (usd_brl_rate) e, por fim, para um padrão seguro.
-async function getUsdBrlRate(rateConfig?: string | null): Promise<number> {
-  const manual = rateConfig ? parseFloat(String(rateConfig).replace(',', '.')) : NaN
-  try {
-    const r = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL', { cache: 'no-store' })
-    if (r.ok) {
-      const j = await r.json()
-      const bid = parseFloat(j?.USDBRL?.bid)
-      if (bid > 0) return bid
-    }
-  } catch (e) {
-    console.error('[Meta] Cotação USD-BRL falhou, usando fallback:', e)
-  }
-  if (manual > 0) return manual
-  return 5.4
 }
 
 async function buscarInsightsMeta({
