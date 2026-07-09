@@ -13,6 +13,7 @@ interface DashboardMetrics {
   salesCount: number;
   frontCount: number;
   upsellCount: number;
+  imposto: number;
 }
 
 interface DashboardContextType {
@@ -55,6 +56,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     salesCount: 0,
     frontCount: 0,
     upsellCount: 0,
+    imposto: 0,
   });
   const [chartData, setChartData] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -135,7 +137,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         const vendas = result.vendas ?? []
         const frontCount = vendas.filter((v: any) => v.tipo === 'front').length
         const upsellCount = vendas.filter((v: any) => v.tipo === 'upsell').length
-        setMetrics({ ...result.metrics, frontCount, upsellCount });
+        setMetrics({ imposto: 0, ...result.metrics, frontCount, upsellCount });
       }
 
       // Process chart data (simple example grouping by day)

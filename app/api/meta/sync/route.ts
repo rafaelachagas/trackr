@@ -79,9 +79,13 @@ async function sincronizarMeta(request: NextRequest) {
       .lte('data', dataFim)
       .not('ad_id', 'is', null)
 
-    // Fator por conta: USD converte pra BRL (cotação do dia); BRL aplica o
-    // imposto sobre gastos em anúncios (meta_imposto_pct). Ver lib/meta-fatores.
-    const fatores = await resolverFatoresGasto(accessToken, adAccountIds, configMap)
+    // Fator por conta (só câmbio: USD→BRL; BRL fica cru) + alíquota do imposto.
+    // O imposto NÃO entra no valor_gasto — é salvo por dia em meta_imposto_diario
+    // e exibido no card "Imposto total" do overview. Ver lib/meta-fatores.
+    const { fatores, moedas, impostoPct } = await resolverFatoresGasto(accessToken, adAccountIds, configMap)
+
+    // Gasto CRU das contas BRL por dia — base de cálculo do imposto.
+    const gastoBrlPorDia = new Map<string, number>()
 
     // Agrega por (data, ad_name) sobre TODAS as contas selecionadas.
     // O mapa vive FORA do loop de contas: se o mesmo ad_name roda em duas
@@ -117,11 +121,16 @@ async function sincronizarMeta(request: NextRequest) {
         cursor = resultado.nextCursor ?? null
       } while (cursor && paginaAtual < 20)
 
+      const ehBRL = moedas.get(idLimpo) !== 'USD'
       for (const insight of todosInsights) {
+        const spendRaw = parseFloat(insight.spend) || 0
+        if (ehBRL) {
+          gastoBrlPorDia.set(insight.date_start, (gastoBrlPorDia.get(insight.date_start) ?? 0) + spendRaw)
+        }
         const chave = `${insight.date_start}||${insight.ad_name}`
         const existente = mapaRegistros.get(chave)
         if (existente) {
-          existente.valor_gasto += (parseFloat(insight.spend) || 0) * fator
+          existente.valor_gasto += spendRaw * fator
           existente.impressions += parseInt(insight.impressions) || 0
           existente.clicks += parseInt(insight.clicks) || 0
         } else {
@@ -143,6 +152,32 @@ async function sincronizarMeta(request: NextRequest) {
         return NextResponse.json({ error: `Erro ao salvar gastos: ${erroUpsert.message}`, detalhes: erroUpsert }, { status: 500 })
       }
       totalRegistros = registros.length
+    }
+
+    // Salva o imposto diário: alíquota × gasto CRU das contas BRL de cada dia.
+    // Mapa { 'yyyy-MM-dd': valor } em meta_imposto_diario — recalcula só os
+    // dias da janela sincronizada e preserva o histórico fora dela.
+    {
+      const { data: cfgImp } = await supabaseAdmin
+        .from('configuracoes')
+        .select('valor')
+        .eq('chave', 'meta_imposto_diario')
+        .maybeSingle()
+
+      let mapaImposto: Record<string, number> = {}
+      try { mapaImposto = JSON.parse(cfgImp?.valor || '{}') } catch {}
+
+      for (let d = new Date(`${dataInicio}T12:00:00Z`); format(d, 'yyyy-MM-dd') <= dataFim; d.setUTCDate(d.getUTCDate() + 1)) {
+        const dia = format(d, 'yyyy-MM-dd')
+        const brl = gastoBrlPorDia.get(dia) ?? 0
+        if (brl > 0 && impostoPct > 0) mapaImposto[dia] = Number(((brl * impostoPct) / 100).toFixed(2))
+        else delete mapaImposto[dia]
+      }
+
+      await supabaseAdmin.from('configuracoes').upsert(
+        { chave: 'meta_imposto_diario', valor: JSON.stringify(mapaImposto), org_id: orgId, updated_at: new Date().toISOString() },
+        { onConflict: 'chave' }
+      )
     }
 
     // Atualizar última sync

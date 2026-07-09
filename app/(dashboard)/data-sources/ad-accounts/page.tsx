@@ -367,7 +367,8 @@ export default function ContasAnunciosPage() {
             </div>
             <p className="text-[11px] text-slate-500 mt-3">
               Aplicado <span className="text-slate-300 font-medium">apenas às contas em BRL</span> — a conta em dólar (BMUS) fica de fora.
-              O imposto entra no gasto no momento da sincronização; ao salvar, os últimos 90 dias são re-sincronizados com a nova alíquota.
+              O imposto <span className="text-slate-300 font-medium">não é somado ao gasto</span>: ele é calculado e salvo por dia, e aparece no card
+              &quot;Imposto total&quot; da Visão Geral respeitando o filtro de período. Ao salvar, os últimos 90 dias são recalculados.
             </p>
           </div>
         </div>

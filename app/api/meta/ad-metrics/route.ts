@@ -164,9 +164,9 @@ export async function GET(request: NextRequest) {
     const adNameToThumb = new Map<string, string>()
     let thumbDebug: any[] = []
 
-    // Mesmos fatores do sync: USD→BRL nas contas em dólar, imposto nas BRL.
-    // O gasto ao vivo daqui precisa bater com o valor_gasto gravado no banco.
-    const fatores = await resolverFatoresGasto(accessToken, adAccountIds, configMap)
+    // Mesmos fatores do sync (só câmbio USD→BRL; BRL fica cru) — o gasto ao
+    // vivo daqui precisa bater com o valor_gasto gravado no banco.
+    const { fatores } = await resolverFatoresGasto(accessToken, adAccountIds, configMap)
 
     for (const adAccountId of adAccountIds) {
       const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`

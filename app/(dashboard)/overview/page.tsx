@@ -53,7 +53,7 @@ export default function OverviewPage() {
 
   return (
     <div className="relative space-y-6 w-full mx-auto text-foreground">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5">
         <MetricCard
           titulo="Faturamento Líquido"
           valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
@@ -74,6 +74,11 @@ export default function OverviewPage() {
           valor={`R$ ${(metrics.revenue - metrics.spend).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
           verde
           tooltip="Lucro calculado. Lucro = Faturamento Líquido − Gastos com anúncios − Despesas adicionais"
+        />
+        <MetricCard
+          titulo="Imposto total"
+          valor={`R$ ${metrics.imposto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          tooltip="Imposto sobre gastos em anúncios (Meta). Alíquota configurável em Fontes de dados → Contas de anúncios, aplicada sobre o gasto das contas em BRL — a conta em dólar fica de fora. Não é somado ao card de Gastos."
         />
       </div>
 

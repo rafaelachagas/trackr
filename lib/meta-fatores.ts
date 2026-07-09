@@ -1,15 +1,14 @@
 /**
  * Fatores de correção do gasto por conta de anúncio da Meta.
  *
- * - Contas em BRL: aplica o IMPOSTO sobre gastos em anúncios (alíquota
- *   configurável em `meta_imposto_pct`, ex: 13.83). O custo real do tráfego
- *   é gasto × (1 + alíquota).
  * - Contas em USD (BMUS): converte para BRL pela cotação do dia (AwesomeAPI,
- *   fallback pro campo manual `usd_brl_rate`). NÃO aplica imposto — a taxa
- *   só incide sobre contas brasileiras.
+ *   fallback pro campo manual `usd_brl_rate`).
+ * - Contas em BRL: fator 1 — o gasto fica CRU, batendo com Meta/Utmify.
  *
- * Usado no /api/meta/sync (grava valor_gasto já corrigido) e no
- * /api/meta/ad-metrics (métricas ao vivo), pra tudo bater.
+ * O IMPOSTO sobre gastos em anúncios (alíquota `meta_imposto_pct`, ex 13.83)
+ * NÃO entra no valor_gasto: ele é calculado por dia sobre o gasto das contas
+ * BRL e salvo em `meta_imposto_diario` (ver /api/meta/sync), aparecendo no
+ * card "Imposto total" do overview.
  */
 
 const META_API_BASE = 'https://graph.facebook.com/v25.0'
@@ -47,28 +46,35 @@ export async function getUsdBrlRate(rateConfig?: string | null): Promise<number>
   return 5.4
 }
 
+export type FatoresGasto = {
+  /** multiplicador do gasto por conta (id sem "act_"): USD→cotação, BRL→1 */
+  fatores: Map<string, number>
+  /** moeda por conta (id sem "act_") */
+  moedas: Map<string, string>
+  /** alíquota do imposto sobre gastos em anúncios, em % (0 = desligado) */
+  impostoPct: number
+}
+
 /**
- * Fator multiplicador do gasto para cada conta selecionada (id sem "act_").
+ * Resolve fatores cambiais + alíquota do imposto para as contas selecionadas.
  * configMap precisa conter (se existirem) `usd_brl_rate` e `meta_imposto_pct`.
  */
 export async function resolverFatoresGasto(
   accessToken: string,
   adAccountIds: string[],
   configMap: Record<string, string>
-): Promise<Map<string, number>> {
-  const currencyMap = await buscarMoedasContas(accessToken)
+): Promise<FatoresGasto> {
+  const moedas = await buscarMoedasContas(accessToken)
 
-  const impostoPct = parseFloat(String(configMap['meta_imposto_pct'] ?? '').replace(',', '.'))
-  const fatorImposto = impostoPct > 0 ? 1 + impostoPct / 100 : 1
+  const impostoPct = parseFloat(String(configMap['meta_imposto_pct'] ?? '').replace(',', '.')) || 0
 
   const idsLimpos = adAccountIds.map((id) => id.replace('act_', ''))
-  const temUSD = idsLimpos.some((id) => currencyMap.get(id) === 'USD')
+  const temUSD = idsLimpos.some((id) => moedas.get(id) === 'USD')
   const usdBrlRate = temUSD ? await getUsdBrlRate(configMap['usd_brl_rate']) : 1
 
   const fatores = new Map<string, number>()
   for (const id of idsLimpos) {
-    // USD: só conversão cambial. BRL (ou moeda desconhecida): só imposto.
-    fatores.set(id, currencyMap.get(id) === 'USD' ? usdBrlRate : fatorImposto)
+    fatores.set(id, moedas.get(id) === 'USD' ? usdBrlRate : 1)
   }
-  return fatores
+  return { fatores, moedas, impostoPct }
 }

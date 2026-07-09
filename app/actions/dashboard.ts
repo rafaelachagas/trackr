@@ -44,13 +44,27 @@ export async function getDashboardData(product: string, startDate: string, endDa
     if (startDate) queryGastos = queryGastos.gte('data', isoParaDataLocal(startDate))
     if (endDate) queryGastos = queryGastos.lte('data', isoParaDataLocal(endDate))
 
-    const [vendas, gastosRes, produtosRes] = await Promise.all([
+    const [vendas, gastosRes, produtosRes, cfgImpostoRes] = await Promise.all([
       fetchVendasReais(),
       queryGastos,
       supabaseAdmin.from('produtos_mapeamento').select('nome_produto, tipo').eq('ativo', true),
+      supabaseAdmin.from('configuracoes').select('valor').eq('chave', 'meta_imposto_diario').maybeSingle(),
     ])
 
     if (gastosRes.error) throw gastosRes.error
+
+    // Imposto sobre gastos em anúncios no período: soma do mapa diário
+    // (alíquota × gasto BRL do dia, salvo pelo /api/meta/sync). Card próprio
+    // no overview — NÃO entra em "Gastos com anúncios" nem no ROAS/Lucro.
+    let imposto = 0
+    try {
+      const mapaImposto: Record<string, number> = JSON.parse(cfgImpostoRes.data?.valor || '{}')
+      const ini = startDate ? isoParaDataLocal(startDate) : null
+      const fim = endDate ? isoParaDataLocal(endDate) : null
+      for (const [dia, v] of Object.entries(mapaImposto)) {
+        if ((!ini || dia >= ini) && (!fim || dia <= fim)) imposto += Number(v) || 0
+      }
+    } catch {}
 
     // Mapa produto -> tipo para classificar vendas sem tipo definido
     const produtoTipoMap = new Map<string, string>()
@@ -77,7 +91,8 @@ export async function getDashboardData(product: string, startDate: string, endDa
         revenue: totalRevenue,
         spend: totalSpend,
         roas: roas,
-        salesCount: salesCount
+        salesCount: salesCount,
+        imposto: imposto
       },
       vendas: vendasComTipo,
       gastos: gastosRes.data
