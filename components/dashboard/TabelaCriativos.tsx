@@ -52,7 +52,12 @@ export default function TabelaCriativos({ dados }: Props) {
   return (
     <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden text-foreground">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-4">
-        <h3 className="text-sm font-semibold text-foreground">Performance por Criativo</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground">Performance por Criativo</h3>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-muted text-muted-foreground border border-border">
+            manual
+          </span>
+        </div>
         <select
           value={filtroAcao}
           onChange={e => setFiltroAcao(e.target.value)}

@@ -21,7 +21,7 @@ async function sincronizarMeta(request: NextRequest) {
     const { data: configs } = await supabaseAdmin
       .from('configuracoes')
       .select('chave, valor')
-      .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id'])
+      .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id', 'usd_brl_rate'])
 
     const configMap = Object.fromEntries(configs?.map((c) => [c.chave, c.valor]) ?? [])
     const accessToken = configMap['meta_access_token']
@@ -78,9 +78,21 @@ async function sincronizarMeta(request: NextRequest) {
       .lte('data', dataFim)
       .not('ad_id', 'is', null)
 
-    let totalRegistros = 0
+    // Moeda de cada conta + cotação USD→BRL. Contas em dólar (BMUS) têm o gasto
+    // convertido pra real no momento do sync, senão o ROAS quebra (faturamento é BRL).
+    const currencyMap = await buscarMoedasContas(accessToken, adAccountIds)
+    const temUSD = [...currencyMap.values()].some((c) => c === 'USD')
+    const usdBrlRate = temUSD ? await getUsdBrlRate(configMap['usd_brl_rate']) : 1
+
+    // Agrega por (data, ad_name) sobre TODAS as contas selecionadas.
+    // O mapa vive FORA do loop de contas: se o mesmo ad_name roda em duas
+    // contas no mesmo dia (escala em CA01/CA02/...), os gastos são SOMADOS
+    // em vez de um upsert sobrescrever o outro (onConflict data,ad_name).
+    const mapaRegistros = new Map<string, ReturnType<typeof buildRegistro>>()
 
     for (const adAccountId of adAccountIds) {
+      const idLimpo = adAccountId.replace('act_', '')
+      const fator = currencyMap.get(idLimpo) === 'USD' ? usdBrlRate : 1
       // Coleta TODOS os insights de todas as páginas antes de agregar
       // (evita o bug onde page2 sobrescreve page1 para o mesmo ad_name+data)
       const todosInsights: MetaAdInsight[] = []
@@ -106,34 +118,32 @@ async function sincronizarMeta(request: NextRequest) {
         cursor = resultado.nextCursor ?? null
       } while (cursor && paginaAtual < 20)
 
-      if (todosInsights.length > 0) {
-        // Agrega por (data, ad_name) sobre TODOS os insights coletados
-        const mapaRegistros = new Map<string, ReturnType<typeof buildRegistro>>()
-        for (const insight of todosInsights) {
-          const chave = `${insight.date_start}||${insight.ad_name}`
-          const existente = mapaRegistros.get(chave)
-          if (existente) {
-            existente.valor_gasto += parseFloat(insight.spend) || 0
-            existente.impressions += parseInt(insight.impressions) || 0
-            existente.clicks += parseInt(insight.clicks) || 0
-          } else {
-            mapaRegistros.set(chave, buildRegistro(insight, orgId))
-          }
+      for (const insight of todosInsights) {
+        const chave = `${insight.date_start}||${insight.ad_name}`
+        const existente = mapaRegistros.get(chave)
+        if (existente) {
+          existente.valor_gasto += (parseFloat(insight.spend) || 0) * fator
+          existente.impressions += parseInt(insight.impressions) || 0
+          existente.clicks += parseInt(insight.clicks) || 0
+        } else {
+          mapaRegistros.set(chave, buildRegistro(insight, orgId, fator))
         }
-        const registros = Array.from(mapaRegistros.values())
-
-        const { error: erroUpsert } = await supabaseAdmin
-          .from('gastos')
-          .upsert(registros, { onConflict: 'data,ad_name' })
-
-        if (erroUpsert) {
-          console.error('[Meta] Erro ao salvar gastos:', erroUpsert)
-          await atualizarSyncLog(syncLog?.id, 'erro', `Erro ao salvar: ${erroUpsert.message}`)
-          return NextResponse.json({ error: `Erro ao salvar gastos: ${erroUpsert.message}`, detalhes: erroUpsert }, { status: 500 })
-        }
-
-        totalRegistros += registros.length
       }
+    }
+
+    let totalRegistros = 0
+    const registros = Array.from(mapaRegistros.values())
+    if (registros.length > 0) {
+      const { error: erroUpsert } = await supabaseAdmin
+        .from('gastos')
+        .upsert(registros, { onConflict: 'data,ad_name' })
+
+      if (erroUpsert) {
+        console.error('[Meta] Erro ao salvar gastos:', erroUpsert)
+        await atualizarSyncLog(syncLog?.id, 'erro', `Erro ao salvar: ${erroUpsert.message}`)
+        return NextResponse.json({ error: `Erro ao salvar gastos: ${erroUpsert.message}`, detalhes: erroUpsert }, { status: 500 })
+      }
+      totalRegistros = registros.length
     }
 
     // Atualizar última sync
@@ -160,7 +170,7 @@ async function sincronizarMeta(request: NextRequest) {
   }
 }
 
-function buildRegistro(insight: MetaAdInsight, orgId: string) {
+function buildRegistro(insight: MetaAdInsight, orgId: string, fator = 1) {
   return {
     org_id: orgId,
     data: insight.date_start,
@@ -171,11 +181,44 @@ function buildRegistro(insight: MetaAdInsight, orgId: string) {
     ad_id: insight.ad_id,
     ad_name: insight.ad_name,
     criativo: extrairCriativo(insight.ad_name),
-    valor_gasto: parseFloat(insight.spend) || 0,
+    valor_gasto: (parseFloat(insight.spend) || 0) * fator,
     impressions: parseInt(insight.impressions) || 0,
     clicks: parseInt(insight.clicks) || 0,
-    cpc: insight.cpc ? parseFloat(insight.cpc) : null,
+    cpc: insight.cpc ? parseFloat(insight.cpc) * fator : null,
   }
+}
+
+// Moeda por conta (sem "act_") a partir da Graph API.
+async function buscarMoedasContas(accessToken: string, adAccountIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  try {
+    const r = await fetch(`${META_API_BASE}/me/adaccounts?fields=id,currency&limit=200&access_token=${accessToken}`)
+    const j = await r.json()
+    for (const a of j.data ?? []) {
+      if (a.id) map.set(String(a.id).replace('act_', ''), a.currency)
+    }
+  } catch (e) {
+    console.error('[Meta] Erro ao buscar moedas das contas:', e)
+  }
+  return map
+}
+
+// Cotação USD→BRL: tenta a AwesomeAPI (fonte BR, sem chave); cai para o valor
+// configurado manualmente (usd_brl_rate) e, por fim, para um padrão seguro.
+async function getUsdBrlRate(rateConfig?: string | null): Promise<number> {
+  const manual = rateConfig ? parseFloat(String(rateConfig).replace(',', '.')) : NaN
+  try {
+    const r = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL', { cache: 'no-store' })
+    if (r.ok) {
+      const j = await r.json()
+      const bid = parseFloat(j?.USDBRL?.bid)
+      if (bid > 0) return bid
+    }
+  } catch (e) {
+    console.error('[Meta] Cotação USD-BRL falhou, usando fallback:', e)
+  }
+  if (manual > 0) return manual
+  return 5.4
 }
 
 async function buscarInsightsMeta({

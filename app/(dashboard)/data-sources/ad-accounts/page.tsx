@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Search, X, Check, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { salvarContasAnuncio, desconectarContaMeta } from '@/app/actions/meta'
 
 type Conta = { id: string; name: string; account_status?: number; currency?: string }
 type GastoMensal = { mes: string; total: number }
@@ -103,11 +104,8 @@ export default function ContasAnunciosPage() {
 
   async function desconectarMeta() {
     if (!confirm('Deseja desconectar sua conta do Meta Ads?')) return
-    await Promise.all([
-      supabase.from('configuracoes').upsert({ chave: 'meta_access_token', valor: '', updated_at: new Date().toISOString() }, { onConflict: 'chave' }),
-      supabase.from('configuracoes').upsert({ chave: 'meta_user_name', valor: '', updated_at: new Date().toISOString() }, { onConflict: 'chave' }),
-      supabase.from('configuracoes').upsert({ chave: 'meta_ad_account_ids', valor: '[]', updated_at: new Date().toISOString() }, { onConflict: 'chave' }),
-    ])
+    const res = await desconectarContaMeta()
+    if (!res.success) { alert(`Erro ao desconectar: ${res.error}`); return }
     setMetaAccessToken('')
     setMetaUserName('')
     setAdAccountIds([])
@@ -143,19 +141,10 @@ export default function ContasAnunciosPage() {
 
   async function confirmarSelecao() {
     setSalvando(true)
-    await supabase.from('configuracoes').upsert(
-      { chave: 'meta_ad_account_ids', valor: JSON.stringify(selecionadas), updated_at: new Date().toISOString() },
-      { onConflict: 'chave' }
-    )
-    // mantém campo legado com a primeira conta selecionada
-    if (selecionadas.length > 0) {
-      await supabase.from('configuracoes').upsert(
-        { chave: 'meta_ad_account_id', valor: selecionadas[0], updated_at: new Date().toISOString() },
-        { onConflict: 'chave' }
-      )
-    }
-    setAdAccountIds(selecionadas)
+    const res = await salvarContasAnuncio(selecionadas)
     setSalvando(false)
+    if (!res.success) { alert(`Erro ao salvar contas: ${res.error}`); return }
+    setAdAccountIds(res.contas ?? selecionadas)
     setModalAberto(false)
   }
 

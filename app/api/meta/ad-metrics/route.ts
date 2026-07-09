@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { extrairCriativo } from '@/lib/utils'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 
@@ -83,38 +84,58 @@ export async function GET(request: NextRequest) {
       }
     } catch {}
 
-    // Carrega vendas e gastos do DB — espelha /api/framework exatamente
-    const [vendasPeriodo, vendasRolling, gastosPeriodo, gastosRolling] = await Promise.all([
-      // Período selecionado: todas as vendas aprovadas (para receita do card)
-      supabaseAdmin.from('vendas').select('criativo, valor').eq('status', 'approved').gte('data', dataInicio).lte('data', dataFim),
-      // Rolling 7d: só lançamentos manuais, encerrando em ontem
-      supabaseAdmin.from('vendas').select('criativo, valor, data').eq('status', 'approved').like('transaction_id', 'manual_%').gte('data', `${d7}T00:00:00`).lte('data', `${ontem}T23:59:59`),
-      // Gastos do período: só gastos manuais (ad_id null)
-      supabaseAdmin.from('gastos').select('criativo, valor_gasto').is('ad_id', null).gte('data', dataInicio).lte('data', dataFim),
-      // Gastos rolling 7d: só gastos manuais
-      supabaseAdmin.from('gastos').select('criativo, valor_gasto, data').is('ad_id', null).gte('data', d7).lte('data', ontem),
+    // AUTOMÁTICO: receita vem das vendas REAIS via anúncio (não-manuais, com sck
+    // de criativo — orgânicas/link na bio ficam de fora) usando faturamento LÍQUIDO;
+    // o gasto rolling vem dos gastos da Meta (ad_id != null). Chave = código do
+    // anúncio (ad12...). Paginação: 7d de vendas já passa das 1000 linhas.
+    async function fetchAllVendas(desde: string, ate: string) {
+      const todas: { criativo: string | null; valor: number; valor_liquido: number | null; data: string }[] = []
+      for (let off = 0; ; off += 1000) {
+        const { data, error } = await supabaseAdmin
+          .from('vendas')
+          .select('criativo, valor, valor_liquido, data')
+          .eq('status', 'approved')
+          .not('transaction_id', 'like', 'manual_%')
+          .not('criativo', 'is', null)
+          .gte('data', `${desde}T00:00:00`)
+          .lte('data', `${ate}T23:59:59`)
+          .range(off, off + 999)
+        if (error) break
+        if (!data || data.length === 0) break
+        todas.push(...(data as any))
+        if (data.length < 1000) break
+      }
+      return todas
+    }
+
+    // Janela ampla cobre período selecionado + rolling 7d
+    const desdeVendas = dataInicio < d7 ? dataInicio : d7
+    const ateVendas = dataFim > ontem ? dataFim : ontem
+    const [vendasAll, gastosRollingRes] = await Promise.all([
+      fetchAllVendas(desdeVendas, ateVendas),
+      supabaseAdmin.from('gastos').select('criativo, valor_gasto, data').not('ad_id', 'is', null).gte('data', d7).lte('data', ontem),
     ])
 
-    // Agrega receita e gasto por criativo para o período selecionado
+    const liq = (v: { valor: number; valor_liquido: number | null }) => Number(v.valor_liquido ?? v.valor) || 0
+
+    // Receita do período selecionado, por código de criativo
     const receitaPeriodoMap = new Map<string, number>()
-    for (const v of vendasPeriodo.data ?? []) {
-      if (v.criativo) receitaPeriodoMap.set(v.criativo, (receitaPeriodoMap.get(v.criativo) ?? 0) + (v.valor || 0))
-    }
-    const gastoPeriodoMap = new Map<string, number>()
-    for (const g of gastosPeriodo.data ?? []) {
-      if (g.criativo) gastoPeriodoMap.set(g.criativo, (gastoPeriodoMap.get(g.criativo) ?? 0) + (g.valor_gasto || 0))
+    for (const v of vendasAll) {
+      const dia = v.data.substring(0, 10)
+      if (v.criativo && dia >= dataInicio && dia <= dataFim) {
+        receitaPeriodoMap.set(v.criativo, (receitaPeriodoMap.get(v.criativo) ?? 0) + liq(v))
+      }
     }
 
-    // Agrega para rolling windows — igual ao framework
     function rollingReceita(criativo: string, desde: string, ate: string = ontem) {
-      return (vendasRolling.data ?? [])
+      return vendasAll
         .filter((v) => v.criativo === criativo && v.data.substring(0, 10) >= desde && v.data.substring(0, 10) <= ate)
-        .reduce((s, v) => s + (v.valor || 0), 0)
+        .reduce((s, v) => s + liq(v), 0)
     }
     function rollingGasto(criativo: string, desde: string, ate: string = ontem) {
-      return (gastosRolling.data ?? [])
-        .filter((g) => g.criativo === criativo && g.data >= desde && g.data <= ate)
-        .reduce((s, g) => s + (g.valor_gasto || 0), 0)
+      return (gastosRollingRes.data ?? [])
+        .filter((g: any) => g.criativo === criativo && g.data >= desde && g.data <= ate)
+        .reduce((s: number, g: any) => s + (g.valor_gasto || 0), 0)
     }
 
     type DBCriativo = { fase: string | null; link_anuncio: string | null; campaign_name: string }
@@ -218,19 +239,19 @@ export async function GET(request: NextRequest) {
 
       const thumbnailUrl = thumbMap.get(m.ad_name) ?? adNameToThumb.get(m.ad_name) ?? null
 
-      // ROAS
-      const receita = receitaPeriodoMap.get(m.ad_name) ?? 0
-      const gastoDB = gastoPeriodoMap.get(m.ad_name) ?? 0
-      const spendParaRoas = gastoDB > 0 ? gastoDB : m.spend
-      const roas = spendParaRoas > 0 && receita > 0 ? receita / spendParaRoas : null
+      // ROAS automático: receita (líquida, vendas via anúncio) ÷ gasto da Meta.
+      // Chave = código do anúncio extraído do ad_name (ad12...).
+      const codigo = extrairCriativo(m.ad_name) ?? m.ad_name
+      const receita = receitaPeriodoMap.get(codigo) ?? 0
+      const roas = m.spend > 0 && receita > 0 ? receita / m.spend : null
 
       // Janelas: 1d = só ontem, 3d = d3 até ontem, 7d = d7 até ontem
-      const r1 = rollingReceita(m.ad_name, d1, d1)
-      const g1 = rollingGasto(m.ad_name, d1, d1)
-      const r3 = rollingReceita(m.ad_name, d3, ontem)
-      const g3 = rollingGasto(m.ad_name, d3, ontem)
-      const r7 = rollingReceita(m.ad_name, d7, ontem)
-      const g7 = rollingGasto(m.ad_name, d7, ontem)
+      const r1 = rollingReceita(codigo, d1, d1)
+      const g1 = rollingGasto(codigo, d1, d1)
+      const r3 = rollingReceita(codigo, d3, ontem)
+      const g3 = rollingGasto(codigo, d3, ontem)
+      const r7 = rollingReceita(codigo, d7, ontem)
+      const g7 = rollingGasto(codigo, d7, ontem)
 
       resultado.push({
         criativo: m.ad_name,

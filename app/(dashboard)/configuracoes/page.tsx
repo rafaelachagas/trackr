@@ -48,6 +48,7 @@ export default function ConfiguracoesPage() {
   const [metaAccessToken, setMetaAccessToken] = useState('')
   const [adAccountId, setAdAccountId] = useState('')
   const [roasMinimo, setRoasMinimo] = useState('1.0')
+  const [usdBrlRate, setUsdBrlRate] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [diasSync, setDiasSync] = useState('7')
   const [showToken, setShowToken] = useState(false)
@@ -70,6 +71,7 @@ export default function ConfiguracoesPage() {
           if (c.chave === 'meta_access_token') setMetaAccessToken(c.valor || '')
           if (c.chave === 'meta_ad_account_id') setAdAccountId(c.valor || '')
           if (c.chave === 'roas_minimo') setRoasMinimo(c.valor || '1.0')
+          if (c.chave === 'usd_brl_rate') setUsdBrlRate(c.valor || '')
           if (c.chave === 'framework_regras') {
             try { setRegras(JSON.parse(c.valor)) } catch {}
           }
@@ -97,6 +99,7 @@ export default function ConfiguracoesPage() {
         { chave: 'meta_access_token', valor: metaAccessToken },
         { chave: 'meta_ad_account_id', valor: adAccountId },
         { chave: 'roas_minimo', valor: roasMinimo },
+        { chave: 'usd_brl_rate', valor: usdBrlRate },
         { chave: 'framework_regras', valor: JSON.stringify(regras) },
       ]
 
@@ -362,6 +365,18 @@ export default function ConfiguracoesPage() {
                 className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition"
               />
               <p className="text-[10px] text-slate-500 mt-1">ROAS abaixo deste valor é considerado negativo nas análises do framework.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Cotação USD → BRL (contas em dólar)</label>
+              <input
+                type="number" step="0.01"
+                value={usdBrlRate}
+                onChange={e => setUsdBrlRate(e.target.value)}
+                className="w-full bg-[#0b1121] border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition"
+                placeholder="Automático (ex: 5.40)"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">O gasto das contas em dólar (BMUS) é convertido pra real no sync. Deixe em branco para usar a cotação automática do dia; preencha só se quiser fixar um valor.</p>
             </div>
 
             <div>

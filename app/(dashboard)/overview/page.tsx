@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import MetricCard from '@/components/ui/MetricCard'
 import GraficoDiario from '@/components/dashboard/GraficoDiario'
 import TabelaCriativos from '@/components/dashboard/TabelaCriativos'
+import TabelaCriativosV2 from '@/components/dashboard/TabelaCriativosV2'
 import HistoricoCriativos from '@/components/dashboard/HistoricoCriativos'
 import GraficoTipoVendas from '@/components/dashboard/GraficoTipoVendas'
 import { RoasPorCriativo } from '@/types'
@@ -78,6 +79,10 @@ export default function OverviewPage() {
           <GraficoDiario dados={chartData} />
         </div>
         <GraficoTipoVendas />
+      </div>
+
+      <div>
+        <TabelaCriativosV2 />
       </div>
 
       <div>
