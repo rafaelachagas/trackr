@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { calcularRoas, extrairFase } from '@/lib/utils'
+import { calcularRoas } from '@/lib/utils'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 import { AcaoOtimizacao } from '@/types'
@@ -142,50 +142,65 @@ export async function GET(request: Request) {
       ),
     ])
 
-    // CHAVE = NOME COMPLETO DO ANÚNCIO (uma linha por campanha, não por criativo).
-    // No gasto isso é o ad_name; na venda é a parte 3 do sck (ex:
-    // "...|cj01|ad11-como-eu-alugo-meu-rosto-escala-v2"), que casa exato com o
-    // ad_name da Meta. Assim pre-escala-v2, escala-v2, bmsub e bmus (mesmo
-    // criativo, campanhas diferentes) viram linhas separadas com ROAS próprio.
-    const nomeDoSck = (sck: string | null): string | null => {
-      const partes = (sck || '').split('|')
-      return partes.length >= 3 ? partes[2].trim() : null
+    // CHAVE = CAMPANHA NORMALIZADA: código + fase + marcadores (bmsub/bmus/v2).
+    // Casar por nome completo do anúncio é frágil — um typo no sck já quebra o
+    // match (ex: ad12 "rendas-extra-escala" no sck vs "rendas-extras-escala" na
+    // Meta) e a receita se perde. A fase vem do part[0] do sck / do campaign_name
+    // e os marcadores são tokens curtos e estáveis. Validado: 0 campanhas com
+    // gasto sem receita casada. Assim pre-escala-v2, escala-v2, bmsub e bmus
+    // (mesmo criativo, campanhas diferentes) viram linhas separadas com ROAS próprio.
+    const faseToken = (t: string | null): string | null => {
+      const m = (t || '').toLowerCase().match(/fase\s*0?([123])/)
+      return m ? `FASE0${m[1]}` : null
+    }
+    const flagsToken = (t: string | null): string => {
+      const s = (t || '').toLowerCase()
+      const bmsub = s.includes('bmsub') ? 'S' : '-'
+      const bmus = s.includes('bmus') ? 'U' : '-'
+      const v2 = /(^|[^a-z0-9])v2([^0-9]|$)/.test(s) ? '2' : '-'
+      return `${bmsub}${bmus}${v2}`
     }
 
     type Entrada = {
-      adName: string
-      codigo: string | null
+      codigo: string
+      fase: string | null
       campaign_name: string | null
-      faseSck: string | null
+      adNames: Map<string, number> // ad_name -> gasto acumulado (p/ o nome representativo)
+      sckName: string | null       // nome do anúncio pelo sck (fallback quando só há venda)
       gastos: { valor: number; data: string }[]
       vendas: { liquido: number; data: string }[]
     }
     const mapa = new Map<string, Entrada>()
 
-    function getEntrada(adName: string): Entrada {
-      let e = mapa.get(adName)
+    function getEntrada(key: string, codigo: string, fase: string | null): Entrada {
+      let e = mapa.get(key)
       if (!e) {
-        e = { adName, codigo: null, campaign_name: null, faseSck: null, gastos: [], vendas: [] }
-        mapa.set(adName, e)
+        e = { codigo, fase, campaign_name: null, adNames: new Map(), sckName: null, gastos: [], vendas: [] }
+        mapa.set(key, e)
       }
+      if (!e.fase && fase) e.fase = fase
       return e
     }
 
     for (const g of gastos) {
-      if (!g.ad_name) continue
-      const e = getEntrada(g.ad_name)
-      e.gastos.push({ valor: Number(g.valor_gasto) || 0, data: g.data })
-      if (!e.codigo) e.codigo = g.criativo
+      if (!g.criativo) continue
+      const fase = faseToken(g.campaign_name)
+      const key = `${g.criativo}|${fase ?? '?'}|${flagsToken(g.ad_name)}`
+      const e = getEntrada(key, g.criativo, fase)
+      const val = Number(g.valor_gasto) || 0
+      e.gastos.push({ valor: val, data: g.data })
+      if (g.ad_name) e.adNames.set(g.ad_name, (e.adNames.get(g.ad_name) ?? 0) + val)
       if (!e.campaign_name && g.campaign_name) e.campaign_name = g.campaign_name
     }
 
     for (const v of vendas) {
-      const nome = nomeDoSck(v.sck)
-      if (!nome) continue
-      const e = getEntrada(nome)
+      if (!v.criativo) continue
+      const parte0 = (v.sck || '').split('|')[0]
+      const fase = faseToken(parte0)
+      const key = `${v.criativo}|${fase ?? '?'}|${flagsToken(v.sck)}`
+      const e = getEntrada(key, v.criativo, fase)
       e.vendas.push({ liquido: Number(v.valor_liquido ?? v.valor) || 0, data: v.data })
-      if (!e.codigo) e.codigo = v.criativo
-      if (!e.faseSck) e.faseSck = v.fase ?? extrairFase(v.campanha)
+      if (!e.sckName) e.sckName = (v.sck || '').split('|')[2] || null
     }
 
     // DATA da venda no fuso de São Paulo (não a data UTC crua do timestamptz).
@@ -214,11 +229,16 @@ export async function GET(request: Request) {
       // anúncios que você roda e ainda geram ROAS lixo (ex: R$0,35 → 674x).
       if (gasto7d < 1) continue
 
+      // ad_name representativo = o de maior gasto da campanha; senão o nome do sck.
+      let adNameRep = e.sckName ?? e.codigo
+      let maxG = -1
+      for (const [nome, g] of e.adNames) { if (g > maxG) { maxG = g; adNameRep = nome } }
+
       linhas.push({
-        criativo: e.codigo ?? e.adName,
-        ad_name: e.adName,
+        criativo: e.codigo,
+        ad_name: adNameRep,
         campaign_name: e.campaign_name,
-        fase: detectarFaseCampaign(e.campaign_name) ?? e.faseSck,
+        fase: e.fase ?? detectarFaseCampaign(e.campaign_name),
         gasto_7d: gasto7d,
         receita_7d: receita7d,
         lucro_7d: receita7d - gasto7d,
