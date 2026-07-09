@@ -71,9 +71,9 @@ export default function OverviewPage() {
         />
         <MetricCard
           titulo="Lucro"
-          valor={`R$ ${(metrics.revenue - metrics.spend).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          valor={`R$ ${(metrics.revenue - metrics.spend - metrics.imposto).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
           verde
-          tooltip="Lucro calculado. Lucro = Faturamento Líquido − Gastos com anúncios − Despesas adicionais"
+          tooltip="Lucro (ROI final). Lucro = Faturamento Líquido − Gastos com anúncios − Imposto sobre anúncios (Meta)"
         />
         <MetricCard
           titulo="Imposto total"
