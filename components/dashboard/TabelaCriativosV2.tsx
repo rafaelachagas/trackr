@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { format } from 'date-fns'
 import { formatarMoeda, corDaAcao, iconeAcao } from '@/lib/utils'
 import { useDashboard } from '@/context/DashboardContext'
 import type { CriativoV2 } from '@/app/api/performance-v2/route'
@@ -35,8 +36,10 @@ export default function TabelaCriativosV2() {
   useEffect(() => {
     const params = new URLSearchParams()
     try {
-      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', dateRange.start.toISOString().split('T')[0])
-      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', dateRange.end.toISOString().split('T')[0])
+      // format() usa o fuso LOCAL — toISOString() é UTC e virava o dia seguinte,
+      // puxando 1 dia extra de gasto no fim do período.
+      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', format(dateRange.start, 'yyyy-MM-dd'))
+      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', format(dateRange.end, 'yyyy-MM-dd'))
     } catch { return }
 
     setLoading(true)

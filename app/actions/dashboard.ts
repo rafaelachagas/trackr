@@ -1,6 +1,8 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { toZonedTime } from 'date-fns-tz'
+import { format } from 'date-fns'
 
 
 export async function getDashboardData(product: string, startDate: string, endDate: string) {
@@ -33,9 +35,14 @@ export async function getDashboardData(product: string, startDate: string, endDa
 
     // Gasto com anúncios vem da conexão com a Meta (registros com ad_id preenchido).
     // Os lançamentos manuais (ad_id null) ficam de fora para não duplicar o gasto.
+    // ATENÇÃO: gastos.data é DATE puro. Os filtros chegam como timestamp ISO (UTC);
+    // "23:59 de Brasília" vira madrugada do dia SEGUINTE em UTC, e o cast pra date
+    // puxava 1 dia extra de gasto no fim do período (painel mostrava dia D + D+1).
+    // Converte o timestamp para a DATA local de São Paulo antes de filtrar.
+    const isoParaDataLocal = (iso: string) => format(toZonedTime(new Date(iso), 'America/Sao_Paulo'), 'yyyy-MM-dd')
     let queryGastos = supabaseAdmin.from('gastos').select('valor_gasto, data').not('ad_id', 'is', null)
-    if (startDate) queryGastos = queryGastos.gte('data', startDate)
-    if (endDate) queryGastos = queryGastos.lte('data', endDate)
+    if (startDate) queryGastos = queryGastos.gte('data', isoParaDataLocal(startDate))
+    if (endDate) queryGastos = queryGastos.lte('data', isoParaDataLocal(endDate))
 
     const [vendas, gastosRes, produtosRes] = await Promise.all([
       fetchVendasReais(),

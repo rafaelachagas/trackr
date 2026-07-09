@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { format } from 'date-fns'
 import MetricCard from '@/components/ui/MetricCard'
 import GraficoDiario from '@/components/dashboard/GraficoDiario'
 import TabelaCriativos from '@/components/dashboard/TabelaCriativos'
@@ -18,8 +19,10 @@ export default function OverviewPage() {
   useEffect(() => {
     const params = new URLSearchParams()
     try {
-      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', dateRange.start.toISOString().split('T')[0])
-      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', dateRange.end.toISOString().split('T')[0])
+      // format() usa o fuso LOCAL — toISOString() é UTC e virava o dia seguinte
+      // (23:59 local = 02:59 UTC do dia D+1), puxando 1 dia extra de gasto.
+      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', format(dateRange.start, 'yyyy-MM-dd'))
+      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', format(dateRange.end, 'yyyy-MM-dd'))
     } catch {
       return
     }

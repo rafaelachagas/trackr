@@ -146,7 +146,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         days[d].receita += Number(v.valor_liquido ?? v.valor);
       });
       result.gastos?.forEach((g: any) => {
-        const d = format(new Date(g.data), 'dd/MM');
+        // g.data é DATE puro ('yyyy-MM-dd'); new Date() interpretaria como UTC
+        // e jogaria o gasto no dia anterior no fuso local. Fatia a string direto.
+        const d = `${String(g.data).slice(8, 10)}/${String(g.data).slice(5, 7)}`;
         if (!days[d]) days[d] = { name: d, receita: 0, gasto: 0 };
         days[d].gasto += Number(g.valor_gasto);
       });
