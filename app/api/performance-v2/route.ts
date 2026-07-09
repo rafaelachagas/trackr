@@ -113,7 +113,7 @@ export async function GET(request: Request) {
     }
 
     type GastoRow = { criativo: string | null; campaign_name: string | null; ad_name: string | null; valor_gasto: number; data: string }
-    type VendaRow = { criativo: string | null; fase: string | null; campanha: string | null; valor: number; valor_liquido: number | null; data: string; tipo: string | null }
+    type VendaRow = { criativo: string | null; sck: string | null; fase: string | null; campanha: string | null; valor: number; valor_liquido: number | null; data: string; tipo: string | null }
 
     // gastos.data já é DATE em SP (date_start da Meta). vendas.data é timestamptz
     // (UTC): busco de d7 até o fim de HOJE em UTC e depois bucketo pela DATA de
@@ -132,7 +132,7 @@ export async function GET(request: Request) {
       fetchAll<VendaRow>((from, to) =>
         supabaseAdmin
           .from('vendas')
-          .select('criativo, fase, campanha, valor, valor_liquido, data, tipo')
+          .select('criativo, sck, fase, campanha, valor, valor_liquido, data, tipo')
           .eq('status', 'approved')
           .not('transaction_id', 'like', 'manual_%')
           .not('criativo', 'is', null)
@@ -142,9 +142,19 @@ export async function GET(request: Request) {
       ),
     ])
 
+    // CHAVE = NOME COMPLETO DO ANÚNCIO (uma linha por campanha, não por criativo).
+    // No gasto isso é o ad_name; na venda é a parte 3 do sck (ex:
+    // "...|cj01|ad11-como-eu-alugo-meu-rosto-escala-v2"), que casa exato com o
+    // ad_name da Meta. Assim pre-escala-v2, escala-v2, bmsub e bmus (mesmo
+    // criativo, campanhas diferentes) viram linhas separadas com ROAS próprio.
+    const nomeDoSck = (sck: string | null): string | null => {
+      const partes = (sck || '').split('|')
+      return partes.length >= 3 ? partes[2].trim() : null
+    }
+
     type Entrada = {
-      criativo: string
-      ad_name: string | null
+      adName: string
+      codigo: string | null
       campaign_name: string | null
       faseSck: string | null
       gastos: { valor: number; data: string }[]
@@ -152,28 +162,29 @@ export async function GET(request: Request) {
     }
     const mapa = new Map<string, Entrada>()
 
-    function getEntrada(cri: string): Entrada {
-      let e = mapa.get(cri)
+    function getEntrada(adName: string): Entrada {
+      let e = mapa.get(adName)
       if (!e) {
-        e = { criativo: cri, ad_name: null, campaign_name: null, faseSck: null, gastos: [], vendas: [] }
-        mapa.set(cri, e)
+        e = { adName, codigo: null, campaign_name: null, faseSck: null, gastos: [], vendas: [] }
+        mapa.set(adName, e)
       }
       return e
     }
 
     for (const g of gastos) {
-      if (!g.criativo) continue
-      const e = getEntrada(g.criativo)
+      if (!g.ad_name) continue
+      const e = getEntrada(g.ad_name)
       e.gastos.push({ valor: Number(g.valor_gasto) || 0, data: g.data })
-      // guarda um ad_name/campanha representativo (o de maior gasto tende a vir primeiro após sort)
-      if (!e.ad_name && g.ad_name) e.ad_name = g.ad_name
+      if (!e.codigo) e.codigo = g.criativo
       if (!e.campaign_name && g.campaign_name) e.campaign_name = g.campaign_name
     }
 
     for (const v of vendas) {
-      if (!v.criativo) continue
-      const e = getEntrada(v.criativo)
+      const nome = nomeDoSck(v.sck)
+      if (!nome) continue
+      const e = getEntrada(nome)
       e.vendas.push({ liquido: Number(v.valor_liquido ?? v.valor) || 0, data: v.data })
+      if (!e.codigo) e.codigo = v.criativo
       if (!e.faseSck) e.faseSck = v.fase ?? extrairFase(v.campanha)
     }
 
@@ -202,10 +213,10 @@ export async function GET(request: Request) {
       if (gasto7d === 0 && vend7d.length === 0) continue
 
       linhas.push({
-        criativo: e.criativo,
-        ad_name: e.ad_name ?? e.criativo,
+        criativo: e.codigo ?? e.adName,
+        ad_name: e.adName,
         campaign_name: e.campaign_name,
-        fase: e.faseSck ?? detectarFaseCampaign(e.campaign_name),
+        fase: detectarFaseCampaign(e.campaign_name) ?? e.faseSck,
         gasto_7d: gasto7d,
         receita_7d: receita7d,
         lucro_7d: receita7d - gasto7d,

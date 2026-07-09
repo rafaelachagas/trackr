@@ -54,7 +54,7 @@ export default function TabelaCriativosV2() {
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-primary/15 text-primary border border-primary/25">
             <Zap className="w-3 h-3" /> v2 · automático
           </span>
-          <span className="text-[11px] text-muted-foreground">· Framework — últimos 7 dias fechados (até ontem, sem o dia de hoje)</span>
+          <span className="text-[11px] text-muted-foreground">· 1 linha por anúncio/campanha · últimos 7 dias fechados (até ontem)</span>
         </div>
         <select
           value={filtroAcao}
@@ -97,7 +97,7 @@ export default function TabelaCriativosV2() {
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="truncate" title={row.ad_name}>{row.ad_name}</span>
                       <a
-                        href={`/api/criativos/instagram?codigo=${row.criativo}`}
+                        href={`/api/criativos/instagram?ad_name=${encodeURIComponent(row.ad_name)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={e => e.stopPropagation()}
