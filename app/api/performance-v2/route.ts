@@ -209,8 +209,10 @@ export async function GET(request: Request) {
       const roas3d = gasto3d > 0 ? calcularRoas(receita3d, gasto3d) : null
       const roas1d = gasto1d > 0 ? calcularRoas(receita1d, gasto1d) : null
 
-      // Só entra na tabela quem teve gasto OU venda na janela de 7 dias fechados.
-      if (gasto7d === 0 && vend7d.length === 0) continue
+      // Só anúncios que realmente RODARAM (gastaram) na janela de 7 dias fechados.
+      // Descarta restos de campanhas pausadas com centavos de gasto — eles não são
+      // anúncios que você roda e ainda geram ROAS lixo (ex: R$0,35 → 674x).
+      if (gasto7d < 1) continue
 
       linhas.push({
         criativo: e.codigo ?? e.adName,
