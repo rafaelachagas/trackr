@@ -31,26 +31,23 @@ export default function VendasPage() {
   }, [])
 
   async function carregarDados() {
-    const inicio30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-
-    const [{ data: configs }, { count: countVendas }, { data: dadosReceita }, { data: vendas }] = await Promise.all([
+    // Métricas fidedignas (vendas REAIS da Hotmart, sem manuais, sem o teto de
+    // 1000 linhas) vêm do servidor. Config e últimas vendas via client mesmo.
+    const [{ data: configs }, resumoRes, { data: vendas }] = await Promise.all([
       supabase.from('configuracoes').select('*'),
-      supabase.from('vendas').select('*', { count: 'exact', head: true }).eq('status', 'approved').gte('data', inicio30d),
-      supabase.from('vendas').select('valor, buyer_email').eq('status', 'approved').gte('data', inicio30d).limit(10000),
-      supabase.from('vendas').select('*').eq('status', 'approved').order('data', { ascending: false }).limit(50),
+      fetch('/api/vendas/resumo?dias=30').then(r => r.json()).catch(() => null),
+      supabase.from('vendas').select('*').eq('status', 'approved').not('transaction_id', 'like', 'manual_%').order('data', { ascending: false }).limit(50),
     ])
 
     configs?.forEach(c => {
       if (c.chave === 'hotmart_basic') setHotmartBasic(c.valor || '')
     })
 
-    setTotalVendas(countVendas ?? 0)
-    setTotalEventos(countVendas ?? 0)
-
-    if (dadosReceita) {
-      setReceitaTotal(dadosReceita.reduce((acc, v) => acc + Number(v.valor), 0))
-      const emails = new Set(dadosReceita.map((v: any) => v.buyer_email).filter(Boolean))
-      setTotalClientes(emails.size)
+    if (resumoRes && !resumoRes.error) {
+      setTotalVendas(resumoRes.vendas ?? 0)
+      setTotalEventos(resumoRes.vendas ?? 0)
+      setReceitaTotal(resumoRes.receitaBruta ?? 0)
+      setTotalClientes(resumoRes.clientes ?? 0)
     }
 
     if (vendas) setUltimasVendas(vendas)
