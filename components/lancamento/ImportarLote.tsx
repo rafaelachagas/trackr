@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { Upload, X, Sparkles, AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react'
+import { Upload, X, Sparkles, AlertTriangle, CheckCircle2, Trash2, FileSpreadsheet } from 'lucide-react'
 import { getProdutosMapeamento, importarLancamentosEmLote } from '@/app/actions/lancamento'
 import { listarCriativosParaImport } from '@/app/actions/criativos'
 
@@ -53,6 +53,26 @@ function casar(token: string, criativos: Criativo[]): Criativo | null {
 
 function numToInput(n: number): string {
   return isNaN(n) ? '' : String(n)
+}
+
+// remove acentos + lowercase, para casar cabeçalhos/produtos independente de acento/caixa
+function normalizar(s: any): string {
+  return (s ?? '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+}
+
+// acha o valor de uma coluna aceitando variações de nome/acento
+function pegarCampo(row: Record<string, any>, nomes: string[]): any {
+  const alvo = nomes.map(normalizar)
+  for (const k of Object.keys(row)) {
+    if (alvo.includes(normalizar(k))) return row[k]
+  }
+  return undefined
+}
+
+// SheetJS pode devolver número (célula numérica) ou string ("236,13")
+function precoNum(v: any): number {
+  if (typeof v === 'number') return v
+  return parseBR(String(v ?? ''))
 }
 
 export default function ImportarLote({ onImported }: { onImported: () => void }) {
@@ -133,6 +153,76 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
     }
 
     setLinhas(out)
+  }
+
+  // front/upsell a partir do "Nome do Produto" (via mapeamento de produtos)
+  function tipoDoProduto(nome: string): string | undefined {
+    const n = normalizar(nome)
+    if (!n) return undefined
+    const m = produtos.find(p => {
+      const pn = normalizar(p.nome_produto)
+      return pn && (n.includes(pn) || pn.includes(n))
+    })
+    return m?.tipo
+  }
+
+  // Lê .xlsx/.xls/.csv: colunas Nome do Produto | Preço da Oferta | Origem de Checkout.
+  // Agrupa por criativo (trecho da Origem de Checkout) e soma front/upsell.
+  async function processarArquivo(file: File) {
+    setResumo(null)
+    setLinhas(null)
+    try {
+      const XLSX = await import('xlsx')
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+
+      type Agg = { token: string; front: number; upsell: number; ignoradas: number }
+      const mapa = new Map<string, Agg>()
+      let semOrigem = 0
+
+      for (const row of rows) {
+        const produto = String(pegarCampo(row, ['Nome do Produto', 'Produto']) ?? '').trim()
+        const origem = String(pegarCampo(row, ['Origem de Checkout', 'Origem', 'src', 'sck']) ?? '').trim()
+        const preco = precoNum(pegarCampo(row, ['Preço da Oferta', 'Preço', 'Preco', 'Valor', 'Valor da Oferta']))
+        if (!origem) { semOrigem++; continue }
+        if (isNaN(preco) || preco <= 0) continue
+
+        const token = origem.includes('|') ? origem.split('|').pop()!.trim() : origem.trim()
+        if (!mapa.has(token)) mapa.set(token, { token, front: 0, upsell: 0, ignoradas: 0 })
+        const agg = mapa.get(token)!
+        const tipo = tipoDoProduto(produto)
+        if (tipo === 'upsell') agg.upsell += preco
+        else agg.front += preco // front ou não classificado cai como front
+      }
+
+      let id = 0
+      const out: LinhaPreview[] = [...mapa.values()]
+        .sort((a, b) => (b.front + b.upsell) - (a.front + a.upsell))
+        .map(agg => {
+          const match = casar(agg.token, criativos)
+          return {
+            id: id++,
+            raw: agg.token,
+            token: agg.token,
+            criativoNome: match?.nome ?? '',
+            campanha: match?.campaign_name ?? '',
+            reconhecido: !!match,
+            vendaFront: numToInput(agg.front),
+            vendaUpsell: numToInput(agg.upsell),
+            gasto: '',
+          }
+        })
+
+      if (out.length === 0) {
+        setResumo({ vendasInseridas: 0, gastosInseridos: 0, ignorados: 0, erros: ['Nenhuma linha válida encontrada. Confira se o arquivo tem as colunas "Nome do Produto", "Preço da Oferta" e "Origem de Checkout".'] })
+        return
+      }
+      setLinhas(out)
+    } catch (e: any) {
+      setResumo({ vendasInseridas: 0, gastosInseridos: 0, ignorados: 0, erros: ['Erro ao ler o arquivo: ' + (e?.message ?? String(e))] })
+    }
   }
 
   function atualizar(id: number, patch: Partial<LinhaPreview>) {
@@ -218,7 +308,26 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
               {/* Textarea */}
               {!resumo && (
                 <div>
-                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Cole aqui</label>
+                  {/* Upload de planilha (.xlsx/.xls/.csv) */}
+                  <div className="mb-4 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <label className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition cursor-pointer shrink-0">
+                        <FileSpreadsheet className="w-4 h-4" />
+                        Subir .xls / .csv
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls,.csv"
+                          className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) processarArquivo(f); e.target.value = '' }}
+                        />
+                      </label>
+                      <p className="text-xs text-muted-foreground leading-snug flex-1 min-w-[240px]">
+                        Colunas: <span className="font-mono text-foreground">Nome do Produto</span> · <span className="font-mono text-foreground">Preço da Oferta</span> · <span className="font-mono text-foreground">Origem de Checkout</span>. O produto define front/upsell e o valor é somado por criativo.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Ou cole o texto</label>
                   <textarea
                     value={texto}
                     onChange={e => setTexto(e.target.value)}
