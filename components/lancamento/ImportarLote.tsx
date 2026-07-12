@@ -209,8 +209,8 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
             criativoNome: match?.nome ?? '',
             campanha: match?.campaign_name ?? '',
             reconhecido: !!match,
-            vendaFront: numToInput(agg.front),
-            vendaUpsell: numToInput(agg.upsell),
+            vendaFront: numToInput(Math.round(agg.front * 100) / 100),
+            vendaUpsell: numToInput(Math.round(agg.upsell * 100) / 100),
             gasto: '',
           }
         })
@@ -235,6 +235,10 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
   }
 
   const naoReconhecidos = linhas?.filter(l => !l.criativoNome).length ?? 0
+  const totFront = linhas?.reduce((s, l) => s + (parseFloat(l.vendaFront) || 0), 0) ?? 0
+  const totUpsell = linhas?.reduce((s, l) => s + (parseFloat(l.vendaUpsell) || 0), 0) ?? 0
+  const totGasto = linhas?.reduce((s, l) => s + (parseFloat(l.gasto) || 0), 0) ?? 0
+  const fmtBR = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
   async function importar() {
     if (!linhas) return
@@ -309,10 +313,10 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
               {!resumo && (
                 <div>
                   {/* Upload de planilha (.xlsx/.xls/.csv) */}
-                  <div className="mb-4 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
+                  <div className="mb-4 rounded-xl border border-dashed border-border bg-muted/20 p-4">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <label className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition cursor-pointer shrink-0">
-                        <FileSpreadsheet className="w-4 h-4" />
+                      <label className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-card border border-border text-foreground hover:border-primary/50 transition cursor-pointer shrink-0">
+                        <FileSpreadsheet className="w-4 h-4 text-muted-foreground" />
                         Subir .xls / .csv
                         <input
                           type="file"
@@ -434,6 +438,15 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-border bg-muted/30">
+                          <td className="px-3 py-2.5 text-[11px] font-bold text-foreground uppercase tracking-wide">Total ({linhas.length})</td>
+                          <td className="px-3 py-2.5 text-right text-xs font-bold text-emerald-400">R$ {fmtBR(totFront)}</td>
+                          <td className="px-3 py-2.5 text-right text-xs font-bold text-violet-400">R$ {fmtBR(totUpsell)}</td>
+                          <td className="px-3 py-2.5 text-right text-xs font-bold text-foreground">R$ {fmtBR(totGasto)}</td>
+                          <td />
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
 
