@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { formatarMoeda, corDaAcao, iconeAcao } from '@/lib/utils'
 import { useDashboard } from '@/context/DashboardContext'
 import type { CriativoV2 } from '@/app/api/performance-v2/route'
-import { Zap, ExternalLink, X } from 'lucide-react'
+import { Zap, ExternalLink, X, Radio } from 'lucide-react'
 
 const COR_FASE: Record<string, string> = {
   FASE01: 'bg-blue-500/15 text-blue-400 border border-blue-500/25',
@@ -130,7 +130,7 @@ export default function TabelaCriativosV2() {
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-primary/15 text-primary border border-primary/25">
             <Zap className="w-3 h-3" /> v2 · automático
           </span>
-          <span className="text-[11px] text-muted-foreground">· 1 linha por anúncio/campanha · últimos 7 dias fechados (até ontem)</span>
+          <span className="text-[11px] text-muted-foreground">· 1 linha por anúncio/campanha · ação sobre os 7 dias fechados (até ontem) · <span className="text-sky-400/80">tempo real = hoje, fora da ação</span></span>
         </div>
         <select
           value={filtroAcao}
@@ -163,7 +163,10 @@ export default function TabelaCriativosV2() {
                 <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">ROAS 7d</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">ROAS 3d</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">ROAS 1d</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ação</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-sky-400/80 uppercase tracking-wide border-l border-border whitespace-nowrap" title="HOJE, dia correndo. Não entra na ação — é só pra acompanhar o dia.">
+                  <span className="inline-flex items-center gap-1"><Radio className="w-3 h-3" /> Tempo real</span>
+                </th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-l border-border">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -209,7 +212,19 @@ export default function TabelaCriativosV2() {
                   <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_7d} />}</td>
                   <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_3d} />}</td>
                   <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_1d} />}</td>
-                  <td className="px-4 py-3 text-center">
+                  <td className={`px-4 py-3 text-center border-l border-border ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                    {isPrivate ? <span className="text-xs">•.••</span> : (
+                      <div className="leading-tight" title={`Hoje: ${formatarMoeda(row.gasto_hoje)} gasto · ${formatarMoeda(row.receita_hoje)} líquido`}>
+                        <BadgeRoas valor={row.roas_hoje} />
+                        {row.gasto_hoje > 0 && (
+                          <div className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
+                            {formatarMoeda(row.gasto_hoje)} → {formatarMoeda(row.receita_hoje)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center border-l border-border">
                     <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${corDaAcao(row.acao)}`}>
                       {iconeAcao(row.acao)} {row.acao}
                     </span>

@@ -68,6 +68,11 @@ export interface CriativoV2 {
   roas_7d: number | null
   roas_3d: number | null
   roas_1d: number | null
+  // TEMPO REAL = HOJE, dia incompleto. Só p/ acompanhar o dia correndo —
+  // NÃO entra na ação (que continua sendo 7d/3d/1d fechados).
+  gasto_hoje: number
+  receita_hoje: number
+  roas_hoje: number | null
   acao: AcaoOtimizacao
 }
 
@@ -127,7 +132,7 @@ export async function GET(request: Request) {
           .select('criativo, campaign_name, ad_name, valor_gasto, data')
           .not('ad_id', 'is', null)
           .gte('data', d7)
-          .lte('data', ontem)
+          .lte('data', hoje)   // hoje entra só p/ o ROAS TEMPO REAL; as janelas fechadas cortam em ontem
           .range(from, to)
       ),
       fetchAll<VendaRow>((from, to) =>
@@ -225,10 +230,17 @@ export async function GET(request: Request) {
       const roas3d = gasto3d > 0 ? calcularRoas(receita3d, gasto3d) : null
       const roas1d = gasto1d > 0 ? calcularRoas(receita1d, gasto1d) : null
 
+      // TEMPO REAL: o dia de HOJE correndo. Fica FORA de tudo que decide ação.
+      const gastoHoje = e.gastos.filter(g => g.data === hoje).reduce((a, g) => a + g.valor, 0)
+      const vendHoje = e.vendas.filter(v => diaSP(v.data) === hoje)
+      const receitaHoje = vendHoje.reduce((a, v) => a + v.liquido, 0)
+      const roasHoje = gastoHoje >= 1 ? calcularRoas(receitaHoje, gastoHoje) : null
+
       // Só anúncios que realmente RODARAM (gastaram) na janela de 7 dias fechados.
       // Descarta restos de campanhas pausadas com centavos de gasto — eles não são
       // anúncios que você roda e ainda geram ROAS lixo (ex: R$0,35 → 674x).
-      if (gasto7d < 1) continue
+      // Exceção: anúncio que subiu HOJE ainda não tem 7d, mas precisa aparecer.
+      if (gasto7d < 1 && gastoHoje < 1) continue
 
       // ad_name representativo = o de maior gasto da campanha; senão o nome do sck.
       let adNameRep = e.sckName ?? e.codigo
@@ -250,12 +262,15 @@ export async function GET(request: Request) {
         roas_7d: roas7d,
         roas_3d: roas3d,
         roas_1d: roas1d,
+        gasto_hoje: gastoHoje,
+        receita_hoje: receitaHoje,
+        roas_hoje: roasHoje,
         acao: aplicarRegras(roas7d, roas3d, roas1d, ROAS_MINIMO, regras),
       })
     }
 
     // Ordena por gasto de 7d (maior primeiro) — foco no que consome verba
-    linhas.sort((a, b) => b.gasto_7d - a.gasto_7d)
+    linhas.sort((a, b) => (b.gasto_7d - a.gasto_7d) || (b.gasto_hoje - a.gasto_hoje))
 
     return NextResponse.json({ criativos: linhas, roasMinimo: ROAS_MINIMO })
   } catch (err) {
