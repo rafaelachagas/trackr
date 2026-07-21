@@ -7,7 +7,7 @@ import { X, Copy, Check } from 'lucide-react'
  * GERADOR DE NOMENCLATURA
  *
  * Monta os nomes pro gerenciador (campanha / conjunto / criativo) + o link com
- * sck, seguindo o padrão da conta. Sem marcador, reproduz EXATAMENTE os exemplos:
+ * sck, seguindo o padrão da conta. Sem conta/versão, reproduz os exemplos exatos:
  *
  *   FASE01 (CBO):  [IZ][CBO][VENDAS][F][FASE01] AD00 | AD01
  *                  sck=iz-cbo-vendas-f-fase01-ad00-ad01|cj01|ad00-exemplo
@@ -16,11 +16,12 @@ import { X, Copy, Check } from 'lucide-react'
  *   FASE03 (ADV+): [IZ][ADV+][VENDAS][F][FASE03] Escala - AD00
  *                  sck=iz-adv-vendas-f-fase03-escala-ad00|cj01|ad00-exemplo-escala
  *
- * MARCADOR DE CONTA/VERSÃO (pra subir o MESMO ad em outra conta/BM sem misturar):
- *   - bmsub / bmus entram ANTES do sufixo de fase   → ad00-exemplo-bmus-pre-escala
- *   - v2 entra no FIM                               → ad00-exemplo-escala-v2
- * É de propósito no Nome do Criativo: é ali que o dashboard (performance-v2) lê
- * pra separar o ROAS por conta. Só bmsub/bmus/v2 são reconhecidos como separador.
+ * CONTA / VERSÃO (pra subir o MESMO ad sem misturar o ROAS no dashboard):
+ *   - conta (bmsub/bmus) é ESCOLHA ÚNICA — um ad está numa conta só. Entra ANTES
+ *     do sufixo de fase:  ad00-exemplo-bmus-pre-escala
+ *   - v2 é separado e entra no FIM:  ad00-exemplo-escala-v2
+ *   É de propósito no Nome do Criativo: é ali que o performance-v2 lê pra separar
+ *   o ROAS por conta. Só bmsub/bmus/v2 são reconhecidos como separador.
  */
 
 const LP_PADRAO = 'https://lp.rafaelachagas.com.br/fpf-vsl-v1'
@@ -33,10 +34,15 @@ const FASE_CFG: Record<Fase, { tipoDisplay: string; tipoSck: string; label: stri
   FASE03: { tipoDisplay: 'ADV+', tipoSck: 'adv', label: 'Escala',      slug: 'escala' },
 }
 
-const MARCADORES = ['bmsub', 'bmus', 'v2'] as const
-type Marcador = typeof MARCADORES[number]
+type Conta = 'none' | 'bmsub' | 'bmus'
+const CONTAS: { v: Conta; label: string }[] = [
+  { v: 'none',  label: 'Padrão' },
+  { v: 'bmsub', label: 'BM Sub' },
+  { v: 'bmus',  label: 'BM US' },
+]
+type Versao = 'v1' | 'v2'
 
-const inputClass = 'bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary/60 w-full transition-colors'
+const inputClass = 'bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 w-full transition-all'
 
 function parseBase(base: string): { codigo: string; slug: string } | null {
   const t = base.trim().toLowerCase()
@@ -46,6 +52,7 @@ function parseBase(base: string): { codigo: string; slug: string } | null {
   return { codigo: m[1], slug }
 }
 
+// Aceita vírgula, espaço ou pipe. Preserva a ordem digitada e remove repetidos.
 function extrairAdCodes(texto: string): string[] {
   const m = texto.toLowerCase().match(/ad\d+/g)
   return m ? Array.from(new Set(m)) : []
@@ -67,7 +74,7 @@ function CopyBtn({ value }: { value: string }) {
 
 function LinhaResultado({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-muted/20 border border-border/50 rounded-xl px-3 py-2.5">
+    <div className="bg-background/60 border border-border/60 rounded-xl px-3.5 py-2.5">
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
         <CopyBtn value={value} />
@@ -77,33 +84,60 @@ function LinhaResultado({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Segmento (escolha única) reutilizável.
+function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { v: T; label: string; sub?: string }[] }) {
+  return (
+    <div className="inline-flex w-full rounded-lg border border-border bg-background p-1 gap-1">
+      {options.map(o => {
+        const active = o.v === value
+        return (
+          <button
+            key={o.v}
+            type="button"
+            onClick={() => onChange(o.v)}
+            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${active ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {o.label}
+            {o.sub && <span className={`block text-[9px] font-medium ${active ? 'text-white/80' : 'opacity-60'}`}>{o.sub}</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function GeradorNomenclatura({ onClose }: { onClose: () => void }) {
   const [base, setBase] = useState('')
   const [fase, setFase] = useState<Fase>('FASE01')
   const [conjunto, setConjunto] = useState(1)
-  const [marcadores, setMarcadores] = useState<Marcador[]>([])
+  const [conta, setConta] = useState<Conta>('none')
+  const [versao, setVersao] = useState<Versao>('v1')
   const [adsCampanha, setAdsCampanha] = useState('')
-  // Lembra a última LP usada (não é padrão — varia por produto/criativo).
+  const [adsDirty, setAdsDirty] = useState(false)
   const [lp, setLp] = useState<string>(() => {
     if (typeof window === 'undefined') return LP_PADRAO
     return localStorage.getItem(LP_STORAGE_KEY) || LP_PADRAO
   })
 
+  const parsed = parseBase(base)
+  const baseInvalida = base.trim().length > 0 && !parsed
+  const codigo = parsed?.codigo ?? ''
+
+  // ADs na campanha nunca fica vazio: espelha o código do criativo até você mexer.
+  useEffect(() => { if (!adsDirty) setAdsCampanha(codigo) }, [codigo, adsDirty])
+
   useEffect(() => {
     if (typeof window !== 'undefined' && lp.trim()) localStorage.setItem(LP_STORAGE_KEY, lp.trim())
   }, [lp])
 
-  const parsed = parseBase(base)
-  const baseInvalida = base.trim().length > 0 && !parsed
+  const adCodes = extrairAdCodes(adsCampanha)
+  const adsVazio = !!parsed && adCodes.length === 0
 
   const res = useMemo(() => {
-    if (!parsed) return null
+    if (!parsed || adCodes.length === 0) return null
     const cfg = FASE_CFG[fase]
-    const bm = MARCADORES.filter(m => m !== 'v2' && marcadores.includes(m)) // bmsub, bmus (antes da fase)
-    const temV2 = marcadores.includes('v2')                                 // v2 (no fim)
-
-    const codes = extrairAdCodes(adsCampanha)
-    const adCodes = codes.length ? codes : [parsed.codigo]
+    const bm = conta === 'none' ? [] : [conta]   // conta (antes da fase)
+    const temV2 = versao === 'v2'                 // versão (no fim)
 
     const adName = [`${parsed.codigo}-${parsed.slug}`, ...bm, cfg.slug, temV2 ? 'v2' : null]
       .filter(Boolean).join('-')
@@ -126,15 +160,11 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
 
     const tudo = `Campanha:\n${campDisplay}\n\nConjunto:\n${cjDisplay}\n\nCriativo:\n${adName}\n\nLink:\n${link}`
     return { campDisplay, cjDisplay, adName, sck, link, tudo }
-  }, [parsed, fase, conjunto, marcadores, adsCampanha, lp])
-
-  function toggleMarcador(m: Marcador) {
-    setMarcadores(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m])
-  }
+  }, [parsed, adCodes, fase, conjunto, conta, versao, lp])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border sticky top-0 bg-card z-10">
           <div>
@@ -144,7 +174,7 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted/50"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-5">
           {/* Nome do criativo */}
           <div>
             <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Nome do criativo</label>
@@ -153,7 +183,7 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
               value={base}
               onChange={e => setBase(e.target.value)}
               placeholder="ad00-exemplo"
-              className={`${inputClass} ${baseInvalida ? 'border-rose-500/60' : ''}`}
+              className={`${inputClass} ${baseInvalida ? 'border-rose-500/60 focus:ring-rose-500/30' : ''}`}
               autoFocus
             />
             {baseInvalida
@@ -164,60 +194,49 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
           {/* Fase */}
           <div>
             <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Fase</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(FASE_CFG) as Fase[]).map(f => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFase(f)}
-                  className={`px-3 py-2 rounded-lg text-xs font-bold border transition ${fase === f ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80'}`}
-                >
-                  {f}
-                  <span className="block text-[9px] font-medium opacity-70">{FASE_CFG[f].tipoDisplay}{FASE_CFG[f].label ? ` · ${FASE_CFG[f].label}` : ''}</span>
-                </button>
-              ))}
-            </div>
+            <Segmented<Fase>
+              value={fase}
+              onChange={setFase}
+              options={(Object.keys(FASE_CFG) as Fase[]).map(f => ({ v: f, label: f, sub: `${FASE_CFG[f].tipoDisplay}${FASE_CFG[f].label ? ` · ${FASE_CFG[f].label}` : ''}` }))}
+            />
           </div>
 
-          {/* Conjunto + Marcadores */}
-          <div className="grid grid-cols-[auto_1fr] gap-4 items-start">
+          {/* Conjunto + Versão */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Conjunto</label>
               <div className="flex items-center gap-1.5">
-                <button type="button" onClick={() => setConjunto(c => Math.max(1, c - 1))} className="w-8 h-9 rounded-lg bg-background border border-border text-muted-foreground hover:text-foreground transition">−</button>
-                <div className="w-14 h-9 rounded-lg bg-muted/20 border border-border/50 flex items-center justify-center text-sm font-mono font-bold text-foreground">CJ{String(conjunto).padStart(2, '0')}</div>
-                <button type="button" onClick={() => setConjunto(c => Math.min(99, c + 1))} className="w-8 h-9 rounded-lg bg-background border border-border text-muted-foreground hover:text-foreground transition">+</button>
+                <button type="button" onClick={() => setConjunto(c => Math.max(1, c - 1))} className="w-9 h-9 rounded-lg bg-background border border-border text-muted-foreground hover:text-foreground hover:border-border/80 transition text-lg leading-none">−</button>
+                <div className="flex-1 h-9 rounded-lg bg-background border border-border flex items-center justify-center text-sm font-mono font-bold text-foreground">CJ{String(conjunto).padStart(2, '0')}</div>
+                <button type="button" onClick={() => setConjunto(c => Math.min(99, c + 1))} className="w-9 h-9 rounded-lg bg-background border border-border text-muted-foreground hover:text-foreground hover:border-border/80 transition text-lg leading-none">+</button>
               </div>
             </div>
             <div>
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Conta / versão <span className="font-normal normal-case opacity-70">(pra não misturar o mesmo AD)</span></label>
-              <div className="flex flex-wrap gap-1.5">
-                {MARCADORES.map(m => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => toggleMarcador(m)}
-                    className={`px-3 py-2 rounded-lg text-xs font-bold border transition ${marcadores.includes(m) ? 'bg-primary/15 border-primary/50 text-primary' : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80'}`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">Vazio = mesma conta de sempre. Marque só quando subir o mesmo AD em outra conta/BM.</p>
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Versão</label>
+              <Segmented<Versao> value={versao} onChange={setVersao} options={[{ v: 'v1', label: 'v1' }, { v: 'v2', label: 'v2' }]} />
             </div>
           </div>
 
-          {/* ADs na campanha (fase 01) */}
+          {/* Conta de anúncio */}
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">ADs na campanha <span className="font-normal normal-case opacity-70">(fase 01 agrupa vários)</span></label>
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Conta de anúncio</label>
+            <Segmented<Conta> value={conta} onChange={setConta} options={CONTAS} />
+            <p className="text-[10px] text-muted-foreground mt-1">Escolha outra conta só quando subir o <b>mesmo</b> AD fora da principal — pro dashboard não somar o ROAS junto.</p>
+          </div>
+
+          {/* ADs na campanha */}
+          <div>
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">ADs na campanha</label>
             <input
               type="text"
               value={adsCampanha}
-              onChange={e => setAdsCampanha(e.target.value)}
-              placeholder={parsed ? `${parsed.codigo} ad01` : 'ad00 ad01'}
-              className={inputClass}
+              onChange={e => { setAdsDirty(true); setAdsCampanha(e.target.value) }}
+              placeholder="ad00, ad01"
+              className={`${inputClass} ${adsVazio ? 'border-rose-500/60 focus:ring-rose-500/30' : ''}`}
             />
-            <p className="text-[10px] text-muted-foreground mt-1">Liste todos os ADs da campanha (ex: <span className="font-mono">ad00 ad01</span>). Vazio = só o AD atual.</p>
+            {adsVazio
+              ? <p className="text-[10px] text-rose-400 mt-1">Liste ao menos um AD (ex: <span className="font-mono">ad00</span>).</p>
+              : <p className="text-[10px] text-muted-foreground mt-1">Separe por vírgula. Na fase 01 a campanha agrupa vários (ex: <span className="font-mono">ad00, ad01</span>).</p>}
           </div>
 
           {/* LP */}
@@ -233,8 +252,8 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
           </div>
 
           {/* Resultado */}
-          {res && (
-            <div className="pt-2 border-t border-border space-y-2.5">
+          {res ? (
+            <div className="pt-4 border-t border-border space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-foreground">Nomenclatura gerada</span>
                 <button
@@ -249,6 +268,10 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
               <LinhaResultado label="Nome do Conjunto" value={res.cjDisplay} />
               <LinhaResultado label="Nome do Criativo" value={res.adName} />
               <LinhaResultado label="Link (sck)" value={res.link} />
+            </div>
+          ) : (
+            <div className="pt-4 border-t border-border">
+              <p className="text-xs text-muted-foreground text-center py-4">Digite o nome do criativo pra gerar a nomenclatura.</p>
             </div>
           )}
         </div>
