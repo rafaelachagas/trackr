@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Plus, X, Trash2, Pause, Play, Search, Film, Pencil, ExternalLink } from 'lucide-react'
+import { Plus, X, Trash2, Pause, Play, Search, Film, Pencil, ExternalLink, Tag } from 'lucide-react'
+import GeradorNomenclatura from '@/components/criativos/GeradorNomenclatura'
 import {
   listarCriativos,
   criarCriativo,
@@ -48,6 +49,7 @@ const formVazio: FormState = {
 export default function CriativosPage() {
   const [lista, setLista] = useState<Criativo[]>([])
   const [modalNovo, setModalNovo] = useState(false)
+  const [modalNomenclatura, setModalNomenclatura] = useState(false)
   const [editando, setEditando] = useState<Criativo | null>(null)
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativo' | 'pausado'>('todos')
@@ -140,11 +142,19 @@ export default function CriativosPage() {
           <h1 className="text-2xl font-bold text-foreground">Criativos</h1>
           <p className="text-sm text-muted-foreground mt-1">Cadastro central de criativos e campanhas</p>
         </div>
-        <button onClick={abrirNovo} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
-          <Plus className="w-4 h-4" />
-          Novo Criativo
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setModalNomenclatura(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-muted/40 text-foreground border border-border hover:bg-muted/60 transition-all">
+            <Tag className="w-4 h-4" />
+            Gerar Nomenclatura
+          </button>
+          <button onClick={abrirNovo} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+            <Plus className="w-4 h-4" />
+            Novo Criativo
+          </button>
+        </div>
       </div>
+
+      {modalNomenclatura && <GeradorNomenclatura onClose={() => setModalNomenclatura(false)} />}
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
