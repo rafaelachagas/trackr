@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { calcularRoas } from '@/lib/utils'
+import { calcularRoas, extrairCriativo } from '@/lib/utils'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 import { AcaoOtimizacao } from '@/types'
@@ -22,6 +22,69 @@ import { AcaoOtimizacao } from '@/types'
 
 const TIMEZONE = 'America/Sao_Paulo'
 const ROAS_MINIMO_PADRAO = 1.0
+
+const META_API_VERSION = 'v25.0'
+const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
+
+// Prioridade da AÇÃO na ordenação: subir primeiro, pausar por último.
+const ORDEM_ACAO: Record<string, number> = {
+  '+20% orçamento': 0,
+  'Manter': 1,
+  '-20% ou pausar': 2,
+  'Pausar': 3,
+}
+
+// Fase/flags a partir do nome — MESMA normalização usada no agrupamento e no
+// casamento com os anúncios ATIVOS da Meta (código|fase|flags).
+function faseToken(t: string | null): string | null {
+  const m = (t || '').toLowerCase().match(/fase\s*0?([123])/)
+  return m ? `FASE0${m[1]}` : null
+}
+function flagsToken(t: string | null): string {
+  const s = (t || '').toLowerCase()
+  const bmsub = s.includes('bmsub') ? 'S' : '-'
+  const bmus = s.includes('bmus') ? 'U' : '-'
+  const v2 = /(^|[^a-z0-9])v2([^0-9]|$)/.test(s) ? '2' : '-'
+  return `${bmsub}${bmus}${v2}`
+}
+
+// Anúncios ATIVOS (effective_status=ACTIVE) de uma conta. effective_status leva
+// em conta campanha/conjunto pausados — é o que REALMENTE está rodando.
+async function fetchAdsAtivos(accountId: string, accessToken: string): Promise<{ name: string; campaign: string | null }[]> {
+  const acct = accountId.startsWith('act_') ? accountId : `act_${accountId}`
+  let url: string | null = `${META_API_BASE}/${acct}/ads?${new URLSearchParams({
+    fields: 'name,effective_status,campaign{name}',
+    filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]),
+    limit: '500',
+    access_token: accessToken,
+  })}`
+  const out: { name: string; campaign: string | null }[] = []
+  let paginas = 0
+  while (url && paginas < 20) {
+    const res: Response = await fetch(url)
+    const json = await res.json()
+    if (json.error) throw new Error(`Meta API: ${json.error.message}`)
+    for (const ad of json.data ?? []) {
+      if (ad.effective_status && ad.effective_status !== 'ACTIVE') continue
+      out.push({ name: ad.name, campaign: ad.campaign?.name ?? null })
+    }
+    url = json.paging?.next ?? null
+    paginas++
+  }
+  return out
+}
+
+// Conjunto das chaves código|fase|flags que estão ATIVAS agora (todas as contas).
+async function buscarChavesAtivas(accessToken: string, adAccountIds: string[]): Promise<Set<string>> {
+  const listas = await Promise.all(adAccountIds.map(id => fetchAdsAtivos(id, accessToken)))
+  const keys = new Set<string>()
+  for (const ads of listas) for (const ad of ads) {
+    const cod = extrairCriativo(ad.name)   // mesma extração usada no sync p/ gastos.criativo
+    if (!cod) continue
+    keys.add(`${cod}|${faseToken(ad.campaign) ?? '?'}|${flagsToken(ad.name)}`)
+  }
+  return keys
+}
 
 type RegraFramework = { p7: boolean; p3: boolean; p1: boolean; acao: AcaoOtimizacao }
 
@@ -103,19 +166,28 @@ export async function GET(request: Request) {
     const d3 = format(subDays(agora, 3), 'yyyy-MM-dd')          // 3 dias fechados: [d3 .. ontem]
     const d1 = ontem                                            // 1 dia fechado: ontem
 
-    // ROAS mínimo + regras do framework (config compartilhada)
+    // ROAS mínimo + regras do framework + credenciais Meta (config compartilhada)
     const { data: configs } = await supabaseAdmin
       .from('configuracoes')
       .select('chave, valor')
-      .in('chave', ['roas_minimo', 'framework_regras'])
+      .in('chave', ['roas_minimo', 'framework_regras', 'meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id'])
 
     let ROAS_MINIMO = ROAS_MINIMO_PADRAO
     let regras = REGRAS_PADRAO
+    let accessToken = ''
+    let adAccountIds: string[] = []
     if (configs) {
       const cfgRoas = configs.find(c => c.chave === 'roas_minimo')
       if (cfgRoas?.valor) ROAS_MINIMO = parseFloat(cfgRoas.valor) || ROAS_MINIMO_PADRAO
       const cfgRegras = configs.find(c => c.chave === 'framework_regras')
       if (cfgRegras?.valor) { try { regras = JSON.parse(cfgRegras.valor) } catch {} }
+      accessToken = configs.find(c => c.chave === 'meta_access_token')?.valor ?? ''
+      const idsRaw = configs.find(c => c.chave === 'meta_ad_account_ids')?.valor
+      if (idsRaw) { try { adAccountIds = JSON.parse(idsRaw) } catch {} }
+      if (adAccountIds.length === 0) {
+        const single = configs.find(c => c.chave === 'meta_ad_account_id')?.valor
+        if (single) adAccountIds = [single]
+      }
     }
 
     type GastoRow = { criativo: string | null; campaign_name: string | null; ad_name: string | null; valor_gasto: number; data: string }
@@ -125,7 +197,17 @@ export async function GET(request: Request) {
     // (UTC): busco de d7 até o fim de HOJE em UTC e depois bucketo pela DATA de
     // São Paulo — senão vendas perto da meia-noite caem no dia errado e o ROAS
     // (principalmente o de 1D) sai furado.
-    const [gastos, vendas] = await Promise.all([
+    // Chaves ATIVAS na Meta (só o que está rodando). Em paralelo com gastos/vendas.
+    // Se a Meta falhar ou não estiver configurada → null (não filtra, mostra tudo,
+    // sinaliza no front) em vez de esvaziar a tabela ou esconder anúncio bom.
+    const buscarAtivos: Promise<{ keys: Set<string> | null }> =
+      accessToken && adAccountIds.length > 0
+        ? buscarChavesAtivas(accessToken, adAccountIds)
+            .then(keys => ({ keys }))
+            .catch(err => { console.error('[performance-v2] ativos', err); return { keys: null } })
+        : Promise.resolve({ keys: null })
+
+    const [gastos, vendas, ativosRes] = await Promise.all([
       fetchAll<GastoRow>((from, to) =>
         supabaseAdmin
           .from('gastos')
@@ -146,7 +228,11 @@ export async function GET(request: Request) {
           .lte('data', `${hoje}T23:59:59`)
           .range(from, to)
       ),
+      buscarAtivos,
     ])
+
+    const activeKeys = ativosRes.keys
+    const filtradoAtivos = activeKeys != null   // false = não deu pra filtrar (Meta off/erro)
 
     // CHAVE = CAMPANHA NORMALIZADA: código + fase + marcadores (bmsub/bmus/v2).
     // Casar por nome completo do anúncio é frágil — um typo no sck já quebra o
@@ -155,17 +241,7 @@ export async function GET(request: Request) {
     // e os marcadores são tokens curtos e estáveis. Validado: 0 campanhas com
     // gasto sem receita casada. Assim pre-escala-v2, escala-v2, bmsub e bmus
     // (mesmo criativo, campanhas diferentes) viram linhas separadas com ROAS próprio.
-    const faseToken = (t: string | null): string | null => {
-      const m = (t || '').toLowerCase().match(/fase\s*0?([123])/)
-      return m ? `FASE0${m[1]}` : null
-    }
-    const flagsToken = (t: string | null): string => {
-      const s = (t || '').toLowerCase()
-      const bmsub = s.includes('bmsub') ? 'S' : '-'
-      const bmus = s.includes('bmus') ? 'U' : '-'
-      const v2 = /(^|[^a-z0-9])v2([^0-9]|$)/.test(s) ? '2' : '-'
-      return `${bmsub}${bmus}${v2}`
-    }
+    // faseToken/flagsToken agora são de módulo (reusados no filtro de ativos).
 
     type Entrada = {
       codigo: string
@@ -242,6 +318,10 @@ export async function GET(request: Request) {
       // Exceção: anúncio que subiu HOJE ainda não tem 7d, mas precisa aparecer.
       if (gasto7d < 1 && gastoHoje < 1) continue
 
+      // SÓ CRIATIVOS ATIVOS na Meta. Pausado (mesmo que tenha gastado nos 7d) some.
+      // Se activeKeys == null (Meta off/erro) não filtra — não esconde nada à toa.
+      if (activeKeys && !activeKeys.has(chave)) continue
+
       // ad_name representativo = o de maior gasto da campanha; senão o nome do sck.
       let adNameRep = e.sckName ?? e.codigo
       let maxG = -1
@@ -269,10 +349,14 @@ export async function GET(request: Request) {
       })
     }
 
-    // Ordena por gasto de 7d (maior primeiro) — foco no que consome verba
-    linhas.sort((a, b) => (b.gasto_7d - a.gasto_7d) || (b.gasto_hoje - a.gasto_hoje))
+    // Ordena por AÇÃO (+20% → manter → -20%/pausar → pausar); desempata por gasto.
+    linhas.sort((a, b) =>
+      (ORDEM_ACAO[a.acao] ?? 9) - (ORDEM_ACAO[b.acao] ?? 9)
+      || (b.gasto_7d - a.gasto_7d)
+      || (b.gasto_hoje - a.gasto_hoje)
+    )
 
-    return NextResponse.json({ criativos: linhas, roasMinimo: ROAS_MINIMO })
+    return NextResponse.json({ criativos: linhas, roasMinimo: ROAS_MINIMO, filtradoAtivos })
   } catch (err) {
     console.error('[performance-v2]', err)
     return NextResponse.json({ error: `Erro interno: ${err}` }, { status: 500 })

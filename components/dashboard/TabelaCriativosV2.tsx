@@ -104,6 +104,7 @@ export default function TabelaCriativosV2() {
   const { isPrivate, lastUpdate } = useDashboard()
   const [dados, setDados] = useState<CriativoV2[]>([])
   const [loading, setLoading] = useState(true)
+  const [filtradoAtivos, setFiltradoAtivos] = useState(true)
   const [filtroAcao, setFiltroAcao] = useState('')
   const [detalhe, setDetalhe] = useState<{ ad_name: string; chave: string } | null>(null)
 
@@ -114,7 +115,10 @@ export default function TabelaCriativosV2() {
     setLoading(true)
     fetch('/api/performance-v2')
       .then(r => r.json())
-      .then(({ criativos }: { criativos: CriativoV2[] }) => setDados(criativos ?? []))
+      .then(({ criativos, filtradoAtivos }: { criativos: CriativoV2[]; filtradoAtivos?: boolean }) => {
+        setDados(criativos ?? [])
+        setFiltradoAtivos(filtradoAtivos !== false)
+      })
       .catch(() => setDados([]))
       .finally(() => setLoading(false))
   }, [lastUpdate])
@@ -130,7 +134,7 @@ export default function TabelaCriativosV2() {
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-primary/15 text-primary border border-primary/25">
             <Zap className="w-3 h-3" /> v2 · automático
           </span>
-          <span className="text-[11px] text-muted-foreground">· 1 linha por anúncio/campanha · ação sobre os 7 dias fechados (até ontem) · <span className="text-sky-400/80">tempo real = hoje, fora da ação</span></span>
+          <span className="text-[11px] text-muted-foreground">· {filtradoAtivos ? 'só criativos ativos' : <span className="text-amber-400/90">ativos indisponíveis (mostrando todos)</span>} · ordenado por ação · <span className="text-sky-400/80">tempo real = hoje, fora da ação</span></span>
         </div>
         <select
           value={filtroAcao}
@@ -147,8 +151,8 @@ export default function TabelaCriativosV2() {
         </div>
       ) : filtrados.length === 0 ? (
         <div className="p-8 text-center text-muted-foreground">
-          <p>Sem gasto nem venda por anúncio nos últimos 7 dias fechados.</p>
-          <p className="text-sm mt-1">Sincronize os gastos da Meta e aguarde vendas com sck de anúncio.</p>
+          <p>Nenhum criativo ativo com gasto nos últimos 7 dias.</p>
+          <p className="text-sm mt-1">A tabela mostra só anúncios ativos na Meta. Ative um criativo ou sincronize os gastos.</p>
         </div>
       ) : (
         <div className="overflow-x-auto hide-scrollbar">
