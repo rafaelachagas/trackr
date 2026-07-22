@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { X, Copy, Check } from 'lucide-react'
+import { X, Copy, Check, ChevronDown, Loader2 } from 'lucide-react'
 
 /**
  * GERADOR DE NOMENCLATURA
@@ -16,12 +16,14 @@ import { X, Copy, Check } from 'lucide-react'
  *   FASE03 (ADV+): [IZ][ADV+][VENDAS][F][FASE03] Escala - AD00
  *                  sck=iz-adv-vendas-f-fase03-escala-ad00|cj01|ad00-exemplo-escala
  *
- * CONTA / VERSÃO (pra subir o MESMO ad sem misturar o ROAS no dashboard):
- *   - conta (bmsub/bmus) é ESCOLHA ÚNICA — um ad está numa conta só. Entra ANTES
- *     do sufixo de fase:  ad00-exemplo-bmus-pre-escala
+ * CONTA / VERSÃO (pra subir o MESMO ad sem misturar):
+ *   - conta é um marcador livre (digitado ou puxado da Meta). Entra ANTES do
+ *     sufixo de fase:  ad00-exemplo-bmus-pre-escala
  *   - v2 é separado e entra no FIM:  ad00-exemplo-escala-v2
- *   É de propósito no Nome do Criativo: é ali que o performance-v2 lê pra separar
- *   o ROAS por conta. Só bmsub/bmus/v2 são reconhecidos como separador.
+ *   Ambos vão no Nome do Criativo, que é onde o performance-v2 lê pra separar o
+ *   ROAS. ATENÇÃO: hoje o dashboard só separa por bmsub/bmus/v2 — marcadores de
+ *   outras contas geram o nome certo mas ainda somam o ROAS junto até o
+ *   flagsToken (performance-v2) ser estendido.
  */
 
 const LP_PADRAO = 'https://lp.rafaelachagas.com.br/fpf-vsl-v1'
@@ -34,22 +36,22 @@ const FASE_CFG: Record<Fase, { tipoDisplay: string; tipoSck: string; label: stri
   FASE03: { tipoDisplay: 'ADV+', tipoSck: 'adv', label: 'Escala',      slug: 'escala' },
 }
 
-type Conta = 'none' | 'bmsub' | 'bmus'
-const CONTAS: { v: Conta; label: string }[] = [
-  { v: 'none',  label: 'Padrão' },
-  { v: 'bmsub', label: 'BM Sub' },
-  { v: 'bmus',  label: 'BM US' },
-]
 type Versao = 'v1' | 'v2'
+type ContaMeta = { id: string; name: string; currency?: string }
 
-const inputClass = 'bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 w-full transition-all'
+// Superfície neutra (o --background do tema é azul-marinho e sai da identidade).
+const inputClass = 'bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 w-full transition-all'
+
+function slug(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
 
 function parseBase(base: string): { codigo: string; slug: string } | null {
   const t = base.trim().toLowerCase()
   const m = t.match(/^(ad\d+)[-_ ]*(.*)$/)
   if (!m) return null
-  const slug = m[2].replace(/^[-_\s]+/, '').replace(/[\s_]+/g, '-').replace(/-+/g, '-').replace(/-$/, '')
-  return { codigo: m[1], slug }
+  const sl = m[2].replace(/^[-_\s]+/, '').replace(/[\s_]+/g, '-').replace(/-+/g, '-').replace(/-$/, '')
+  return { codigo: m[1], slug: sl }
 }
 
 // Aceita vírgula, espaço ou pipe. Preserva a ordem digitada e remove repetidos.
@@ -74,7 +76,7 @@ function CopyBtn({ value }: { value: string }) {
 
 function LinhaResultado({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-background/60 border border-border/60 rounded-xl px-3.5 py-2.5">
+    <div className="bg-white/[0.03] border border-white/10 rounded-xl px-3.5 py-2.5">
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
         <CopyBtn value={value} />
@@ -87,7 +89,7 @@ function LinhaResultado({ label, value }: { label: string; value: string }) {
 // Segmento (escolha única) reutilizável.
 function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { v: T; label: string; sub?: string }[] }) {
   return (
-    <div className="inline-flex w-full rounded-lg border border-border bg-background p-1 gap-1">
+    <div className="inline-flex w-full rounded-lg border border-white/10 bg-white/5 p-1 gap-1">
       {options.map(o => {
         const active = o.v === value
         return (
@@ -110,14 +112,20 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
   const [base, setBase] = useState('')
   const [fase, setFase] = useState<Fase>('FASE01')
   const [conjunto, setConjunto] = useState(1)
-  const [conta, setConta] = useState<Conta>('none')
   const [versao, setVersao] = useState<Versao>('v1')
+  const [contaMarker, setContaMarker] = useState('')   // vazio = conta principal
   const [adsCampanha, setAdsCampanha] = useState('')
   const [adsDirty, setAdsDirty] = useState(false)
   const [lp, setLp] = useState<string>(() => {
     if (typeof window === 'undefined') return LP_PADRAO
     return localStorage.getItem(LP_STORAGE_KEY) || LP_PADRAO
   })
+
+  // Contas da Meta (dropdown sob demanda).
+  const [contas, setContas] = useState<ContaMeta[] | null>(null)
+  const [contasOpen, setContasOpen] = useState(false)
+  const [contasLoading, setContasLoading] = useState(false)
+  const [contasErro, setContasErro] = useState<string | null>(null)
 
   const parsed = parseBase(base)
   const baseInvalida = base.trim().length > 0 && !parsed
@@ -130,14 +138,31 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
     if (typeof window !== 'undefined' && lp.trim()) localStorage.setItem(LP_STORAGE_KEY, lp.trim())
   }, [lp])
 
+  async function abrirContas() {
+    setContasOpen(o => !o)
+    if (contas || contasLoading) return
+    setContasLoading(true); setContasErro(null)
+    try {
+      const r = await fetch('/api/meta/accounts')
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j?.error || 'Conecte a Meta em Fontes de dados › Contas de anúncio.')
+      setContas(j.accounts ?? [])
+    } catch (e) {
+      setContasErro(e instanceof Error ? e.message : 'Falha ao carregar contas')
+    } finally {
+      setContasLoading(false)
+    }
+  }
+
   const adCodes = extrairAdCodes(adsCampanha)
   const adsVazio = !!parsed && adCodes.length === 0
+  const mk = slug(contaMarker)
 
   const res = useMemo(() => {
     if (!parsed || adCodes.length === 0) return null
     const cfg = FASE_CFG[fase]
-    const bm = conta === 'none' ? [] : [conta]   // conta (antes da fase)
-    const temV2 = versao === 'v2'                 // versão (no fim)
+    const bm = mk ? [mk] : []          // conta (antes da fase)
+    const temV2 = versao === 'v2'      // versão (no fim)
 
     const adName = [`${parsed.codigo}-${parsed.slug}`, ...bm, cfg.slug, temV2 ? 'v2' : null]
       .filter(Boolean).join('-')
@@ -160,7 +185,7 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
 
     const tudo = `Campanha:\n${campDisplay}\n\nConjunto:\n${cjDisplay}\n\nCriativo:\n${adName}\n\nLink:\n${link}`
     return { campDisplay, cjDisplay, adName, sck, link, tudo }
-  }, [parsed, adCodes, fase, conjunto, conta, versao, lp])
+  }, [parsed, adCodes, fase, conjunto, mk, versao, lp])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -206,9 +231,9 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
             <div>
               <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Conjunto</label>
               <div className="flex items-center gap-1.5">
-                <button type="button" onClick={() => setConjunto(c => Math.max(1, c - 1))} className="w-9 h-9 rounded-lg bg-background border border-border text-muted-foreground hover:text-foreground hover:border-border/80 transition text-lg leading-none">−</button>
-                <div className="flex-1 h-9 rounded-lg bg-background border border-border flex items-center justify-center text-sm font-mono font-bold text-foreground">CJ{String(conjunto).padStart(2, '0')}</div>
-                <button type="button" onClick={() => setConjunto(c => Math.min(99, c + 1))} className="w-9 h-9 rounded-lg bg-background border border-border text-muted-foreground hover:text-foreground hover:border-border/80 transition text-lg leading-none">+</button>
+                <button type="button" onClick={() => setConjunto(c => Math.max(1, c - 1))} className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition text-lg leading-none">−</button>
+                <div className="flex-1 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-sm font-mono font-bold text-foreground">CJ{String(conjunto).padStart(2, '0')}</div>
+                <button type="button" onClick={() => setConjunto(c => Math.min(99, c + 1))} className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition text-lg leading-none">+</button>
               </div>
             </div>
             <div>
@@ -217,11 +242,59 @@ export default function GeradorNomenclatura({ onClose }: { onClose: () => void }
             </div>
           </div>
 
-          {/* Conta de anúncio */}
+          {/* Conta de anúncio (manual + puxar da Meta) */}
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Conta de anúncio</label>
-            <Segmented<Conta> value={conta} onChange={setConta} options={CONTAS} />
-            <p className="text-[10px] text-muted-foreground mt-1">Escolha outra conta só quando subir o <b>mesmo</b> AD fora da principal — pro dashboard não somar o ROAS junto.</p>
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">
+              Conta de anúncio <span className="font-normal normal-case opacity-60">· opcional</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={contaMarker}
+                onChange={e => setContaMarker(e.target.value)}
+                placeholder="vazio = conta principal"
+                className={inputClass}
+              />
+              <button
+                type="button"
+                onClick={abrirContas}
+                className="shrink-0 flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 text-foreground hover:bg-white/10 transition"
+              >
+                {contasLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChevronDown className={`w-3.5 h-3.5 transition-transform ${contasOpen ? 'rotate-180' : ''}`} />}
+                Meta
+              </button>
+            </div>
+
+            {contasOpen && (
+              <div className="mt-2 rounded-lg border border-white/10 bg-white/5 max-h-44 overflow-y-auto">
+                {contasLoading ? (
+                  <div className="flex items-center justify-center py-6 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /></div>
+                ) : contasErro ? (
+                  <p className="text-[11px] text-amber-400 px-3 py-3">{contasErro}</p>
+                ) : contas && contas.length > 0 ? (
+                  contas.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => { setContaMarker(slug(c.name)); setContasOpen(false) }}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/10 transition"
+                    >
+                      <span className="text-xs text-foreground truncate" translate="no">{c.name}</span>
+                      {c.currency && <span className="text-[9px] font-bold text-muted-foreground shrink-0">{c.currency}</span>}
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-[11px] text-muted-foreground px-3 py-3">Nenhuma conta encontrada.</p>
+                )}
+              </div>
+            )}
+
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Preencha só quando subir o <b>mesmo</b> AD fora da conta principal. Digite um marcador curto ou puxe da Meta.
+              {mk && !['bmsub', 'bmus'].includes(mk) && (
+                <span className="block text-amber-400/90 mt-0.5">⚠ O dashboard ainda só separa ROAS por bmsub/bmus — “{mk}” vai somar junto até habilitar.</span>
+              )}
+            </p>
           </div>
 
           {/* ADs na campanha */}
