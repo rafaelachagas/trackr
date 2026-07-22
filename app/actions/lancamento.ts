@@ -131,6 +131,35 @@ export async function editarGasto(id: string, payload: { valor_gasto: number; da
   return { success: true }
 }
 
+// Troca o DIA de um lote de lançamentos MANUAIS (ex: lancei como dia 22 o que era
+// dia 18 — corrige a data). Guardado a manuais: vendas por transaction_id manual_%,
+// gastos por ad_id null. Não toca dado real da Meta/Hotmart.
+// vendas.data é timestamptz (ancora no meio-dia, igual create/edit); gastos.data é DATE.
+export async function trocarDiaDosLancamentos(tipo: 'vendas' | 'gastos', ids: string[], novaData: string) {
+  if (!ids.length) return { success: false, error: 'Nenhum lançamento para mover.' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(novaData)) return { success: false, error: 'Data inválida.' }
+
+  if (tipo === 'vendas') {
+    const { error, count } = await supabaseAdmin
+      .from('vendas')
+      .update({ data: `${novaData}T12:00:00` }, { count: 'exact' })
+      .in('id', ids)
+      .like('transaction_id', 'manual_%')
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/lancamento')
+    return { success: true, movidos: count ?? 0 }
+  }
+
+  const { error, count } = await supabaseAdmin
+    .from('gastos')
+    .update({ data: novaData }, { count: 'exact' })
+    .in('id', ids)
+    .is('ad_id', null)
+  if (error) return { success: false, error: error.message }
+  revalidatePath('/lancamento')
+  return { success: true, movidos: count ?? 0 }
+}
+
 const PAGE_SIZE = 1000
 
 export async function listarVendasManuais(page = 0) {

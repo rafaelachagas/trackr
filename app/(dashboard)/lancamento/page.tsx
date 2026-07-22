@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Plus, Trash2, X, ShoppingCart, TrendingDown, ChevronDown, ChevronRight, Search, Pencil } from 'lucide-react'
+import { Plus, Trash2, X, ShoppingCart, TrendingDown, ChevronDown, ChevronRight, Search, Pencil, CalendarDays } from 'lucide-react'
 import {
   adicionarVenda,
   adicionarGasto,
@@ -13,6 +13,7 @@ import {
   deletarGasto,
   editarVenda,
   editarGasto,
+  trocarDiaDosLancamentos,
   getProdutos,
 } from '@/app/actions/lancamento'
 import { listarCriativosAtivos, listarCriativosParaImport } from '@/app/actions/criativos'
@@ -35,6 +36,7 @@ type ModalLancamento = {
 
 type EditVendaState = { id: string; data: string; produto: string; valor: string; criativo: string } | null
 type EditGastoState = { id: string; data: string; valor_gasto: string } | null
+type TrocarDiaState = { tipo: Tab; dataAtual: string; novaData: string; ids: string[]; count: number } | null
 
 export default function LancamentoPage() {
   const [produtos, setProdutos] = useState<string[]>([])
@@ -70,6 +72,10 @@ export default function LancamentoPage() {
   // Modal editar gasto
   const [editGasto, setEditGasto] = useState<EditGastoState>(null)
   const [savingEditGasto, setSavingEditGasto] = useState(false)
+
+  // Modal trocar dia (corrige a data do lote inteiro daquele dia)
+  const [trocarDia, setTrocarDia] = useState<TrocarDiaState>(null)
+  const [savingTrocar, setSavingTrocar] = useState(false)
 
   useEffect(() => { carregar() }, [])
 
@@ -221,6 +227,17 @@ export default function LancamentoPage() {
     else alert('Erro: ' + res.error)
   }
 
+  async function handleTrocarDia(e: React.FormEvent) {
+    e.preventDefault()
+    if (!trocarDia) return
+    if (trocarDia.novaData === trocarDia.dataAtual) { setTrocarDia(null); return }
+    setSavingTrocar(true)
+    const res = await trocarDiaDosLancamentos(trocarDia.tipo, trocarDia.ids, trocarDia.novaData)
+    setSavingTrocar(false)
+    if (res.success) { setTrocarDia(null); carregar() }
+    else alert('Erro: ' + res.error)
+  }
+
   const vendasFiltradas = useMemo(() => {
     const q = busca.toLowerCase()
     return vendasList.filter(v => !q || v.criativo?.toLowerCase().includes(q) || v.produto?.toLowerCase().includes(q))
@@ -326,15 +343,24 @@ export default function LancamentoPage() {
             {activeList.map((grupo: any) => {
               const isOpen = expandedDates.has(grupo.key)
               return (
-                <div key={grupo.key}>
-                  <button onClick={() => toggleDate(grupo.key)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/20 transition-colors text-left">
-                    <div className="flex items-center gap-3">
-                      {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                      <span className="text-sm font-semibold text-foreground">{format(parseISO(grupo.date), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</span>
-                      <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">{grupo.rows.length} item{grupo.rows.length !== 1 ? 's' : ''}</span>
+                <div key={grupo.key} className="group">
+                  <div className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/20 transition-colors">
+                    <button onClick={() => toggleDate(grupo.key)} className="flex items-center gap-3 text-left min-w-0 flex-1">
+                      {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+                      <span className="text-sm font-semibold text-foreground truncate">{format(parseISO(grupo.date), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</span>
+                      <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full shrink-0">{grupo.rows.length} item{grupo.rows.length !== 1 ? 's' : ''}</span>
+                    </button>
+                    <div className="flex items-center gap-3 shrink-0 pl-3">
+                      <button
+                        onClick={() => setTrocarDia({ tipo: tab, dataAtual: grupo.date, novaData: grupo.date, ids: grupo.rows.map((r: any) => r.id), count: grupo.rows.length })}
+                        className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-primary opacity-60 hover:opacity-100 transition px-2 py-1 rounded-lg hover:bg-primary/10"
+                        title="Trocar o dia de todos os lançamentos deste dia"
+                      >
+                        <CalendarDays className="w-3.5 h-3.5" /> trocar dia
+                      </button>
+                      <span className={`text-sm font-bold ${tab === 'vendas' ? 'text-emerald-400' : 'text-foreground'}`}>R$ {grupo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </div>
-                    <span className={`text-sm font-bold ${tab === 'vendas' ? 'text-emerald-400' : 'text-foreground'}`}>R$ {grupo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                  </button>
+                  </div>
 
                   {isOpen && (
                     <div className="border-t border-border/30">
@@ -568,6 +594,31 @@ export default function LancamentoPage() {
               </div>
               <button type="submit" disabled={savingEditGasto} className="w-full bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50">
                 {savingEditGasto ? 'Salvando...' : 'Salvar'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL TROCAR DIA */}
+      {trocarDia && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setTrocarDia(null)} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <h3 className="text-base font-bold text-foreground">Trocar o dia</h3>
+              <button onClick={() => setTrocarDia(null)} className="text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted/50"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleTrocarDia} className="p-6 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Trocar o dia de <b className="text-foreground">{trocarDia.count} {trocarDia.tipo === 'vendas' ? 'venda' : 'gasto'}{trocarDia.count !== 1 ? 's' : ''}</b> — de <b className="text-foreground">{format(parseISO(trocarDia.dataAtual), "dd 'de' MMMM", { locale: ptBR })}</b> para:
+              </p>
+              <div>
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Novo dia</label>
+                <input type="date" value={trocarDia.novaData} onChange={e => setTrocarDia(m => m && ({ ...m, novaData: e.target.value }))} className={inputClass} required />
+              </div>
+              <button type="submit" disabled={savingTrocar || trocarDia.novaData === trocarDia.dataAtual} className="w-full bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50">
+                {savingTrocar ? 'Salvando...' : 'Trocar dia'}
               </button>
             </form>
           </div>
