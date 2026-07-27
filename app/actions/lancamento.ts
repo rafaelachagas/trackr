@@ -328,16 +328,21 @@ export async function importarLancamentosEmLote(payload: {
   return { success: resumo.erros.length === 0, resumo }
 }
 
+export type GastoMetaInfo = { valor: number; adName: string | null; criativo: string; campaignName: string | null }
+
 // Gasto REAL da Meta (gastos.ad_id != null) agregado por DIA e por CHAVE de
 // criativo (código|fase|flags) — a mesma chave da tela Performance por Criativo.
 // Usado pela importação multi-dia para pré-preencher a coluna de gasto sem o
-// usuário digitar. Retorna um mapa { `${dia}||${chave}`: valor_gasto }.
+// usuário digitar E para trazer criativos que gastaram mas não venderam no dia.
+// Retorna um mapa { `${dia}||${chave}`: { valor, adName, criativo, campaignName } }.
+// adName = o anúncio de MAIOR gasto da chave (nome representativo p/ casar o criativo).
 export async function buscarGastoMetaPorPeriodo(dataInicio: string, dataFim: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
-    return { success: false, mapa: {} as Record<string, number> }
+    return { success: false, mapa: {} as Record<string, GastoMetaInfo> }
   }
 
-  const mapa: Record<string, number> = {}
+  // Acumula valor total + o ad_name de maior gasto por chave/dia.
+  const acc = new Map<string, { valor: number; criativo: string; campaignName: string | null; adNames: Map<string, number> }>()
   // Paginação: PostgREST corta em 1000 linhas; vários dias × anúncios passam disso.
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabaseAdmin
@@ -347,15 +352,27 @@ export async function buscarGastoMetaPorPeriodo(dataInicio: string, dataFim: str
       .gte('data', dataInicio)
       .lte('data', dataFim)
       .range(offset, offset + 999)
-    if (error) return { success: false, mapa }
+    if (error) return { success: false, mapa: {} as Record<string, GastoMetaInfo> }
     if (!data || data.length === 0) break
     for (const g of data) {
       if (!g.criativo) continue
       const chave = chaveDoGasto(g.criativo, g.campaign_name, g.ad_name)
       const k = `${g.data}||${chave}`
-      mapa[k] = (mapa[k] ?? 0) + (Number(g.valor_gasto) || 0)
+      const val = Number(g.valor_gasto) || 0
+      let e = acc.get(k)
+      if (!e) { e = { valor: 0, criativo: g.criativo, campaignName: g.campaign_name, adNames: new Map() }; acc.set(k, e) }
+      e.valor += val
+      if (!e.campaignName && g.campaign_name) e.campaignName = g.campaign_name
+      if (g.ad_name) e.adNames.set(g.ad_name, (e.adNames.get(g.ad_name) ?? 0) + val)
     }
     if (data.length < 1000) break
+  }
+
+  const mapa: Record<string, GastoMetaInfo> = {}
+  for (const [k, e] of acc.entries()) {
+    let adName: string | null = null, max = -1
+    for (const [nome, v] of e.adNames) if (v > max) { max = v; adName = nome }
+    mapa[k] = { valor: e.valor, adName, criativo: e.criativo, campaignName: e.campaignName }
   }
   return { success: true, mapa }
 }
