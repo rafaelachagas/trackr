@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { Upload, X, Sparkles, AlertTriangle, CheckCircle2, Trash2, FileSpreadsheet } from 'lucide-react'
-import { getProdutosMapeamento, importarLancamentosEmLote } from '@/app/actions/lancamento'
+import { Upload, X, Sparkles, AlertTriangle, CheckCircle2, Trash2, FileSpreadsheet, RefreshCw, Zap } from 'lucide-react'
+import { getProdutosMapeamento, importarLancamentosEmLote, buscarGastoMetaPorPeriodo } from '@/app/actions/lancamento'
 import { listarCriativosParaImport } from '@/app/actions/criativos'
+import { chaveDoSck } from '@/lib/meta-chave'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
@@ -13,14 +14,20 @@ type Produto = { nome_produto: string; tipo: string }
 
 type LinhaPreview = {
   id: number
-  raw: string          // linha original (nome cru colado)
-  token: string        // pedaço após a última "|"
+  dia: string          // yyyy-MM-dd
+  raw: string          // linha original (nome cru colado) / origem
+  token: string        // pedaço após a última "|" (nome do anúncio) — usado p/ casar
+  origem: string       // origem de checkout completa (mostrada nas orgânicas)
+  chaveMeta: string | null // código|fase|flags — null quando orgânica
   criativoNome: string // criativo casado/escolhido
   campanha: string
   reconhecido: boolean
+  organica: boolean    // sem código de anúncio (bio / vazio / pg-* / manychat)
+  herdado: boolean     // upsell que herdou o sck do front pelo e-mail
   vendaFront: string
   vendaUpsell: string
   gasto: string
+  gastoAuto: boolean   // gasto veio puxado da Meta
 }
 
 type Resumo = { vendasInseridas: number; gastosInseridos: number; ignorados: number; erros: string[] }
@@ -75,6 +82,31 @@ function precoNum(v: any): number {
   return parseBR(String(v ?? ''))
 }
 
+// "26/07/2026 23:50:14" -> "2026-07-26". Aceita Date (célula de data do SheetJS)
+// e ISO. Retorna null se não der pra ler.
+function parseDataVenda(v: any): string | null {
+  if (v instanceof Date && !isNaN(v.getTime())) return format(v, 'yyyy-MM-dd')
+  const s = String(v ?? '').trim()
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  return null
+}
+
+// Valor em BRL: em BRL usa "Preço da Oferta"; em moeda estrangeira o valor em
+// reais está em "Preço Original" (coluna convertida do export da Hotmart).
+function valorBRL(row: Record<string, any>): number {
+  const moeda = String(pegarCampo(row, ['Moeda', 'Currency']) ?? '').toUpperCase().trim()
+  if (moeda && moeda !== 'BRL') {
+    const orig = precoNum(pegarCampo(row, ['Preço Original', 'Preco Original', 'Valor Original', 'Preço Original Convertido']))
+    if (!isNaN(orig) && orig > 0) return orig
+  }
+  return precoNum(pegarCampo(row, ['Preço da Oferta', 'Preço', 'Preco', 'Valor', 'Valor da Oferta']))
+}
+
+const fmtDia = (dia: string) => { const [y, m, d] = dia.split('-'); return `${d}/${m}` }
+
 export default function ImportarLote({ onImported }: { onImported: () => void }) {
   const [open, setOpen] = useState(false)
   const [data, setData] = useState(hoje)
@@ -84,6 +116,10 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
   const [produtoUpsell, setProdutoUpsell] = useState('')
   const [texto, setTexto] = useState('')
   const [linhas, setLinhas] = useState<LinhaPreview[] | null>(null)
+  const [multiDia, setMultiDia] = useState(false)
+  const [periodo, setPeriodo] = useState<{ min: string; max: string } | null>(null)
+  const [descartadas, setDescartadas] = useState<{ semData: number } | null>(null)
+  const [sincronizando, setSincronizando] = useState(false)
   const [importando, setImportando] = useState(false)
   const [resumo, setResumo] = useState<Resumo | null>(null)
 
@@ -95,6 +131,9 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
     setLinhas(null)
     setTexto('')
     setData(hoje)
+    setMultiDia(false)
+    setPeriodo(null)
+    setDescartadas(null)
     const [cri, prod] = await Promise.all([listarCriativosParaImport(), getProdutosMapeamento()])
     setCriativos(cri as Criativo[])
     setProdutos(prod as Produto[])
@@ -106,8 +145,22 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
     setOpen(false)
   }
 
+  // front/upsell a partir do "Nome do Produto" (via mapeamento de produtos)
+  function tipoDoProduto(nome: string): string | undefined {
+    const n = normalizar(nome)
+    if (!n) return undefined
+    const m = produtos.find(p => {
+      const pn = normalizar(p.nome_produto)
+      return pn && (n.includes(pn) || pn.includes(n))
+    })
+    return m?.tipo
+  }
+
   function processar() {
     setResumo(null)
+    setMultiDia(false)
+    setPeriodo(null)
+    setDescartadas(null)
     const blocos = texto.split(/^[ \t]*[-–—_=]{3,}[ \t]*$/m)
     const out: LinhaPreview[] = []
     let id = 0
@@ -141,87 +194,167 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
 
       out.push({
         id: id++,
+        dia: data,
         raw,
         token,
+        origem: raw,
+        chaveMeta: chaveDoSck(raw),
         criativoNome: match?.nome ?? '',
         campanha: match?.campaign_name ?? '',
         reconhecido: !!match,
+        organica: false,
+        herdado: false,
         vendaFront: numToInput(vendas[0]),
         vendaUpsell: numToInput(vendas[1]),
         gasto: numToInput(gasto),
+        gastoAuto: false,
       })
     }
 
     setLinhas(out)
   }
 
-  // front/upsell a partir do "Nome do Produto" (via mapeamento de produtos)
-  function tipoDoProduto(nome: string): string | undefined {
-    const n = normalizar(nome)
-    if (!n) return undefined
-    const m = produtos.find(p => {
-      const pn = normalizar(p.nome_produto)
-      return pn && (n.includes(pn) || pn.includes(n))
-    })
-    return m?.tipo
-  }
-
-  // Lê .xlsx/.xls/.csv: colunas Nome do Produto | Preço da Oferta | Origem de Checkout.
-  // Agrupa por criativo (trecho da Origem de Checkout) e soma front/upsell.
+  // Lê .xlsx/.xls/.csv multi-dia: Data de Venda | Nome do Produto | Moeda |
+  // Preço da Oferta | Preço Original | Email | Origem de Checkout.
+  // Agrupa por (DIA + criativo/fase), soma front/upsell, herda o criativo do
+  // upsell pelo e-mail quando o upsell não marcou o sck, e puxa o gasto da Meta.
   async function processarArquivo(file: File) {
     setResumo(null)
     setLinhas(null)
+    setPeriodo(null)
+    setDescartadas(null)
     try {
       const XLSX = await import('xlsx')
       const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: 'array' })
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true })
       const sheet = wb.Sheets[wb.SheetNames[0]]
       const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' })
 
-      type Agg = { token: string; front: number; upsell: number; ignoradas: number }
-      const mapa = new Map<string, Agg>()
-      let semOrigem = 0
+      type Parsed = {
+        dia: string
+        email: string
+        tipo: 'front' | 'upsell'
+        valor: number
+        origem: string
+        token: string
+        chave: string | null
+        herdado: boolean
+      }
 
+      const parsed: Parsed[] = []
+      let semData = 0
       for (const row of rows) {
         const produto = String(pegarCampo(row, ['Nome do Produto', 'Produto']) ?? '').trim()
         const origem = String(pegarCampo(row, ['Origem de Checkout', 'Origem', 'src', 'sck']) ?? '').trim()
-        const preco = precoNum(pegarCampo(row, ['Preço da Oferta', 'Preço', 'Preco', 'Valor', 'Valor da Oferta']))
-        if (!origem) { semOrigem++; continue }
-        if (isNaN(preco) || preco <= 0) continue
-
+        const valor = valorBRL(row)
+        const dia = parseDataVenda(pegarCampo(row, ['Data de Venda', 'Data da Venda', 'Data', 'Data da Transação']))
+        const email = String(pegarCampo(row, ['Email', 'E-mail', 'E-Mail Comprador']) ?? '').trim().toLowerCase()
+        if (isNaN(valor) || valor <= 0) continue
+        if (!dia) { semData++; continue }
+        const tipo = tipoDoProduto(produto) === 'upsell' ? 'upsell' : 'front'
         const token = origem.includes('|') ? origem.split('|').pop()!.trim() : origem.trim()
-        if (!mapa.has(token)) mapa.set(token, { token, front: 0, upsell: 0, ignoradas: 0 })
-        const agg = mapa.get(token)!
-        const tipo = tipoDoProduto(produto)
-        if (tipo === 'upsell') agg.upsell += preco
-        else agg.front += preco // front ou não classificado cai como front
+        parsed.push({ dia, email, tipo, valor, origem, token, chave: chaveDoSck(origem), herdado: false })
       }
 
+      // Herança do upsell pelo e-mail: quando o upsell veio sem código de anúncio
+      // (vazio/bio) mas o front do mesmo e-mail marcou o sck, o upsell herda esse
+      // criativo — a pessoa comprou o front por anúncio e o upsell não marcou.
+      const porEmail = new Map<string, Parsed[]>()
+      for (const p of parsed) {
+        if (!p.email) continue
+        if (!porEmail.has(p.email)) porEmail.set(p.email, [])
+        porEmail.get(p.email)!.push(p)
+      }
+      for (const p of parsed) {
+        if (p.tipo !== 'upsell' || p.chave || !p.email) continue
+        const irmaos = porEmail.get(p.email) ?? []
+        const doador = irmaos.find(d => d.chave && d.tipo === 'front') ?? irmaos.find(d => d.chave)
+        if (doador) {
+          p.chave = doador.chave
+          p.origem = doador.origem
+          p.token = doador.token
+          p.herdado = true
+        }
+      }
+
+      // Agrupa: anúncios por (dia + chave código|fase|flags); orgânicas por
+      // (dia + origem) só pra você ver quanto faturaram e remover.
+      type Agg = { dia: string; chave: string | null; token: string; origem: string; front: number; upsell: number; organica: boolean; herdado: boolean }
+      const mapa = new Map<string, Agg>()
+      for (const p of parsed) {
+        const organica = !p.chave
+        const key = organica ? `org||${p.dia}||${p.origem || '(sem origem)'}` : `${p.dia}||${p.chave}`
+        if (!mapa.has(key)) {
+          mapa.set(key, { dia: p.dia, chave: p.chave, token: p.token, origem: p.origem || '(sem origem)', front: 0, upsell: 0, organica, herdado: false })
+        }
+        const agg = mapa.get(key)!
+        if (p.tipo === 'upsell') agg.upsell += p.valor
+        else agg.front += p.valor
+        if (p.herdado) agg.herdado = true
+      }
+
+      const grupos = [...mapa.values()]
+      if (grupos.length === 0) {
+        setResumo({ vendasInseridas: 0, gastosInseridos: 0, ignorados: 0, erros: ['Nenhuma linha válida encontrada. Confira as colunas "Data de Venda", "Nome do Produto", "Preço da Oferta" e "Origem de Checkout".'] })
+        return
+      }
+
+      // Puxa o gasto da Meta já sincronizado, por dia/criativo.
+      const dias = grupos.map(g => g.dia).sort()
+      const minDia = dias[0]
+      const maxDia = dias[dias.length - 1]
+      const { mapa: gastoMeta } = await buscarGastoMetaPorPeriodo(minDia, maxDia)
+
       let id = 0
-      const out: LinhaPreview[] = [...mapa.values()]
-        .sort((a, b) => (b.front + b.upsell) - (a.front + a.upsell))
+      const out: LinhaPreview[] = grupos
+        .sort((a, b) => a.dia.localeCompare(b.dia) || Number(a.organica) - Number(b.organica) || (b.front + b.upsell) - (a.front + a.upsell))
         .map(agg => {
-          const match = casar(agg.token, criativos)
+          const match = agg.organica ? null : casar(agg.token, criativos)
+          const gastoNum = agg.chave ? (gastoMeta?.[`${agg.dia}||${agg.chave}`] ?? NaN) : NaN
           return {
             id: id++,
+            dia: agg.dia,
             raw: agg.token,
             token: agg.token,
+            origem: agg.origem,
+            chaveMeta: agg.chave,
             criativoNome: match?.nome ?? '',
             campanha: match?.campaign_name ?? '',
             reconhecido: !!match,
+            organica: agg.organica,
+            herdado: agg.herdado,
             vendaFront: numToInput(Math.round(agg.front * 100) / 100),
             vendaUpsell: numToInput(Math.round(agg.upsell * 100) / 100),
-            gasto: '',
+            gasto: numToInput(isNaN(gastoNum) ? NaN : Math.round(gastoNum * 100) / 100),
+            gastoAuto: !isNaN(gastoNum),
           }
         })
 
-      if (out.length === 0) {
-        setResumo({ vendasInseridas: 0, gastosInseridos: 0, ignorados: 0, erros: ['Nenhuma linha válida encontrada. Confira se o arquivo tem as colunas "Nome do Produto", "Preço da Oferta" e "Origem de Checkout".'] })
-        return
-      }
+      setMultiDia(true)
+      setPeriodo({ min: minDia, max: maxDia })
+      setDescartadas(semData > 0 ? { semData } : null)
       setLinhas(out)
     } catch (e: any) {
       setResumo({ vendasInseridas: 0, gastosInseridos: 0, ignorados: 0, erros: ['Erro ao ler o arquivo: ' + (e?.message ?? String(e))] })
+    }
+  }
+
+  // Re-sincroniza a Meta no período do arquivo e repuxa o gasto (caso os dias
+  // ainda não estivessem sincronizados ou tenham mudado).
+  async function sincronizarMeta() {
+    if (!periodo || !linhas) return
+    setSincronizando(true)
+    try {
+      const diasAtras = Math.min(90, Math.max(1, Math.ceil((Date.now() - new Date(`${periodo.min}T12:00:00`).getTime()) / 86400000) + 1))
+      await fetch(`/api/meta/sync?dias=${diasAtras}`).catch(() => {})
+      const { mapa } = await buscarGastoMetaPorPeriodo(periodo.min, periodo.max)
+      setLinhas(prev => prev && prev.map(l => {
+        if (l.organica || !l.chaveMeta) return l
+        const g = mapa?.[`${l.dia}||${l.chaveMeta}`]
+        return g == null ? l : { ...l, gasto: String(Math.round(g * 100) / 100), gastoAuto: true }
+      }))
+    } finally {
+      setSincronizando(false)
     }
   }
 
@@ -234,20 +367,24 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
     atualizar(id, { criativoNome: nome, campanha: c?.campaign_name ?? '', reconhecido: !!c })
   }
 
-  const naoReconhecidos = linhas?.filter(l => !l.criativoNome).length ?? 0
-  const totFront = linhas?.reduce((s, l) => s + (parseFloat(l.vendaFront) || 0), 0) ?? 0
-  const totUpsell = linhas?.reduce((s, l) => s + (parseFloat(l.vendaUpsell) || 0), 0) ?? 0
-  const totGasto = linhas?.reduce((s, l) => s + (parseFloat(l.gasto) || 0), 0) ?? 0
+  const adLinhas = linhas?.filter(l => !l.organica) ?? []
+  const orgLinhas = linhas?.filter(l => l.organica) ?? []
+  const naoReconhecidos = adLinhas.filter(l => !l.criativoNome).length
+  const totFront = adLinhas.reduce((s, l) => s + (parseFloat(l.vendaFront) || 0), 0)
+  const totUpsell = adLinhas.reduce((s, l) => s + (parseFloat(l.vendaUpsell) || 0), 0)
+  const totGasto = adLinhas.reduce((s, l) => s + (parseFloat(l.gasto) || 0), 0)
+  const totOrg = orgLinhas.reduce((s, l) => s + (parseFloat(l.vendaFront) || 0) + (parseFloat(l.vendaUpsell) || 0), 0)
   const fmtBR = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
   async function importar() {
     if (!linhas) return
     setImportando(true)
     const itens = linhas
-      .filter(l => l.criativoNome)
+      .filter(l => l.criativoNome && !l.organica)
       .map(l => ({
         criativo: l.criativoNome,
         campanha: l.campanha || null,
+        data: l.dia,
         vendaFront: l.vendaFront ? parseFloat(l.vendaFront) : 0,
         vendaUpsell: l.vendaUpsell ? parseFloat(l.vendaUpsell) : 0,
         gasto: l.gasto ? parseFloat(l.gasto) : 0,
@@ -262,6 +399,8 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
       setResumo({ vendasInseridas: 0, gastosInseridos: 0, ignorados: 0, erros: [res.error ?? 'Erro desconhecido'] })
     }
   }
+
+  const importaveis = adLinhas.filter(l => l.criativoNome).length
 
   return (
     <>
@@ -281,7 +420,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border sticky top-0 bg-card z-10">
               <div>
                 <h3 className="text-base font-bold text-foreground">Importar em massa</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Cole o texto dos criativos e confira antes de salvar</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Suba a planilha (vários dias) ou cole o texto — confira antes de salvar</p>
               </div>
               <button onClick={fechar} className="text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted/50">
                 <X className="w-5 h-5" />
@@ -292,24 +431,34 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
               {/* Config do lote */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Data do lote</label>
-                  <input type="date" value={data} onChange={e => setData(e.target.value)} className={inputClass} />
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">
+                    {multiDia ? 'Período (da planilha)' : 'Data do lote'}
+                  </label>
+                  {multiDia && periodo ? (
+                    <div className={`${inputClass} flex items-center gap-2 text-muted-foreground`}>
+                      <span className="text-foreground font-medium">{fmtDia(periodo.min)}</span>
+                      <span>→</span>
+                      <span className="text-foreground font-medium">{fmtDia(periodo.max)}</span>
+                    </div>
+                  ) : (
+                    <input type="date" value={data} onChange={e => setData(e.target.value)} className={inputClass} />
+                  )}
                 </div>
                 <div>
-                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">1º valor → produto (front)</label>
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Produto front</label>
                   <select value={produtoFront} onChange={e => setProdutoFront(e.target.value)} className={inputClass}>
                     {produtos.map(p => <option key={p.nome_produto} value={p.nome_produto}>{p.nome_produto}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">2º valor → produto (upsell)</label>
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Produto upsell</label>
                   <select value={produtoUpsell} onChange={e => setProdutoUpsell(e.target.value)} className={inputClass}>
                     {produtos.map(p => <option key={p.nome_produto} value={p.nome_produto}>{p.nome_produto}</option>)}
                   </select>
                 </div>
               </div>
 
-              {/* Textarea */}
+              {/* Entrada */}
               {!resumo && (
                 <div>
                   {/* Upload de planilha (.xlsx/.xls/.csv) */}
@@ -326,16 +475,16 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                         />
                       </label>
                       <p className="text-xs text-muted-foreground leading-snug flex-1 min-w-[240px]">
-                        Colunas: <span className="font-mono text-foreground">Nome do Produto</span> · <span className="font-mono text-foreground">Preço da Oferta</span> · <span className="font-mono text-foreground">Origem de Checkout</span>. O produto define front/upsell e o valor é somado por criativo.
+                        Separa por <span className="font-mono text-foreground">Data de Venda</span> e criativo, soma front/upsell (converte USD/EUR pra BRL) e <span className="text-foreground font-medium">puxa o gasto da Meta</span> por dia.
                       </p>
                     </div>
                   </div>
 
-                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Ou cole o texto</label>
+                  <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Ou cole o texto (dia único)</label>
                   <textarea
                     value={texto}
                     onChange={e => setTexto(e.target.value)}
-                    rows={8}
+                    rows={6}
                     placeholder={'nome-do-criativo|cj01|ad03-entrevista-viral-pre-escala\n263,03\n534,48\nGASTO R$ 236,13\n----------------------------\n...'}
                     className={`${inputClass} font-mono text-xs leading-relaxed resize-y`}
                   />
@@ -346,9 +495,9 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                       className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition disabled:opacity-50"
                     >
                       <Sparkles className="w-4 h-4" />
-                      Pré-visualizar
+                      Pré-visualizar texto
                     </button>
-                    {linhas && <span className="text-xs text-muted-foreground">{linhas.length} criativo{linhas.length !== 1 ? 's' : ''} detectado{linhas.length !== 1 ? 's' : ''}</span>}
+                    {linhas && <span className="text-xs text-muted-foreground">{linhas.length} linha{linhas.length !== 1 ? 's' : ''} detectada{linhas.length !== 1 ? 's' : ''}</span>}
                   </div>
                 </div>
               )}
@@ -370,7 +519,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                     </div>
                   )}
                   <div className="flex gap-3">
-                    <button onClick={() => { setResumo(null); setLinhas(null); setTexto('') }} className="px-4 py-2 rounded-xl text-sm font-semibold bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition">
+                    <button onClick={() => { setResumo(null); setLinhas(null); setTexto(''); setMultiDia(false); setPeriodo(null) }} className="px-4 py-2 rounded-xl text-sm font-semibold bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition">
                       Nova importação
                     </button>
                     <button onClick={fechar} className="px-4 py-2 rounded-xl text-sm font-semibold bg-card border border-border text-foreground hover:border-primary/50 transition">
@@ -383,19 +532,41 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
               {/* Preview editável */}
               {linhas && !resumo && (
                 <div className="space-y-3">
-                  {naoReconhecidos > 0 && (
-                    <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
-                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                      <p className="text-xs text-amber-300">
-                        {naoReconhecidos} criativo(s) não reconhecido(s). Selecione o criativo certo na coluna, ou a linha será ignorada.
-                      </p>
-                    </div>
-                  )}
+                  {/* Avisos */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {naoReconhecidos > 0 && (
+                      <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <p className="text-xs text-amber-300">{naoReconhecidos} criativo(s) não reconhecido(s) — selecione ou será ignorado.</p>
+                      </div>
+                    )}
+                    {orgLinhas.length > 0 && (
+                      <div className="flex items-center gap-2 bg-muted/40 border border-border rounded-xl px-3 py-2">
+                        <p className="text-xs text-muted-foreground">{orgLinhas.length} linha(s) orgânica(s) (bio/sem anúncio) — R$ {fmtBR(totOrg)}. Não entram; remova as que quiser.</p>
+                      </div>
+                    )}
+                    {descartadas?.semData ? (
+                      <div className="flex items-center gap-2 bg-muted/40 border border-border rounded-xl px-3 py-2">
+                        <p className="text-xs text-muted-foreground">{descartadas.semData} linha(s) sem data — ignoradas.</p>
+                      </div>
+                    ) : null}
+                    {multiDia && (
+                      <button
+                        onClick={sincronizarMeta}
+                        disabled={sincronizando}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-card border border-border text-foreground hover:border-primary/50 transition disabled:opacity-50 ml-auto"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${sincronizando ? 'animate-spin' : ''}`} />
+                        {sincronizando ? 'Sincronizando Meta...' : 'Sincronizar gasto da Meta'}
+                      </button>
+                    )}
+                  </div>
 
                   <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
-                    <table className="w-full text-sm min-w-[720px]">
+                    <table className="w-full text-sm min-w-[780px]">
                       <thead>
                         <tr className="text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/20">
+                          {multiDia && <th className="text-left px-3 py-2 font-semibold w-16">Dia</th>}
                           <th className="text-left px-3 py-2 font-semibold">Criativo</th>
                           <th className="text-right px-3 py-2 font-semibold w-28">Front</th>
                           <th className="text-right px-3 py-2 font-semibold w-28">Upsell</th>
@@ -405,20 +576,37 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                       </thead>
                       <tbody className="divide-y divide-border/40">
                         {linhas.map(l => (
-                          <tr key={l.id} className={l.criativoNome ? '' : 'bg-amber-500/5'}>
+                          <tr key={l.id} className={l.organica ? 'bg-muted/20' : (l.criativoNome ? '' : 'bg-amber-500/5')}>
+                            {multiDia && <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{fmtDia(l.dia)}</td>}
                             <td className="px-3 py-2">
-                              <select
-                                value={l.criativoNome}
-                                onChange={e => escolherCriativo(l.id, e.target.value)}
-                                className={`bg-background border rounded-lg px-2 py-1.5 text-xs w-full max-w-[340px] focus:outline-none transition-colors ${l.criativoNome ? 'border-border text-foreground focus:border-primary/60' : 'border-amber-500/50 text-amber-300'}`}
-                              >
-                                <option value="">— selecione —</option>
-                                {criativos.map(c => (
-                                  <option key={c.nome} value={c.nome}>{c.nome}{c.status === 'pausado' ? ' (pausado)' : ''}</option>
-                                ))}
-                              </select>
-                              {!l.reconhecido && (
-                                <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate max-w-[340px]" title={l.token}>colado: {l.token}</p>
+                              {l.organica ? (
+                                <div className="text-xs">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">Orgânica</span>
+                                    <span className="font-mono text-muted-foreground truncate max-w-[300px]" title={l.origem}>{l.origem}</span>
+                                  </span>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-1.5">
+                                    <select
+                                      value={l.criativoNome}
+                                      onChange={e => escolherCriativo(l.id, e.target.value)}
+                                      className={`bg-background border rounded-lg px-2 py-1.5 text-xs w-full max-w-[320px] focus:outline-none transition-colors ${l.criativoNome ? 'border-border text-foreground focus:border-primary/60' : 'border-amber-500/50 text-amber-300'}`}
+                                    >
+                                      <option value="">— selecione —</option>
+                                      {criativos.map(c => (
+                                        <option key={c.nome} value={c.nome}>{c.nome}{c.status === 'pausado' ? ' (pausado)' : ''}</option>
+                                      ))}
+                                    </select>
+                                    {l.herdado && (
+                                      <span title="Upsell correlacionado ao criativo do front pelo e-mail" className="text-[9px] font-bold uppercase tracking-wide text-violet-300 bg-violet-500/15 border border-violet-500/30 px-1.5 py-0.5 rounded shrink-0">e-mail*</span>
+                                    )}
+                                  </div>
+                                  {!l.reconhecido && (
+                                    <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate max-w-[320px]" title={l.token}>colado: {l.token}</p>
+                                  )}
+                                </>
                               )}
                             </td>
                             <td className="px-3 py-2">
@@ -428,7 +616,18 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                               <input type="number" step="0.01" min="0" value={l.vendaUpsell} onChange={e => atualizar(l.id, { vendaUpsell: e.target.value })} placeholder="0,00" className="bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60" />
                             </td>
                             <td className="px-3 py-2">
-                              <input type="number" step="0.01" min="0" value={l.gasto} onChange={e => atualizar(l.id, { gasto: e.target.value })} placeholder="0,00" className="bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60" />
+                              {l.organica ? (
+                                <div className="text-right text-xs text-muted-foreground pr-2">—</div>
+                              ) : (
+                                <div className="relative">
+                                  <input type="number" step="0.01" min="0" value={l.gasto} onChange={e => atualizar(l.id, { gasto: e.target.value, gastoAuto: false })} placeholder="0,00" className={`bg-background border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60 ${l.gastoAuto ? 'border-emerald-500/40' : 'border-border'}`} />
+                                  {l.gastoAuto && (
+                                    <span title="Gasto puxado da Meta" className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500/40">
+                                      <Zap className="w-2.5 h-2.5 text-emerald-400" />
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td className="px-2 py-2 text-center">
                               <button onClick={() => setLinhas(prev => prev && prev.filter(x => x.id !== l.id))} className="text-muted-foreground hover:text-red-400 transition p-1 rounded">
@@ -440,7 +639,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-border bg-muted/30">
-                          <td className="px-3 py-2.5 text-[11px] font-bold text-foreground uppercase tracking-wide">Total ({linhas.length})</td>
+                          <td className="px-3 py-2.5 text-[11px] font-bold text-foreground uppercase tracking-wide" colSpan={multiDia ? 2 : 1}>Total anúncios ({adLinhas.length})</td>
                           <td className="px-3 py-2.5 text-right text-xs font-bold text-emerald-400">R$ {fmtBR(totFront)}</td>
                           <td className="px-3 py-2.5 text-right text-xs font-bold text-violet-400">R$ {fmtBR(totUpsell)}</td>
                           <td className="px-3 py-2.5 text-right text-xs font-bold text-foreground">R$ {fmtBR(totGasto)}</td>
@@ -452,11 +651,11 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
 
                   <button
                     onClick={importar}
-                    disabled={importando || linhas.filter(l => l.criativoNome).length === 0}
+                    disabled={importando || importaveis === 0}
                     className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50"
                   >
                     <Upload className="w-4 h-4" />
-                    {importando ? 'Importando...' : `Importar ${linhas.filter(l => l.criativoNome).length} criativo(s)`}
+                    {importando ? 'Importando...' : `Importar ${importaveis} criativo(s)${multiDia ? ' · vários dias' : ''}`}
                   </button>
                 </div>
               )}

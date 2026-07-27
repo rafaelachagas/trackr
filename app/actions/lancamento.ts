@@ -2,6 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { createSupabaseServer } from '@/lib/supabase-server'
+import { chaveDoGasto } from '@/lib/meta-chave'
 import { revalidatePath } from 'next/cache'
 
 async function getActiveOrgId(passedOrgId?: string): Promise<string | null> {
@@ -234,10 +235,13 @@ type ItemImport = {
   vendaFront?: number
   vendaUpsell?: number
   gasto?: number
+  data?: string // yyyy-MM-dd — se ausente, usa payload.data (lote de dia único)
 }
 
-// Importa um lote inteiro de lançamentos de uma vez (mesma data para todos).
-// Reaproveita as mesmas travas de duplicata do lançamento manual.
+// Importa um lote de lançamentos. Cada item pode ter a SUA data (importação
+// multi-dia por planilha); se o item não trouxer data, usa payload.data como
+// fallback (lote de dia único / texto colado). Reaproveita as mesmas travas de
+// duplicata do lançamento manual.
 export async function importarLancamentosEmLote(payload: {
   data: string
   produtoFront: string
@@ -255,7 +259,7 @@ export async function importarLancamentosEmLote(payload: {
   }
   let seq = 0
 
-  async function lancarVenda(criativo: string, produto: string, valor?: number) {
+  async function lancarVenda(dia: string, criativo: string, produto: string, valor?: number) {
     if (!valor || valor <= 0) return
     const { data: existente } = await supabaseAdmin
       .from('vendas')
@@ -263,14 +267,14 @@ export async function importarLancamentosEmLote(payload: {
       .like('transaction_id', 'manual_%')
       .eq('criativo', criativo)
       .eq('produto', produto)
-      .gte('data', `${payload.data}T00:00:00`)
-      .lte('data', `${payload.data}T23:59:59`)
+      .gte('data', `${dia}T00:00:00`)
+      .lte('data', `${dia}T23:59:59`)
       .limit(1)
       .maybeSingle()
     if (existente) { resumo.ignorados++; return }
 
     const { error } = await supabaseAdmin.from('vendas').insert({
-      data: `${payload.data}T12:00:00`,
+      data: `${dia}T12:00:00`,
       criativo,
       produto,
       valor,
@@ -280,16 +284,17 @@ export async function importarLancamentosEmLote(payload: {
       transaction_id: `manual_${Date.now()}_${seq++}`,
       org_id: orgId,
     })
-    if (error) resumo.erros.push(`${criativo} / ${produto}: ${error.message}`)
+    if (error) resumo.erros.push(`${dia} ${criativo} / ${produto}: ${error.message}`)
     else resumo.vendasInseridas++
   }
 
   for (const item of payload.itens) {
     const criativo = item.criativo?.trim()
     if (!criativo) { resumo.ignorados++; continue }
+    const dia = (item.data && /^\d{4}-\d{2}-\d{2}$/.test(item.data)) ? item.data : payload.data
 
-    await lancarVenda(criativo, payload.produtoFront, item.vendaFront)
-    await lancarVenda(criativo, payload.produtoUpsell, item.vendaUpsell)
+    await lancarVenda(dia, criativo, payload.produtoFront, item.vendaFront)
+    await lancarVenda(dia, criativo, payload.produtoUpsell, item.vendaUpsell)
 
     if (item.gasto && item.gasto > 0) {
       const { data: existente } = await supabaseAdmin
@@ -297,14 +302,14 @@ export async function importarLancamentosEmLote(payload: {
         .select('id')
         .is('ad_id', null)
         .eq('criativo', criativo)
-        .eq('data', payload.data)
+        .eq('data', dia)
         .limit(1)
         .maybeSingle()
       if (existente) {
         resumo.ignorados++
       } else {
         const { error } = await supabaseAdmin.from('gastos').insert({
-          data: payload.data,
+          data: dia,
           criativo,
           ad_name: `${criativo}_manual_${Date.now()}_${seq++}`,
           campaign_name: item.campanha ?? null,
@@ -313,7 +318,7 @@ export async function importarLancamentosEmLote(payload: {
           clicks: 0,
           org_id: orgId,
         })
-        if (error) resumo.erros.push(`${criativo} gasto: ${error.message}`)
+        if (error) resumo.erros.push(`${dia} ${criativo} gasto: ${error.message}`)
         else resumo.gastosInseridos++
       }
     }
@@ -321,4 +326,36 @@ export async function importarLancamentosEmLote(payload: {
 
   revalidatePath('/lancamento')
   return { success: resumo.erros.length === 0, resumo }
+}
+
+// Gasto REAL da Meta (gastos.ad_id != null) agregado por DIA e por CHAVE de
+// criativo (código|fase|flags) — a mesma chave da tela Performance por Criativo.
+// Usado pela importação multi-dia para pré-preencher a coluna de gasto sem o
+// usuário digitar. Retorna um mapa { `${dia}||${chave}`: valor_gasto }.
+export async function buscarGastoMetaPorPeriodo(dataInicio: string, dataFim: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
+    return { success: false, mapa: {} as Record<string, number> }
+  }
+
+  const mapa: Record<string, number> = {}
+  // Paginação: PostgREST corta em 1000 linhas; vários dias × anúncios passam disso.
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabaseAdmin
+      .from('gastos')
+      .select('criativo, campaign_name, ad_name, valor_gasto, data')
+      .not('ad_id', 'is', null)
+      .gte('data', dataInicio)
+      .lte('data', dataFim)
+      .range(offset, offset + 999)
+    if (error) return { success: false, mapa }
+    if (!data || data.length === 0) break
+    for (const g of data) {
+      if (!g.criativo) continue
+      const chave = chaveDoGasto(g.criativo, g.campaign_name, g.ad_name)
+      const k = `${g.data}||${chave}`
+      mapa[k] = (mapa[k] ?? 0) + (Number(g.valor_gasto) || 0)
+    }
+    if (data.length < 1000) break
+  }
+  return { success: true, mapa }
 }
