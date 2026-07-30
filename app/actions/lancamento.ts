@@ -2,7 +2,6 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { createSupabaseServer } from '@/lib/supabase-server'
-import { chaveDoGasto } from '@/lib/meta-chave'
 import { revalidatePath } from 'next/cache'
 
 async function getActiveOrgId(passedOrgId?: string): Promise<string | null> {
@@ -328,51 +327,41 @@ export async function importarLancamentosEmLote(payload: {
   return { success: resumo.erros.length === 0, resumo }
 }
 
-export type GastoMetaInfo = { valor: number; adName: string | null; criativo: string; campaignName: string | null }
+export type GastoMetaItem = { dia: string; adName: string; criativo: string; valor: number }
 
-// Gasto REAL da Meta (gastos.ad_id != null) agregado por DIA e por CHAVE de
-// criativo (código|fase|flags) — a mesma chave da tela Performance por Criativo.
-// Usado pela importação multi-dia para pré-preencher a coluna de gasto sem o
-// usuário digitar E para trazer criativos que gastaram mas não venderam no dia.
-// Retorna um mapa { `${dia}||${chave}`: { valor, adName, criativo, campaignName } }.
-// adName = o anúncio de MAIOR gasto da chave (nome representativo p/ casar o criativo).
+// Gasto REAL da Meta (gastos.ad_id != null) agregado por DIA e por NOME DE
+// ANÚNCIO (ad_name). É o ad_name que distingue as variantes de um mesmo código
+// (escala-01, escala-02, carafa-ww...), então a importação casa o gasto com o
+// criativo cadastrado POR NOME — do jeito que foi lançado — em vez de colapsar
+// tudo numa chave só. Usado para pré-preencher o gasto e para trazer criativos
+// que gastaram mas venderam 0 no dia.
 export async function buscarGastoMetaPorPeriodo(dataInicio: string, dataFim: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
-    return { success: false, mapa: {} as Record<string, GastoMetaInfo> }
+    return { success: false, itens: [] as GastoMetaItem[] }
   }
 
-  // Acumula valor total + o ad_name de maior gasto por chave/dia.
-  const acc = new Map<string, { valor: number; criativo: string; campaignName: string | null; adNames: Map<string, number> }>()
+  // Agrega por (dia, ad_name) — a Meta já sobe um registro por (data, ad_name),
+  // mas somamos por segurança (mesmo ad_name em mais de uma conta no mesmo dia).
+  const acc = new Map<string, GastoMetaItem>()
   // Paginação: PostgREST corta em 1000 linhas; vários dias × anúncios passam disso.
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabaseAdmin
       .from('gastos')
-      .select('criativo, campaign_name, ad_name, valor_gasto, data')
+      .select('criativo, ad_name, valor_gasto, data')
       .not('ad_id', 'is', null)
       .gte('data', dataInicio)
       .lte('data', dataFim)
       .range(offset, offset + 999)
-    if (error) return { success: false, mapa: {} as Record<string, GastoMetaInfo> }
+    if (error) return { success: false, itens: [...acc.values()] }
     if (!data || data.length === 0) break
     for (const g of data) {
-      if (!g.criativo) continue
-      const chave = chaveDoGasto(g.criativo, g.campaign_name, g.ad_name)
-      const k = `${g.data}||${chave}`
-      const val = Number(g.valor_gasto) || 0
+      if (!g.ad_name) continue
+      const k = `${g.data}||${g.ad_name}`
       let e = acc.get(k)
-      if (!e) { e = { valor: 0, criativo: g.criativo, campaignName: g.campaign_name, adNames: new Map() }; acc.set(k, e) }
-      e.valor += val
-      if (!e.campaignName && g.campaign_name) e.campaignName = g.campaign_name
-      if (g.ad_name) e.adNames.set(g.ad_name, (e.adNames.get(g.ad_name) ?? 0) + val)
+      if (!e) { e = { dia: g.data, adName: g.ad_name, criativo: g.criativo ?? '', valor: 0 }; acc.set(k, e) }
+      e.valor += Number(g.valor_gasto) || 0
     }
     if (data.length < 1000) break
   }
-
-  const mapa: Record<string, GastoMetaInfo> = {}
-  for (const [k, e] of acc.entries()) {
-    let adName: string | null = null, max = -1
-    for (const [nome, v] of e.adNames) if (v > max) { max = v; adName = nome }
-    mapa[k] = { valor: e.valor, adName, criativo: e.criativo, campaignName: e.campaignName }
-  }
-  return { success: true, mapa }
+  return { success: true, itens: [...acc.values()] }
 }

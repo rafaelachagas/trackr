@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import { Upload, X, Sparkles, AlertTriangle, CheckCircle2, Trash2, FileSpreadsheet, RefreshCw, Zap } from 'lucide-react'
 import { getProdutosMapeamento, importarLancamentosEmLote, buscarGastoMetaPorPeriodo } from '@/app/actions/lancamento'
 import { listarCriativosParaImport } from '@/app/actions/criativos'
-import { chaveDoSck } from '@/lib/meta-chave'
+import { extrairCriativo } from '@/lib/utils'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
@@ -18,7 +18,6 @@ type LinhaPreview = {
   raw: string          // linha original (nome cru colado) / origem
   token: string        // pedaço após a última "|" (nome do anúncio) — usado p/ casar
   origem: string       // origem de checkout completa (mostrada nas orgânicas)
-  chaveMeta: string | null // código|fase|flags — null quando orgânica
   criativoNome: string // criativo casado/escolhido
   campanha: string
   reconhecido: boolean
@@ -111,30 +110,52 @@ const fmtDia = (dia: string) => { const [y, m, d] = dia.split('-'); return `${d}
 const round2 = (n: number) => Math.round(n * 100) / 100
 const GASTO_MIN_SO_GASTO = 1 // ignora restos de centavos de campanhas pausadas
 
-// Reconcilia o gasto da Meta com as linhas atuais:
-//  - atualiza o gasto das linhas de venda que casam com uma chave da Meta;
+type GastoInfo = { valor: number; adName: string; criativo: string }
+
+// Chave de casamento gasto×venda: o NOME do criativo cadastrado quando reconhece
+// o anúncio; senão o texto cru (nome do anúncio / origem). É o mesmo espaço de
+// chave dos dois lados, então cada variante (escala-01, escala-02...) fica
+// separada — do jeito que foi lançado.
+function chaveNomeGasto(it: { adName: string }, criativos: Criativo[]): string {
+  return casar(it.adName, criativos)?.nome ?? it.adName
+}
+
+// Agrega o gasto da Meta por (dia + nome do criativo cadastrado). Soma ad_names
+// que casam no mesmo criativo e guarda o ad_name de maior gasto (representativo).
+function agregarGastoPorNome(itens: { dia: string; adName: string; criativo: string; valor: number }[], criativos: Criativo[]): Record<string, GastoInfo> {
+  const agg: Record<string, GastoInfo & { _max: number }> = {}
+  for (const it of itens) {
+    const nome = chaveNomeGasto(it, criativos)
+    const k = `${it.dia}||${nome}`
+    if (!agg[k]) agg[k] = { valor: 0, adName: it.adName, criativo: it.criativo, _max: -1 }
+    agg[k].valor += it.valor
+    if (it.valor > agg[k]._max) { agg[k]._max = it.valor; agg[k].adName = it.adName }
+  }
+  const out: Record<string, GastoInfo> = {}
+  for (const k in agg) { const { _max, ...rest } = agg[k]; out[k] = rest }
+  return out
+}
+
+// Reconcilia o gasto da Meta com as linhas atuais (casando por NOME do criativo):
+//  - atualiza o gasto das linhas de venda cujo criativo tem gasto na Meta;
 //  - ACRESCENTA linhas "só gasto" (criativo gastou na Meta mas vendeu 0 no dia).
 // Usado ao processar o arquivo e ao clicar em "Sincronizar gasto da Meta".
-function reconciliarGasto(
-  linhas: LinhaPreview[],
-  mapa: Record<string, { valor: number; adName: string | null; criativo: string; campaignName: string | null }>,
-  criativos: Criativo[],
-): LinhaPreview[] {
-  const usados = new Set(linhas.filter(l => !l.organica && l.chaveMeta).map(l => `${l.dia}||${l.chaveMeta}`))
+function reconciliarGasto(linhas: LinhaPreview[], gastoAgg: Record<string, GastoInfo>, criativos: Criativo[]): LinhaPreview[] {
+  const chaveDe = (l: LinhaPreview) => `${l.dia}||${l.criativoNome || l.token}`
+  const usados = new Set(linhas.filter(l => !l.organica).map(chaveDe))
 
   const atualizadas = linhas.map(l => {
-    if (l.organica || !l.chaveMeta) return l
-    const info = mapa[`${l.dia}||${l.chaveMeta}`]
+    if (l.organica) return l
+    const info = gastoAgg[chaveDe(l)]
     return info ? { ...l, gasto: String(round2(info.valor)), gastoAuto: true } : l
   })
 
   let id = linhas.reduce((m, l) => Math.max(m, l.id), 0) + 1
   const novas: LinhaPreview[] = []
-  for (const [k, info] of Object.entries(mapa)) {
+  for (const k in gastoAgg) {
+    const info = gastoAgg[k]
     if (usados.has(k) || info.valor < GASTO_MIN_SO_GASTO) continue
-    const sep = k.indexOf('||')
-    const dia = k.slice(0, sep)
-    const chave = k.slice(sep + 2)
+    const dia = k.slice(0, k.indexOf('||'))
     const token = info.adName || info.criativo
     const match = casar(token, criativos)
     novas.push({
@@ -143,7 +164,6 @@ function reconciliarGasto(
       raw: token,
       token,
       origem: token,
-      chaveMeta: chave,
       criativoNome: match?.nome ?? '',
       campanha: match?.campaign_name ?? '',
       reconhecido: !!match,
@@ -177,6 +197,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
   const [multiDia, setMultiDia] = useState(false)
   const [periodo, setPeriodo] = useState<{ min: string; max: string } | null>(null)
   const [descartadas, setDescartadas] = useState<{ semData: number } | null>(null)
+  const [gastoAgg, setGastoAgg] = useState<Record<string, GastoInfo>>({})
   const [sincronizando, setSincronizando] = useState(false)
   const [importando, setImportando] = useState(false)
   const [resumo, setResumo] = useState<Resumo | null>(null)
@@ -192,6 +213,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
     setMultiDia(false)
     setPeriodo(null)
     setDescartadas(null)
+    setGastoAgg({})
     const [cri, prod] = await Promise.all([listarCriativosParaImport(), getProdutosMapeamento()])
     setCriativos(cri as Criativo[])
     setProdutos(prod as Produto[])
@@ -256,7 +278,6 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
         raw,
         token,
         origem: raw,
-        chaveMeta: chaveDoSck(raw),
         criativoNome: match?.nome ?? '',
         campanha: match?.campaign_name ?? '',
         reconhecido: !!match,
@@ -296,7 +317,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
         valor: number
         origem: string
         token: string
-        chave: string | null
+        temAnuncio: boolean // origem tem código de anúncio (adNN)
         herdado: boolean
       }
 
@@ -312,7 +333,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
         if (!dia) { semData++; continue }
         const tipo = tipoDoProduto(produto) === 'upsell' ? 'upsell' : 'front'
         const token = origem.includes('|') ? origem.split('|').pop()!.trim() : origem.trim()
-        parsed.push({ dia, email, tipo, valor, origem, token, chave: chaveDoSck(origem), herdado: false })
+        parsed.push({ dia, email, tipo, valor, origem, token, temAnuncio: !!extrairCriativo(origem), herdado: false })
       }
 
       // Herança do upsell pelo e-mail: quando o upsell veio sem código de anúncio
@@ -325,26 +346,29 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
         porEmail.get(p.email)!.push(p)
       }
       for (const p of parsed) {
-        if (p.tipo !== 'upsell' || p.chave || !p.email) continue
+        if (p.tipo !== 'upsell' || p.temAnuncio || !p.email) continue
         const irmaos = porEmail.get(p.email) ?? []
-        const doador = irmaos.find(d => d.chave && d.tipo === 'front') ?? irmaos.find(d => d.chave)
+        const doador = irmaos.find(d => d.temAnuncio && d.tipo === 'front') ?? irmaos.find(d => d.temAnuncio)
         if (doador) {
-          p.chave = doador.chave
           p.origem = doador.origem
           p.token = doador.token
+          p.temAnuncio = true
           p.herdado = true
         }
       }
 
-      // Agrupa: anúncios por (dia + chave código|fase|flags); orgânicas por
-      // (dia + origem) só pra você ver quanto faturaram e remover.
-      type Agg = { dia: string; chave: string | null; token: string; origem: string; front: number; upsell: number; organica: boolean; herdado: boolean }
+      // Agrupa: anúncios por (dia + NOME do criativo cadastrado) — cada variante
+      // separada, do jeito que foi lançado. Orgânicas por (dia + origem) só pra
+      // você ver quanto faturaram e remover.
+      type Agg = { dia: string; matchNome: string | null; campanha: string | null; reconhecido: boolean; token: string; origem: string; front: number; upsell: number; organica: boolean; herdado: boolean }
       const mapa = new Map<string, Agg>()
       for (const p of parsed) {
-        const organica = !p.chave
-        const key = organica ? `org||${p.dia}||${p.origem || '(sem origem)'}` : `${p.dia}||${p.chave}`
+        const organica = !p.temAnuncio
+        const match = organica ? null : casar(p.token, criativos)
+        const chaveNome = organica ? null : (match?.nome ?? p.token)
+        const key = organica ? `org||${p.dia}||${p.origem || '(sem origem)'}` : `${p.dia}||${chaveNome}`
         if (!mapa.has(key)) {
-          mapa.set(key, { dia: p.dia, chave: p.chave, token: p.token, origem: p.origem || '(sem origem)', front: 0, upsell: 0, organica, herdado: false })
+          mapa.set(key, { dia: p.dia, matchNome: match?.nome ?? null, campanha: match?.campaign_name ?? null, reconhecido: !!match, token: p.token, origem: p.origem || '(sem origem)', front: 0, upsell: 0, organica, herdado: false })
         }
         const agg = mapa.get(key)!
         if (p.tipo === 'upsell') agg.upsell += p.valor
@@ -360,35 +384,34 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
 
       // Linhas de venda (gasto entra no reconcile logo abaixo).
       let id = 0
-      const vendasLinhas: LinhaPreview[] = grupos.map(agg => {
-        const match = agg.organica ? null : casar(agg.token, criativos)
-        return {
-          id: id++,
-          dia: agg.dia,
-          raw: agg.token,
-          token: agg.token,
-          origem: agg.origem,
-          chaveMeta: agg.chave,
-          criativoNome: match?.nome ?? '',
-          campanha: match?.campaign_name ?? '',
-          reconhecido: !!match,
-          organica: agg.organica,
-          herdado: agg.herdado,
-          soGasto: false,
-          vendaFront: numToInput(Math.round(agg.front * 100) / 100),
-          vendaUpsell: numToInput(Math.round(agg.upsell * 100) / 100),
-          gasto: '',
-          gastoAuto: false,
-        }
-      })
+      const vendasLinhas: LinhaPreview[] = grupos.map(agg => ({
+        id: id++,
+        dia: agg.dia,
+        raw: agg.token,
+        token: agg.token,
+        origem: agg.origem,
+        criativoNome: agg.matchNome ?? '',
+        campanha: agg.campanha ?? '',
+        reconhecido: agg.reconhecido,
+        organica: agg.organica,
+        herdado: agg.herdado,
+        soGasto: false,
+        vendaFront: numToInput(Math.round(agg.front * 100) / 100),
+        vendaUpsell: numToInput(Math.round(agg.upsell * 100) / 100),
+        gasto: '',
+        gastoAuto: false,
+      }))
 
-      // Puxa o gasto da Meta já sincronizado e reconcilia: preenche o gasto das
-      // vendas e ACRESCENTA os criativos que gastaram mas venderam 0 no dia.
+      // Puxa o gasto da Meta já sincronizado (por dia/anúncio), agrega por NOME do
+      // criativo e reconcilia: preenche o gasto das vendas e ACRESCENTA os
+      // criativos que gastaram mas venderam 0 no dia.
       const dias = grupos.map(g => g.dia).sort()
       const minDia = dias[0]
       const maxDia = dias[dias.length - 1]
-      const { mapa: gastoMeta } = await buscarGastoMetaPorPeriodo(minDia, maxDia)
-      const out = reconciliarGasto(vendasLinhas, gastoMeta ?? {}, criativos)
+      const { itens } = await buscarGastoMetaPorPeriodo(minDia, maxDia)
+      const gAgg = agregarGastoPorNome(itens ?? [], criativos)
+      setGastoAgg(gAgg)
+      const out = reconciliarGasto(vendasLinhas, gAgg, criativos)
 
       setMultiDia(true)
       setPeriodo({ min: minDia, max: maxDia })
@@ -407,8 +430,10 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
     try {
       const diasAtras = Math.min(90, Math.max(1, Math.ceil((Date.now() - new Date(`${periodo.min}T12:00:00`).getTime()) / 86400000) + 1))
       await fetch(`/api/meta/sync?dias=${diasAtras}`).catch(() => {})
-      const { mapa } = await buscarGastoMetaPorPeriodo(periodo.min, periodo.max)
-      setLinhas(prev => prev && reconciliarGasto(prev, mapa ?? {}, criativos))
+      const { itens } = await buscarGastoMetaPorPeriodo(periodo.min, periodo.max)
+      const gAgg = agregarGastoPorNome(itens ?? [], criativos)
+      setGastoAgg(gAgg)
+      setLinhas(prev => prev && reconciliarGasto(prev, gAgg, criativos))
     } finally {
       setSincronizando(false)
     }
@@ -420,7 +445,18 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
 
   function escolherCriativo(id: number, nome: string) {
     const c = criativos.find(x => x.nome === nome)
-    atualizar(id, { criativoNome: nome, campanha: c?.campaign_name ?? '', reconhecido: !!c })
+    setLinhas(prev => prev && prev.map(l => {
+      if (l.id !== id) return l
+      // ao escolher o criativo, puxa o gasto da Meta daquele nome/dia (se houver)
+      const info = nome ? gastoAgg[`${l.dia}||${nome}`] : undefined
+      return {
+        ...l,
+        criativoNome: nome,
+        campanha: c?.campaign_name ?? '',
+        reconhecido: !!c,
+        ...(info ? { gasto: String(round2(info.valor)), gastoAuto: true } : {}),
+      }
+    }))
   }
 
   const adLinhas = linhas?.filter(l => !l.organica) ?? []
