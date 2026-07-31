@@ -40,18 +40,31 @@ export async function getDashboardData(product: string, startDate: string, endDa
     // puxava 1 dia extra de gasto no fim do período (painel mostrava dia D + D+1).
     // Converte o timestamp para a DATA local de São Paulo antes de filtrar.
     const isoParaDataLocal = (iso: string) => format(toZonedTime(new Date(iso), 'America/Sao_Paulo'), 'yyyy-MM-dd')
-    let queryGastos = supabaseAdmin.from('gastos').select('valor_gasto, data').not('ad_id', 'is', null)
-    if (startDate) queryGastos = queryGastos.gte('data', isoParaDataLocal(startDate))
-    if (endDate) queryGastos = queryGastos.lte('data', isoParaDataLocal(endDate))
+    // Paginação: o PostgREST corta em 1000 linhas por request. Sem isso, períodos
+    // longos (mais de ~1000 linhas de anúncio×dia) tinham os dias mais recentes
+    // cortados — a sync reinsere os dias recentes com id maior, então eles caíam
+    // fora das primeiras 1000 linhas e sumiam do gráfico e do total de gasto.
+    async function fetchGastos() {
+      const todas: { valor_gasto: number; data: string }[] = []
+      for (let offset = 0; ; offset += 1000) {
+        let q = supabaseAdmin.from('gastos').select('valor_gasto, data').not('ad_id', 'is', null).range(offset, offset + 999)
+        if (startDate) q = q.gte('data', isoParaDataLocal(startDate))
+        if (endDate) q = q.lte('data', isoParaDataLocal(endDate))
+        const { data, error } = await q
+        if (error) throw error
+        if (!data || data.length === 0) break
+        todas.push(...(data as any))
+        if (data.length < 1000) break
+      }
+      return todas
+    }
 
-    const [vendas, gastosRes, produtosRes, cfgImpostoRes] = await Promise.all([
+    const [vendas, gastos, produtosRes, cfgImpostoRes] = await Promise.all([
       fetchVendasReais(),
-      queryGastos,
+      fetchGastos(),
       supabaseAdmin.from('produtos_mapeamento').select('nome_produto, tipo').eq('ativo', true),
       supabaseAdmin.from('configuracoes').select('valor').eq('chave', 'meta_imposto_diario').maybeSingle(),
     ])
-
-    if (gastosRes.error) throw gastosRes.error
 
     // Imposto sobre gastos em anúncios no período: soma do mapa diário
     // (alíquota × gasto BRL do dia, salvo pelo /api/meta/sync). Card próprio
@@ -75,7 +88,7 @@ export async function getDashboardData(product: string, startDate: string, endDa
     // mostra como "Receita Líquida"). Fallback para valor bruto se o líquido não
     // estiver preenchido (venda ainda não reconciliada via /sales/commissions).
     const totalRevenue = vendas.reduce((acc, v) => acc + Number(v.valor_liquido ?? v.valor), 0)
-    const totalSpend = (gastosRes.data || []).reduce((acc, g) => acc + Number(g.valor_gasto), 0)
+    const totalSpend = gastos.reduce((acc, g) => acc + Number(g.valor_gasto), 0)
     const salesCount = vendas.length
     const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0
 
@@ -95,7 +108,7 @@ export async function getDashboardData(product: string, startDate: string, endDa
         imposto: imposto
       },
       vendas: vendasComTipo,
-      gastos: gastosRes.data
+      gastos: gastos
     }
   } catch (error: any) {
     console.error('Error in getDashboardData action:', error)
