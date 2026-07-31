@@ -14,6 +14,9 @@ interface DashboardMetrics {
   frontCount: number;
   upsellCount: number;
   imposto: number;
+  reembolso: number;
+  reembolsoCount: number;
+  taxaReembolso: number;
 }
 
 interface DashboardContextType {
@@ -58,6 +61,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     frontCount: 0,
     upsellCount: 0,
     imposto: 0,
+    reembolso: 0,
+    reembolsoCount: 0,
+    taxaReembolso: 0,
   });
   const [chartData, setChartData] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState(new Date());

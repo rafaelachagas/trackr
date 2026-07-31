@@ -59,9 +59,33 @@ export async function getDashboardData(product: string, startDate: string, endDa
       return todas
     }
 
-    const [vendas, gastos, produtosRes, cfgImpostoRes] = await Promise.all([
+    // Vendas reembolsadas/estornadas no período (mesmo filtro de produto). Base
+    // pra taxa de reembolso — comparada com o faturamento aprovado do período.
+    async function fetchReembolsos() {
+      const todas: { valor: number; valor_liquido: number | null }[] = []
+      for (let offset = 0; ; offset += 1000) {
+        let q = supabaseAdmin
+          .from('vendas')
+          .select('valor, valor_liquido')
+          .in('status', ['refunded', 'chargeback'])
+          .not('transaction_id', 'like', 'manual_%')
+          .range(offset, offset + 999)
+        if (product !== 'Qualquer') q = q.eq('produto', product)
+        if (startDate) q = q.gte('data', startDate)
+        if (endDate) q = q.lte('data', endDate)
+        const { data, error } = await q
+        if (error) throw error
+        if (!data || data.length === 0) break
+        todas.push(...(data as any))
+        if (data.length < 1000) break
+      }
+      return todas
+    }
+
+    const [vendas, gastos, reembolsos, produtosRes, cfgImpostoRes] = await Promise.all([
       fetchVendasReais(),
       fetchGastos(),
+      fetchReembolsos(),
       supabaseAdmin.from('produtos_mapeamento').select('nome_produto, tipo').eq('ativo', true),
       supabaseAdmin.from('configuracoes').select('valor').eq('chave', 'meta_imposto_diario').maybeSingle(),
     ])
@@ -92,6 +116,13 @@ export async function getDashboardData(product: string, startDate: string, endDa
     const salesCount = vendas.length
     const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0
 
+    // Reembolsos/estornos: valor líquido devolvido + taxa sobre a base de vendas
+    // pagas do período (aprovadas + reembolsadas). Não afeta ROAS/Lucro/Faturamento.
+    const reembolsoValor = reembolsos.reduce((acc, v) => acc + Number(v.valor_liquido ?? v.valor), 0)
+    const reembolsoCount = reembolsos.length
+    const baseVendasPagas = totalRevenue + reembolsoValor
+    const taxaReembolso = baseVendasPagas > 0 ? (reembolsoValor / baseVendasPagas) * 100 : 0
+
     // Resolve tipo via mapeamento quando o campo está nulo
     const vendasComTipo = vendas.map((v: any) => ({
       ...v,
@@ -105,7 +136,10 @@ export async function getDashboardData(product: string, startDate: string, endDa
         spend: totalSpend,
         roas: roas,
         salesCount: salesCount,
-        imposto: imposto
+        imposto: imposto,
+        reembolso: reembolsoValor,
+        reembolsoCount: reembolsoCount,
+        taxaReembolso: taxaReembolso
       },
       vendas: vendasComTipo,
       gastos: gastos

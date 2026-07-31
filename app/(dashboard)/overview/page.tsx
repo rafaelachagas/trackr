@@ -54,8 +54,8 @@ export default function OverviewPage() {
   return (
     <div className="relative space-y-6 w-full mx-auto text-foreground">
       {!firstLoadDone ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-5">
+          {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="bg-card border border-border p-5 rounded-[10px] shadow-sm animate-pulse">
               <div className="h-2.5 w-24 bg-muted rounded mb-4" />
               <div className="h-7 w-32 bg-muted rounded" />
@@ -63,7 +63,7 @@ export default function OverviewPage() {
           ))}
         </div>
       ) : (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-5">
         <MetricCard
           titulo="Faturamento Líquido"
           valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
@@ -89,6 +89,12 @@ export default function OverviewPage() {
           titulo="Imposto total"
           valor={`R$ ${metrics.imposto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
           tooltip="Imposto sobre gastos em anúncios (Meta). Alíquota configurável em Fontes de dados → Contas de anúncios, aplicada sobre o gasto das contas em BRL — a conta em dólar fica de fora. Não é somado ao card de Gastos."
+        />
+        <MetricCard
+          titulo="Reembolsos"
+          valor={`R$ ${metrics.reembolso.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          subtitulo={`${metrics.taxaReembolso.toFixed(1).replace('.', ',')}% • ${metrics.reembolsoCount} venda${metrics.reembolsoCount !== 1 ? 's' : ''}`}
+          tooltip="Vendas reembolsadas + chargeback no período (valor líquido devolvido). A taxa = reembolsos ÷ (faturamento aprovado + reembolsos) do período. Não é descontado do Faturamento/ROAS/Lucro — que já contam só as vendas aprovadas."
         />
       </div>
       )}
