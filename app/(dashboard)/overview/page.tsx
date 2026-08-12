@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { format } from 'date-fns'
+import { formatInTimeZone } from 'date-fns-tz'
 import MetricCard from '@/components/ui/MetricCard'
 import GraficoDiario from '@/components/dashboard/GraficoDiario'
 import TabelaCriativos from '@/components/dashboard/TabelaCriativos'
@@ -19,10 +19,11 @@ export default function OverviewPage() {
   useEffect(() => {
     const params = new URLSearchParams()
     try {
-      // format() usa o fuso LOCAL — toISOString() é UTC e virava o dia seguinte
-      // (23:59 local = 02:59 UTC do dia D+1), puxando 1 dia extra de gasto.
-      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', format(dateRange.start, 'yyyy-MM-dd'))
-      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', format(dateRange.end, 'yyyy-MM-dd'))
+      // Formata no fuso de São Paulo — dateRange são instantes absolutos (bordas
+      // do dia em SP). Usar format() do fuso do navegador jogaria o d_fim pro dia
+      // seguinte pra quem acessa de fora do Brasil (ex.: 23:59 SP = 04:59 CEST).
+      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', formatInTimeZone(dateRange.start, 'America/Sao_Paulo', 'yyyy-MM-dd'))
+      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', formatInTimeZone(dateRange.end, 'America/Sao_Paulo', 'yyyy-MM-dd'))
     } catch {
       return
     }

@@ -1,7 +1,23 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { startOfDay, endOfDay, subDays, startOfMonth, endOfMonth, subMonths, format } from "date-fns";
+import { subDays, startOfMonth, endOfMonth, subMonths, format } from "date-fns";
+import { toZonedTime, fromZonedTime, formatInTimeZone } from "date-fns-tz";
+
+// Todos os períodos são ancorados no fuso do negócio (São Paulo), NÃO no fuso do
+// navegador. Sem isso, um usuário em outro fuso (ex.: Croácia, UTC+2) via um
+// "Ontem" deslocado — a janela de vendas cortava horas do dia certo e a de gastos
+// chegava a somar DOIS dias, quebrando faturamento/gasto/ROAS pra quem acessa
+// de fora do Brasil.
+const TZ = "America/Sao_Paulo";
+// Recebe as datas-calendário de São Paulo (yyyy-MM-dd) e devolve os instantes
+// absolutos das bordas do dia em SP, prontos pra virar ISO/UTC no backend.
+function spRange(startStr: string, endStr: string) {
+  return {
+    start: fromZonedTime(`${startStr}T00:00:00.000`, TZ),
+    end: fromZonedTime(`${endStr}T23:59:59.999`, TZ),
+  };
+}
 import { getDashboardData, fetchActiveProducts } from '@/app/actions/dashboard';
 
 type FilterPeriod = "Hoje" | "Ontem" | "Últimos 7 dias" | "Últimos 30 dias" | "Este Mês" | "Mês Passado" | "Personalizado";
@@ -49,9 +65,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [period, setPeriod] = useState<FilterPeriod>("Hoje");
   const [product, setProduct] = useState("Qualquer");
   const [productsList, setProductsList] = useState<string[]>(["Qualquer"]);
-  const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>({
-    start: startOfDay(new Date()),
-    end: endOfDay(new Date()),
+  const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>(() => {
+    const hojeSP = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd");
+    return spRange(hojeSP, hojeSP);
   });
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     revenue: 0,
@@ -96,41 +112,40 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 
   // Update date range based on period
   useEffect(() => {
-    const now = new Date();
-    let start = null;
-    let end = endOfDay(now);
+    // "agora" no fuso de São Paulo (getters locais passam a refletir SP), pra
+    // calcular a data-calendário certa independente do fuso do navegador.
+    const nowSP = toZonedTime(new Date(), TZ);
+    let startStr: string;
+    let endStr = format(nowSP, "yyyy-MM-dd");
 
     switch (period) {
       case "Hoje":
-        start = startOfDay(now);
+        startStr = format(nowSP, "yyyy-MM-dd");
         break;
       case "Ontem":
-        start = startOfDay(subDays(now, 1));
-        end = endOfDay(subDays(now, 1));
+        startStr = endStr = format(subDays(nowSP, 1), "yyyy-MM-dd");
         break;
       case "Últimos 7 dias":
-        start = startOfDay(subDays(now, 7));
+        startStr = format(subDays(nowSP, 7), "yyyy-MM-dd");
         break;
       case "Últimos 30 dias":
-        start = startOfDay(subDays(now, 30));
+        startStr = format(subDays(nowSP, 30), "yyyy-MM-dd");
         break;
       case "Este Mês":
-        start = startOfMonth(now);
+        startStr = format(startOfMonth(nowSP), "yyyy-MM-dd");
         break;
       case "Mês Passado":
-        start = startOfMonth(subMonths(now, 1));
-        end = endOfMonth(subMonths(now, 1));
+        startStr = format(startOfMonth(subMonths(nowSP, 1)), "yyyy-MM-dd");
+        endStr = format(endOfMonth(subMonths(nowSP, 1)), "yyyy-MM-dd");
         break;
       case "Personalizado":
         // Keep current range or set to null to force selection
         return;
       default:
-        start = startOfDay(subDays(now, 7));
+        startStr = format(subDays(nowSP, 7), "yyyy-MM-dd");
     }
 
-    if (start) {
-      setDateRange({ start, end });
-    }
+    setDateRange(spRange(startStr, endStr));
   }, [period]);
 
   const refreshData = async () => {
@@ -153,7 +168,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       // Process chart data (simple example grouping by day)
       const days: any = {};
       result.vendas?.forEach((v: any) => {
-        const d = format(new Date(v.data), 'dd/MM');
+        // Agrupa pelo dia em São Paulo, não no fuso do navegador — senão a venda
+        // cai no balde de dia errado pra quem acessa de outro fuso.
+        const d = formatInTimeZone(new Date(v.data), TZ, 'dd/MM');
         if (!days[d]) days[d] = { name: d, receita: 0, gasto: 0 };
         days[d].receita += Number(v.valor_liquido ?? v.valor);
       });

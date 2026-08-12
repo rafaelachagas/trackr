@@ -467,8 +467,20 @@ export default function AdAnalysisPage() {
     setApiError(null)
     try {
       const res = await fetch(`/api/meta/ad-metrics?dataInicio=${dataInicio}&dataFim=${dataFim}`)
-      const json = await res.json()
-      if (json.error) {
+      // Se a função estourar o tempo/limite, a Vercel devolve uma página de erro
+      // em texto (não JSON). Lê o corpo cru e só tenta o parse se for JSON, pra
+      // mostrar um erro legível em vez de "Unexpected token ... is not valid JSON".
+      const raw = await res.text()
+      let json: any = null
+      try { json = JSON.parse(raw) } catch {}
+      if (!json) {
+        setApiError(
+          res.status === 504 || res.status === 502
+            ? 'A análise demorou demais e o servidor encerrou a requisição (timeout). Tente um período menor.'
+            : `Falha no servidor (HTTP ${res.status}).`
+        )
+        setMetrics([])
+      } else if (json.error) {
         setApiError(json.error)
         setMetrics([])
       } else {
