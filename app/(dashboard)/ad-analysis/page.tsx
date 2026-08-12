@@ -13,8 +13,8 @@ import type { AdMetric } from '@/app/api/meta/ad-metrics/route'
 function cpmColor(v: number) { return v < 20 ? 'bg-emerald-500' : v < 40 ? 'bg-amber-500' : 'bg-red-500' }
 function ctrColor(v: number) { return v >= 3 ? 'bg-emerald-500' : v >= 1.5 ? 'bg-amber-500' : 'bg-red-500' }
 function hookColor(v: number) { return v >= 30 ? 'bg-emerald-500' : v >= 15 ? 'bg-amber-500' : 'bg-red-500' }
-function roasColor(v: number) { return v >= 3 ? 'text-emerald-400' : v >= 1.5 ? 'text-amber-400' : 'text-red-400' }
-function roasBg(v: number) { return v >= 3 ? 'bg-emerald-500' : v >= 1.5 ? 'bg-amber-500' : 'bg-red-500' }
+function roasColor(v: number) { return v >= 2 ? 'text-emerald-400' : v >= 1 ? 'text-amber-400' : 'text-red-400' }
+function roasBg(v: number) { return v >= 2 ? 'bg-emerald-500' : v >= 1 ? 'bg-amber-500' : 'bg-red-500' }
 
 function MetricBar({ label, value, formatted, barPct, colorFn }: {
   label: string; value: number | null; formatted: string; barPct: number; colorFn: (v: number) => string
