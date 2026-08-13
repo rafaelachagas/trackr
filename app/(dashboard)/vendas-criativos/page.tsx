@@ -11,8 +11,15 @@ type SortKey = 'front' | 'upsell' | 'reembolsoCount'
 const SORTS: { key: SortKey; label: string }[] = [
   { key: 'front', label: 'Mais Front' },
   { key: 'upsell', label: 'Mais Upsell' },
-  { key: 'reembolsoCount', label: 'Mais Reembolso' },
+  { key: 'reembolsoCount', label: 'Maior Taxa de Reembolso' },
 ]
+
+// Taxas proporcionais às vendas do PRÓPRIO criativo (não ao total).
+const taxaUpsell = (c: CriativoBreak) => (c.front > 0 ? (c.upsell / c.front) * 100 : 0)
+const taxaReemb = (c: CriativoBreak) => {
+  const v = c.front + c.upsell
+  return v > 0 ? (c.reembolsoCount / v) * 100 : 0
+}
 
 export default function VendasCriativosPage() {
   const { dateRange, lastUpdate, isPrivate } = useDashboard()
@@ -34,11 +41,23 @@ export default function VendasCriativosPage() {
       .finally(() => setLoading(false))
   }, [lastUpdate, dateRange])
 
+  const totais = useMemo(() => ({
+    front: linhas.reduce((a, c) => a + c.front, 0),
+    upsell: linhas.reduce((a, c) => a + c.upsell, 0),
+    reemb: linhas.reduce((a, c) => a + c.reembolsoCount, 0),
+  }), [linhas])
+
   const ordenadas = useMemo(() => {
+    // Reembolso ordena pela TAXA (proporcional às vendas do criativo), não pelo
+    // volume — senão criativo grande sempre lidera só por ter mais venda.
+    if (sortKey === 'reembolsoCount') {
+      return [...linhas].sort((a, b) => taxaReemb(b) - taxaReemb(a) || b.reembolsoCount - a.reembolsoCount)
+    }
     return [...linhas].sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0))
   }, [linhas, sortKey])
 
   const priv = (n: React.ReactNode) => (isPrivate ? '••' : n)
+  const fmtPct = (n: number) => `${n.toFixed(1).replace('.', ',')}%`
 
   return (
     <div className="pb-12 space-y-6 max-w-[1200px] mx-auto w-full text-foreground">
@@ -70,30 +89,42 @@ export default function VendasCriativosPage() {
               <thead>
                 <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                   <th className="text-left px-5 py-3">Criativo</th>
-                  <Th active={sortKey === 'front'} onClick={() => setSortKey('front')}>Front</Th>
-                  <Th active={sortKey === 'upsell'} onClick={() => setSortKey('upsell')}>Upsell</Th>
-                  <Th active={sortKey === 'reembolsoCount'} onClick={() => setSortKey('reembolsoCount')}>Reembolsos</Th>
+                  <Th active={sortKey === 'front'} onClick={() => setSortKey('front')}>Front · % do total</Th>
+                  <Th active={sortKey === 'upsell'} onClick={() => setSortKey('upsell')}>Upsell · taxa</Th>
+                  <Th active={sortKey === 'reembolsoCount'} onClick={() => setSortKey('reembolsoCount')}>Reembolso · taxa</Th>
                   <th className="text-right px-5 py-3">Valor Reemb.</th>
                 </tr>
               </thead>
               <tbody>
-                {ordenadas.map((c, i) => (
-                  <tr key={c.criativo} className="border-t border-white/5 hover:bg-white/[0.02]">
-                    <td className="px-5 py-3 font-semibold text-foreground">
-                      <span className="text-muted-foreground mr-2 tabular-nums">{i + 1}.</span>{c.criativo}
-                    </td>
-                    <td className="text-right px-5 py-3 tabular-nums font-bold">{priv(c.front)}</td>
-                    <td className="text-right px-5 py-3 tabular-nums font-bold" style={{ color: '#22d3ee' }}>{priv(c.upsell)}</td>
-                    <td className="text-right px-5 py-3 tabular-nums font-bold" style={{ color: c.reembolsoCount > 0 ? '#f43f5e' : undefined }}>{priv(c.reembolsoCount)}</td>
-                    <td className="text-right px-5 py-3 tabular-nums text-muted-foreground">{c.reembolsoValor > 0 ? priv(formatarMoeda(c.reembolsoValor)) : '—'}</td>
-                  </tr>
-                ))}
+                {ordenadas.map((c, i) => {
+                  const shareFront = totais.front > 0 ? (c.front / totais.front) * 100 : 0
+                  return (
+                    <tr key={c.criativo} className="border-t border-white/5 hover:bg-white/[0.02]">
+                      <td className="px-5 py-3 font-semibold text-foreground">
+                        <span className="text-muted-foreground mr-2 tabular-nums">{i + 1}.</span>{c.criativo}
+                      </td>
+                      <Cell n={priv(c.front)} pct={fmtPct(shareFront)} />
+                      <Cell n={priv(c.upsell)} pct={c.front > 0 ? fmtPct(taxaUpsell(c)) : '—'} cor="#22d3ee" />
+                      <Cell n={priv(c.reembolsoCount)} pct={fmtPct(taxaReemb(c))} cor={c.reembolsoCount > 0 ? '#f43f5e' : undefined} />
+                      <td className="text-right px-5 py-3 tabular-nums text-muted-foreground">{c.reembolsoValor > 0 ? priv(formatarMoeda(c.reembolsoValor)) : '—'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+function Cell({ n, pct, cor }: { n: React.ReactNode; pct: string; cor?: string }) {
+  return (
+    <td className="text-right px-5 py-3">
+      <div className="tabular-nums font-bold leading-tight" style={{ color: cor }}>{n}</div>
+      <div className="text-[10px] text-muted-foreground tabular-nums leading-tight">{pct}</div>
+    </td>
   )
 }
 

@@ -143,10 +143,18 @@ export function formatarPercentual(valor: number): string {
  */
 export function normalizarPagamento(tipo: string | null | undefined): string | null {
   if (!tipo) return null
-  const t = String(tipo).toUpperCase()
+  const t = String(tipo).toUpperCase().replace(/[\s-]+/g, '_')
+  // Valores reais observados na Hotmart: CREDIT_CARD, PIX, BILLET, PAYPAL,
+  // APPLE_PAY, GOOGLE_PAY, SAMSUNG_PAY, DIRECT_DEBIT, PICPAY, WALLET.
   if (t.includes('PIX')) return 'Pix'
   if (t.includes('BILLET') || t.includes('BOLETO')) return 'Boleto'
+  if (t.includes('APPLE')) return 'Apple Pay'
+  if (t.includes('GOOGLE')) return 'Google Pay'
+  if (t.includes('SAMSUNG')) return 'Samsung Pay'
+  if (t.includes('PICPAY')) return 'PicPay'
   if (t.includes('PAYPAL')) return 'PayPal'
+  if (t.includes('DIRECT_DEBIT') || t === 'DEBIT' || t.includes('DEBITO')) return 'Débito'
+  if (t.includes('WALLET')) return 'Carteira'
   if (t.includes('CREDIT') || t.includes('CARD') || t.includes('CARTAO') || t.includes('CARTÃO')) return 'Cartão'
   return 'Outros'
 }

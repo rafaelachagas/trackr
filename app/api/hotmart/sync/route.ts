@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { extrairCriativo } from '@/lib/utils'
+import { extrairCriativo, normalizarPagamento } from '@/lib/utils'
 
 export const maxDuration = 60
 
@@ -181,6 +181,7 @@ export async function POST() {
           buyer_email: buyer?.email ?? null,
           sck,
           criativo,
+          metodo_pagamento: normalizarPagamento(purchase.payment?.type),
           vsl: null as string | null,
         })
 
