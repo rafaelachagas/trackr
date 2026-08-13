@@ -9,6 +9,7 @@ import TabelaCriativosV2 from '@/components/dashboard/TabelaCriativosV2'
 import HistoricoCriativos from '@/components/dashboard/HistoricoCriativos'
 import GraficoTipoVendas from '@/components/dashboard/GraficoTipoVendas'
 import GraficosPorHora from '@/components/dashboard/GraficosPorHora'
+import PainelVendasExtra from '@/components/dashboard/PainelVendasExtra'
 import { RoasPorCriativo } from '@/types'
 import { FrameworkData } from '@/app/api/framework/route'
 import { useDashboard } from '@/context/DashboardContext'
@@ -107,6 +108,8 @@ export default function OverviewPage() {
         </div>
         <GraficoTipoVendas />
       </div>
+
+      <PainelVendasExtra />
 
       <GraficosPorHora />
 

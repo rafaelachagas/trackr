@@ -6,9 +6,13 @@ import { useDashboard } from '@/context/DashboardContext'
 import {
   format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   addDays, isSameMonth, isSameDay, isWithinInterval,
-  addMonths, subMonths, startOfDay, endOfDay, subDays
+  addMonths, subMonths, subDays
 } from 'date-fns'
+import { toZonedTime, formatInTimeZone } from 'date-fns-tz'
 import { ptBR } from 'date-fns/locale'
+import { spDayRangeInstants } from '@/lib/utils'
+
+const TZ = 'America/Sao_Paulo'
 
 const PERIODS = ['Máximo', 'Hoje', 'Ontem', 'Últimos 7 dias', 'Esse mês', 'Mês passado', 'Personalizado']
 const PRESETS = ['Hoje', 'Ontem', 'Últimos 7 dias', 'Últimos 30 dias', 'Este Mês', 'Mês Passado']
@@ -110,22 +114,29 @@ export default function FiltrosDashboard() {
   }
 
   function applyPreset(preset: string) {
-    const today = new Date()
-    if (preset === 'Hoje') setDateRange({ start: startOfDay(today), end: endOfDay(today) })
-    else if (preset === 'Ontem') { const y = subDays(today, 1); setDateRange({ start: startOfDay(y), end: endOfDay(y) }) }
-    else if (preset === 'Últimos 7 dias') setDateRange({ start: startOfDay(subDays(today, 6)), end: endOfDay(today) })
-    else if (preset === 'Últimos 30 dias') setDateRange({ start: startOfDay(subDays(today, 29)), end: endOfDay(today) })
-    else if (preset === 'Este Mês') setDateRange({ start: startOfMonth(today), end: endOfDay(today) })
-    else if (preset === 'Mês Passado') { const lm = subMonths(today, 1); setDateRange({ start: startOfMonth(lm), end: endOfMonth(lm) }) }
+    // Ancorado em SP (não no fuso do navegador) — mesmo padrão do dropdown.
+    const nowSP = toZonedTime(new Date(), TZ)
+    const fmt = (d: Date) => format(d, 'yyyy-MM-dd')
+    let s = fmt(nowSP)
+    let e = fmt(nowSP)
+    if (preset === 'Hoje') { s = fmt(nowSP) }
+    else if (preset === 'Ontem') { s = e = fmt(subDays(nowSP, 1)) }
+    else if (preset === 'Últimos 7 dias') { s = fmt(subDays(nowSP, 6)) }
+    else if (preset === 'Últimos 30 dias') { s = fmt(subDays(nowSP, 29)) }
+    else if (preset === 'Este Mês') { s = fmt(startOfMonth(nowSP)) }
+    else if (preset === 'Mês Passado') { s = fmt(startOfMonth(subMonths(nowSP, 1))); e = fmt(endOfMonth(subMonths(nowSP, 1))) }
+    setDateRange(spDayRangeInstants(s, e))
     setCalendarOpen(false); setSelecting('start')
   }
 
   function handleDayClick(date: Date) {
+    const dStr = format(date, 'yyyy-MM-dd')
     if (selecting === 'start') {
-      setDateRange({ start: startOfDay(date), end: endOfDay(date) }); setSelecting('end')
+      setDateRange(spDayRangeInstants(dStr, dStr)); setSelecting('end')
     } else {
-      setDateRange({ start: date < dateRange.start! ? startOfDay(date) : dateRange.start, end: date < dateRange.start! ? endOfDay(dateRange.start!) : endOfDay(date) })
-      setSelecting('start'); setCalendarOpen(false)
+      const startStr = dateRange.start ? formatInTimeZone(dateRange.start, TZ, 'yyyy-MM-dd') : dStr
+      const [a, b] = dStr < startStr ? [dStr, startStr] : [startStr, dStr]
+      setDateRange(spDayRangeInstants(a, b)); setSelecting('start'); setCalendarOpen(false)
     }
   }
 

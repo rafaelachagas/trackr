@@ -16,6 +16,8 @@ export default function GraficoTipoVendas() {
   ]
 
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0
+  // Conversão de upsell: % dos compradores de front que levaram upsell.
+  const conversaoUpsell = frontCount > 0 ? (upsellCount / frontCount) * 100 : 0
 
   return (
     <div className="bg-card border border-border rounded-2xl p-5">
@@ -72,6 +74,14 @@ export default function GraficoTipoVendas() {
                 <span className="text-[10px] text-muted-foreground">{pct(d.value)}%</span>
               </div>
             ))}
+
+            {/* Conversão de upsell: % dos compradores de front que levaram upsell */}
+            <div className="pt-3 mt-1 border-t border-border/60 flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground">Conversão de Upsell</span>
+              <span className="text-sm font-black" style={{ color: '#22d3ee' }}>
+                {isPrivate ? '••' : `${conversaoUpsell.toFixed(1).replace('.', ',')}%`}
+              </span>
+            </div>
           </div>
         </div>
       )}

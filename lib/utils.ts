@@ -1,8 +1,27 @@
 import { AcaoOtimizacao, PeriodoDashboard } from '@/types'
 import { subDays, format, startOfDay, endOfDay } from 'date-fns'
-import { toZonedTime } from 'date-fns-tz'
+import { toZonedTime, fromZonedTime } from 'date-fns-tz'
 
 const TIMEZONE = 'America/Sao_Paulo'
+
+/**
+ * Bordas de um intervalo de dias-calendário de São Paulo, como instantes
+ * absolutos (Date). Serializa certo pra qualquer fuso — o dia do NEGÓCIO é
+ * sempre o de Brasília, não o do navegador. Use SEMPRE isto para montar
+ * dateRange/filtros de período. Ver memória fuso-periodo-navegador.
+ */
+export function spDayRangeInstants(startStr: string, endStr: string): { start: Date; end: Date } {
+  return {
+    start: fromZonedTime(`${startStr}T00:00:00.000`, TIMEZONE),
+    end: fromZonedTime(`${endStr}T23:59:59.999`, TIMEZONE),
+  }
+}
+
+/** Converte um par de datas yyyy-MM-dd de SP nos ISO (UTC) das bordas do dia. */
+export function spRangeISO(startStr: string, endStr: string): { desde: string; ate: string } {
+  const { start, end } = spDayRangeInstants(startStr, endStr)
+  return { desde: start.toISOString(), ate: end.toISOString() }
+}
 
 // ============================================================
 // Extração de Criativo
@@ -115,6 +134,21 @@ export function formatarRoas(roas: number): string {
 
 export function formatarPercentual(valor: number): string {
   return `${valor.toFixed(1)}%`
+}
+
+/**
+ * Normaliza o método de pagamento (Hotmart `payment.type` ou label cru do Make)
+ * num rótulo amigável e estável para agrupar no dashboard.
+ * Ex: CREDIT_CARD → Cartão, BILLET → Boleto, PIX → Pix.
+ */
+export function normalizarPagamento(tipo: string | null | undefined): string | null {
+  if (!tipo) return null
+  const t = String(tipo).toUpperCase()
+  if (t.includes('PIX')) return 'Pix'
+  if (t.includes('BILLET') || t.includes('BOLETO')) return 'Boleto'
+  if (t.includes('PAYPAL')) return 'PayPal'
+  if (t.includes('CREDIT') || t.includes('CARD') || t.includes('CARTAO') || t.includes('CARTÃO')) return 'Cartão'
+  return 'Outros'
 }
 
 export function formatarData(data: string): string {

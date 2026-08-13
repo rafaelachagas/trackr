@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, TrendingUp, Settings, Zap, RefreshCw, LogOut,
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
-  CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon,
+  CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -17,6 +17,7 @@ const navigation = [
   { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
   { href: '/framework', label: 'Framework', icon: TrendingUp },
   { href: '/criativos', label: 'Criativos', icon: Film },
+  { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
   { href: '/ad-analysis', label: 'Analisar Criativos', icon: Film },
 ]

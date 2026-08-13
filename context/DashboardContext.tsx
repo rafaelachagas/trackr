@@ -20,7 +20,10 @@ function spRange(startStr: string, endStr: string) {
 }
 import { getDashboardData, fetchActiveProducts } from '@/app/actions/dashboard';
 
-type FilterPeriod = "Hoje" | "Ontem" | "Últimos 7 dias" | "Últimos 30 dias" | "Este Mês" | "Mês Passado" | "Personalizado";
+// Textos EXATOS do dropdown em FiltrosDashboard.tsx (PERIODS). Se divergir, a
+// opção cai no default e mostra o período errado — foi o bug de "Esse mês",
+// "Mês passado" e "Máximo" que caíam em 7 dias.
+type FilterPeriod = "Máximo" | "Hoje" | "Ontem" | "Últimos 7 dias" | "Esse mês" | "Mês passado" | "Personalizado";
 
 interface DashboardMetrics {
   revenue: number;
@@ -119,6 +122,11 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     let endStr = format(nowSP, "yyyy-MM-dd");
 
     switch (period) {
+      case "Máximo":
+        // "Tudo" — piso fixo antes do início da operação (evita estourar limites
+        // da Meta e varreduras gigantes). Sobe se precisar de histórico mais antigo.
+        startStr = "2025-01-01";
+        break;
       case "Hoje":
         startStr = format(nowSP, "yyyy-MM-dd");
         break;
@@ -126,15 +134,12 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         startStr = endStr = format(subDays(nowSP, 1), "yyyy-MM-dd");
         break;
       case "Últimos 7 dias":
-        startStr = format(subDays(nowSP, 7), "yyyy-MM-dd");
+        startStr = format(subDays(nowSP, 6), "yyyy-MM-dd"); // 7 dias incluindo hoje
         break;
-      case "Últimos 30 dias":
-        startStr = format(subDays(nowSP, 30), "yyyy-MM-dd");
-        break;
-      case "Este Mês":
+      case "Esse mês":
         startStr = format(startOfMonth(nowSP), "yyyy-MM-dd");
         break;
-      case "Mês Passado":
+      case "Mês passado":
         startStr = format(startOfMonth(subMonths(nowSP, 1)), "yyyy-MM-dd");
         endStr = format(endOfMonth(subMonths(nowSP, 1)), "yyyy-MM-dd");
         break;
@@ -142,7 +147,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         // Keep current range or set to null to force selection
         return;
       default:
-        startStr = format(subDays(nowSP, 7), "yyyy-MM-dd");
+        startStr = format(subDays(nowSP, 6), "yyyy-MM-dd");
     }
 
     setDateRange(spRange(startStr, endStr));

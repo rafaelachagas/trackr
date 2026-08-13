@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { resolverFatoresGasto } from '@/lib/meta-fatores'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
+import { spRangeISO } from '@/lib/utils'
 
 // Chama a Meta (gasto por hora). Estende o limite pra não estourar e devolver
 // texto no lugar de JSON (mesmo motivo do ad-metrics).
@@ -25,6 +26,9 @@ export interface HoraPonto {
   investimento: number
 }
 
+// desde/ate são ISO (UTC) das bordas do dia em SP — senão a janela "hoje" usa
+// meia-noite UTC (= 21h de ontem em SP) e vendas de ontem à noite vazam pros
+// baldes 21/22/23h, aparecendo como "dado do futuro" no dia corrente.
 async function fetchAllVendas(desde: string, ate: string) {
   const todas: { criativo: string | null; valor: number; valor_liquido: number | null; data: string }[] = []
   for (let off = 0; ; off += 1000) {
@@ -33,8 +37,8 @@ async function fetchAllVendas(desde: string, ate: string) {
       .select('criativo, valor, valor_liquido, data')
       .eq('status', 'approved')
       .not('transaction_id', 'like', 'manual_%')
-      .gte('data', `${desde}T00:00:00`)
-      .lte('data', `${ate}T23:59:59`)
+      .gte('data', desde)
+      .lte('data', ate)
       .range(off, off + 999)
     if (error) break
     if (!data || data.length === 0) break
@@ -112,7 +116,8 @@ export async function GET(request: NextRequest) {
       return acc
     })()
 
-    const [vendas, investimento] = await Promise.all([fetchAllVendas(dInicio, dFim), investPromise])
+    const { desde, ate } = spRangeISO(dInicio, dFim)
+    const [vendas, investimento] = await Promise.all([fetchAllVendas(desde, ate), investPromise])
 
     const pontos: HoraPonto[] = Array.from({ length: 24 }, (_, hora) => ({
       hora, fatFrioLiq: 0, fatFrioBru: 0, fatOrgLiq: 0, fatOrgBru: 0, investimento: investimento[hora] || 0,

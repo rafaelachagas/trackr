@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { extrairCriativo, extrairFase, extrairCampanha } from '@/lib/utils'
+import { extrairCriativo, extrairFase, extrairCampanha, normalizarPagamento } from '@/lib/utils'
 import { HotmartWebhookPayload } from '@/types'
 
 // Eventos Hotmart que processamos
@@ -131,15 +131,27 @@ export async function POST(request: NextRequest) {
       criativo,
       fase: extrairFase(sck),
       campanha: extrairCampanha(sck),
+      metodo_pagamento: normalizarPagamento(purchase.payment?.type),
       vsl: null as string | null, // será preenchido via VTurb
     }
 
-    // 8. Upsert (atualiza se a transação já existe)
-    const { data: vendaSalva, error: erroInsert } = await supabaseAdmin
+    // 8. Upsert (atualiza se a transação já existe). Se a coluna
+    // metodo_pagamento ainda não existir no banco (SQL não rodado), regrava SEM
+    // ela — nunca deixa de salvar a venda por causa disso.
+    let { data: vendaSalva, error: erroInsert } = await supabaseAdmin
       .from('vendas')
       .upsert(novaVenda, { onConflict: 'transaction_id' })
       .select()
       .single()
+
+    if (erroInsert && /metodo_pagamento/i.test(erroInsert.message ?? '')) {
+      const { metodo_pagamento, ...semMetodo } = novaVenda
+      ;({ data: vendaSalva, error: erroInsert } = await supabaseAdmin
+        .from('vendas')
+        .upsert(semMetodo, { onConflict: 'transaction_id' })
+        .select()
+        .single())
+    }
 
     if (erroInsert) {
       console.error('[Hotmart] Erro ao salvar venda:', erroInsert)

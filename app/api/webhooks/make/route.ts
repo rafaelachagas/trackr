@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { extrairCriativo, extrairFase, extrairCampanha } from '@/lib/utils'
+import { extrairCriativo, extrairFase, extrairCampanha, normalizarPagamento } from '@/lib/utils'
 
 const STATUS_MAP: Record<string, string> = {
   PURCHASE_COMPLETE: 'approved',
@@ -126,14 +126,25 @@ export async function POST(request: NextRequest) {
       criativo,
       fase,
       campanha,
+      metodo_pagamento: normalizarPagamento(purchase.payment?.type),
       vsl: null as string | null,
     }
 
-    const { data: vendaSalva, error: erroInsert } = await supabaseAdmin
+    // Se a coluna metodo_pagamento ainda não existir, regrava sem ela.
+    let { data: vendaSalva, error: erroInsert } = await supabaseAdmin
       .from('vendas')
       .upsert(novaVenda, { onConflict: 'transaction_id' })
       .select()
       .single()
+
+    if (erroInsert && /metodo_pagamento/i.test(erroInsert.message ?? '')) {
+      const { metodo_pagamento, ...semMetodo } = novaVenda
+      ;({ data: vendaSalva, error: erroInsert } = await supabaseAdmin
+        .from('vendas')
+        .upsert(semMetodo, { onConflict: 'transaction_id' })
+        .select()
+        .single())
+    }
 
     if (erroInsert) {
       console.error('[Make] Erro ao salvar venda:', erroInsert)

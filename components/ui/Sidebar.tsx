@@ -15,6 +15,7 @@ import {
   Film,
   Database,
   CreditCard,
+  Trophy,
   ChevronDown,
   DollarSign,
   ChevronLeft,
@@ -29,6 +30,7 @@ const navigation = [
   { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
   { href: '/framework', label: 'Framework', icon: TrendingUp },
   { href: '/criativos', label: 'Criativos', icon: Film },
+  { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
 ]
 
