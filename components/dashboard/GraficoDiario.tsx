@@ -60,11 +60,12 @@ export default function GraficoDiario({ dados }: Props) {
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={dadosFormatados} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis 
-              dataKey="dataLabel" 
-              tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} 
+            <XAxis
+              dataKey="dataLabel"
+              tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }}
               axisLine={{ stroke: 'var(--border)' }}
               tickLine={false}
+              padding={{ left: 20, right: 20 }}
             />
             <YAxis
               yAxisId="moeda"
@@ -84,8 +85,8 @@ export default function GraficoDiario({ dados }: Props) {
             />
             <Tooltip content={<TooltipCustom />} cursor={{ fill: 'var(--muted)', opacity: 0.1 }} />
             <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em' }} />
-            <Bar yAxisId="moeda" dataKey="receita" name="Receita" fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.8} />
-            <Bar yAxisId="moeda" dataKey="gasto" name="Gasto" fill="#f43f5e" radius={[4, 4, 0, 0]} opacity={0.8} />
+            <Bar yAxisId="moeda" dataKey="receita" name="Receita" fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.8} maxBarSize={48} />
+            <Bar yAxisId="moeda" dataKey="gasto" name="Gasto" fill="#f43f5e" radius={[4, 4, 0, 0]} opacity={0.8} maxBarSize={48} />
             <Line
               yAxisId="roas"
               type="monotone"
