@@ -24,22 +24,30 @@ async function fetchAll<T>(build: (from: number, to: number) => any): Promise<T[
   return todas
 }
 
+// HISTÓRICO AUTOMÁTICO (todo o período), reconciliado com o painel V2:
+//   - GASTO: gastos REAIS da Meta (ad_id IS NOT NULL), agrupados pelo código
+//     do criativo (ad12, ad54...) extraído no sync.
+//   - RECEITA: vendas REAIS da Hotmart (não-manuais) com código de anúncio no
+//     sck (criativo != null) — mesmo universo do V2. Faturamento LÍQUIDO
+//     (valor_liquido, fallback valor), pra o ROAS bater com o painel automático.
+// Sem filtro de data e sem filtro de "ativos": é o acumulado geral, incluindo
+// criativo já pausado.
 export async function GET() {
   const [gastos, vendas] = await Promise.all([
     fetchAll<{ criativo: string; valor_gasto: number }>((from, to) =>
       supabaseAdmin
         .from('gastos')
         .select('criativo, valor_gasto')
-        .is('ad_id', null)
+        .not('ad_id', 'is', null)
         .not('criativo', 'is', null)
         .range(from, to)
     ),
-    fetchAll<{ criativo: string; valor: number }>((from, to) =>
+    fetchAll<{ criativo: string; valor: number; valor_liquido: number | null }>((from, to) =>
       supabaseAdmin
         .from('vendas')
-        .select('criativo, valor')
+        .select('criativo, valor, valor_liquido')
         .eq('status', 'approved')
-        .like('transaction_id', 'manual_%')
+        .not('transaction_id', 'like', 'manual_%')
         .not('criativo', 'is', null)
         .range(from, to)
     ),
@@ -53,7 +61,7 @@ export async function GET() {
   const receitaMap = new Map<string, number>()
   const vendasMap = new Map<string, number>()
   for (const v of vendas ?? []) {
-    receitaMap.set(v.criativo, (receitaMap.get(v.criativo) ?? 0) + Number(v.valor))
+    receitaMap.set(v.criativo, (receitaMap.get(v.criativo) ?? 0) + Number(v.valor_liquido ?? v.valor))
     vendasMap.set(v.criativo, (vendasMap.get(v.criativo) ?? 0) + 1)
   }
 

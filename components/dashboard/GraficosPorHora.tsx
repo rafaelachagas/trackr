@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  ComposedChart, Area, Line, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ComposedChart, Line, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LabelList,
 } from 'recharts'
 import { EyeOff, Info } from 'lucide-react'
@@ -145,18 +145,14 @@ function GraficoAcumulado({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[
     >
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={dados} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-          <defs>
-            <linearGradient id="gFat" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COR.faturamento} stopOpacity={0.25} /><stop offset="100%" stopColor={COR.faturamento} stopOpacity={0} /></linearGradient>
-            <linearGradient id="gLuc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={COR.lucro} stopOpacity={0.22} /><stop offset="100%" stopColor={COR.lucro} stopOpacity={0} /></linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} interval={0} minTickGap={0} />
-          <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+          <CartesianGrid strokeDasharray="0" stroke="var(--border)" strokeOpacity={0.5} vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} interval={0} minTickGap={0} padding={{ left: 8, right: 8 }} />
+          <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} width={52} />
           <Tooltip content={<TooltipMoeda />} cursor={{ stroke: 'var(--muted-foreground)', strokeOpacity: 0.2 }} />
           <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.08em' }} />
-          <Area type="monotone" dataKey="faturamento" name="Faturamento" stroke={COR.faturamento} strokeWidth={2.5} fill="url(#gFat)" dot={{ r: 2, fill: COR.faturamento }} activeDot={{ r: 5 }} />
-          <Area type="monotone" dataKey="lucro" name="Lucro" stroke={COR.lucro} strokeWidth={2.5} fill="url(#gLuc)" dot={{ r: 2, fill: COR.lucro }} activeDot={{ r: 5 }} />
-          <Line type="monotone" dataKey="investimento" name="Investimento" stroke={COR.investimento} strokeWidth={2.5} dot={{ r: 2, fill: COR.investimento }} activeDot={{ r: 5 }} />
+          <Line type="monotone" dataKey="faturamento" name="Faturamento" stroke={COR.faturamento} strokeWidth={2.5} dot={{ r: 3, fill: COR.faturamento, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: 'var(--card)' }} connectNulls={false} />
+          <Line type="monotone" dataKey="lucro" name="Lucro" stroke={COR.lucro} strokeWidth={2.5} dot={{ r: 3, fill: COR.lucro, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: 'var(--card)' }} connectNulls={false} />
+          <Line type="monotone" dataKey="investimento" name="Investimento" stroke={COR.investimento} strokeWidth={2.5} dot={{ r: 3, fill: COR.investimento, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: 'var(--card)' }} connectNulls={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </CardChart>
