@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState } from 'react'
 import { MessageCircle, Plus, Trash2, RefreshCw, Check } from 'lucide-react'
-import { BLOCOS, WppConfig, WppCommand, WppGroup, WppNumber } from '@/lib/whatsapp'
+import { BLOCOS, CAMPOS_BLOCO, camposDe, WppConfig, WppCommand, WppGroup, WppNumber } from '@/lib/whatsapp'
+
+const LABEL_BLOCO: Record<string, string> = Object.fromEntries(BLOCOS.map((b) => [b.key, b.label]))
 import { getWhatsappConfig, saveWhatsappConfig, listWhatsappGroups, GrupoWpp } from '@/app/actions/whatsapp'
 
 const ALL_BLOCKS = BLOCOS.map((b) => b.key)
@@ -73,6 +75,18 @@ export default function WhatsappPage() {
     if (!c) return
     const novo = c.blocks.includes(bloco) ? c.blocks.filter((b) => b !== bloco) : [...c.blocks, bloco]
     updateCmd(id, { blocks: novo })
+  }
+  function toggleCmdCampo(id: string, blockKey: string, campo: string) {
+    setConfig((prev) => ({
+      ...prev,
+      commands: prev.commands.map((c) => {
+        if (c.id !== id) return c
+        const fields = { ...(c.fields ?? {}) }
+        const atual = fields[blockKey] ?? camposDe(c, blockKey)
+        fields[blockKey] = atual.includes(campo) ? atual.filter((x) => x !== campo) : [...atual, campo]
+        return { ...c, fields }
+      }),
+    }))
   }
   function addCmd() {
     setConfig((prev) => ({ ...prev, commands: [...prev.commands, { id: novoId(), trigger: '/', enabled: true, blocks: [], header: '', footer: '' }] }))
@@ -233,6 +247,23 @@ export default function WhatsappPage() {
                   )
                 })}
               </div>
+              {/* Campos de cada bloco ativo que é configurável */}
+              {c.blocks.filter((bk) => CAMPOS_BLOCO[bk]).map((bk) => (
+                <div key={bk} className="mt-2 pl-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Campos · {LABEL_BLOCO[bk]}</span>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {CAMPOS_BLOCO[bk].map((f) => {
+                      const on = camposDe(c, bk).includes(f.key)
+                      return (
+                        <button key={f.key} onClick={() => toggleCmdCampo(c.id, bk, f.key)}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition ${on ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
+                          {f.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
                 <input value={c.header ?? ''} onChange={(e) => updateCmd(c.id, { header: e.target.value })}
                   placeholder="Texto de abertura (opcional)" className="px-3 py-2 rounded-lg text-xs" style={inputStyle} />

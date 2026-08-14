@@ -23,6 +23,7 @@ export async function saveWhatsappConfig(config: WppConfig): Promise<{ success: 
       trigger: (c.trigger ?? '').trim().toLowerCase(),
       enabled: !!c.enabled,
       blocks: Array.isArray(c.blocks) ? c.blocks : [],
+      fields: c.fields && typeof c.fields === 'object' ? c.fields : undefined,
       header: c.header ?? '',
       footer: c.footer ?? '',
     })).filter((c) => c.trigger),

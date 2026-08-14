@@ -16,13 +16,45 @@ export const BLOCOS = [
 
 export type BlocoKey = (typeof BLOCOS)[number]['key']
 
+// Campos configuráveis dentro de um bloco (o usuário liga/desliga por comando).
+export const CAMPOS_BLOCO: Record<string, { key: string; label: string }[]> = {
+  resumo: [
+    { key: 'faturamento', label: 'Faturamento' },
+    { key: 'gasto', label: 'Gasto' },
+    { key: 'roas', label: 'ROAS' },
+    { key: 'lucro', label: 'Lucro' },
+    { key: 'vendas', label: 'Vendas' },
+  ],
+  top_criativos: [
+    { key: 'roas', label: 'ROAS' },
+    { key: 'gasto', label: 'Gasto' },
+    { key: 'acao', label: 'Ação' },
+    { key: 'fase', label: 'Fase' },
+    { key: 'link', label: 'Link do anúncio' },
+  ],
+}
+
+// Padrão = comportamento atual (o que já aparecia). Fase/link vêm DESLIGADOS.
+export const CAMPOS_DEFAULT: Record<string, string[]> = {
+  resumo: ['faturamento', 'gasto', 'roas', 'lucro', 'vendas'],
+  top_criativos: ['roas', 'gasto', 'acao'],
+}
+
 export interface WppCommand {
   id: string
   trigger: string        // ex: "/relatorio"
   enabled: boolean
   blocks: string[]       // BlocoKey[]
+  fields?: Record<string, string[]>  // por bloco: quais campos mostrar (ausente = padrão)
   header?: string        // texto de abertura opcional
   footer?: string        // texto de rodapé opcional
+}
+
+// Campos ativos de um bloco num comando (default se não configurado).
+export function camposDe(cmd: WppCommand, blockKey: string): string[] {
+  const f = cmd.fields?.[blockKey]
+  if (Array.isArray(f)) return f
+  return CAMPOS_DEFAULT[blockKey] ?? []
 }
 
 // Permissão POR GRUPO: cada grupo habilitado escolhe quais blocos pode ver.

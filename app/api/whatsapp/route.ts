@@ -5,7 +5,7 @@ import { formatarMoeda, spRangeISO } from '@/lib/utils'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
 import {
-  CONFIG_KEY, parseWppConfig, blocosPermitidos, mesmoNumero, WppGroup, WppNumber,
+  CONFIG_KEY, parseWppConfig, blocosPermitidos, camposDe, mesmoNumero, WppCommand, WppGroup, WppNumber,
   EVOLUTION_URL, EVOLUTION_INSTANCE, EVOLUTION_APIKEY, SITE_URL,
 } from '@/lib/whatsapp'
 
@@ -37,9 +37,17 @@ const roasFmt = (r: number | null) => (r == null ? '—' : `${r.toFixed(2)}x`)
 function makeLoader() {
   const hoje = format(toZonedTime(new Date(), TZ), 'yyyy-MM-dd')
   const { desde, ate } = spRangeISO(hoje, hoje)
-  let dash: any, perf: any, brk: any
+  let dash: any, perf: any, brk: any, links: Map<string, string> | undefined
   return {
     async dashboard() { return (dash ??= await getDashboardData('Qualquer', desde, ate)) },
+    async links() {
+      if (!links) {
+        links = new Map<string, string>()
+        const { data } = await supabaseAdmin.from('criativos').select('nome, link_anuncio')
+        for (const r of data ?? []) if ((r as any).link_anuncio) links.set(r.nome, (r as any).link_anuncio)
+      }
+      return links
+    },
     async perfV2() {
       if (!perf) {
         try { perf = await (await fetchTimeout(`${SITE_URL}/api/performance-v2`, { cache: 'no-store' }, 25000)).json() }
@@ -58,26 +66,37 @@ function makeLoader() {
 }
 type Loader = ReturnType<typeof makeLoader>
 
-async function renderBloco(key: string, L: Loader): Promise<string | null> {
+async function renderBloco(key: string, L: Loader, campos: string[]): Promise<string | null> {
   if (key === 'resumo') {
     const d = await L.dashboard()
     const m = d?.metrics
     if (!m) return null
     const lucro = m.revenue - m.spend - m.imposto
-    return [
-      `💰 Faturamento: *${fmt(m.revenue)}*`,
-      `📣 Gasto em ADS: *${fmt(m.spend)}*`,
-      `📈 ROAS: *${m.roas.toFixed(2)}*`,
-      `🟢 Lucro: *${fmt(lucro)}*`,
-      `🛒 Vendas: *${m.salesCount}*`,
-    ].join('\n')
+    const lines: string[] = []
+    if (campos.includes('faturamento')) lines.push(`💰 Faturamento: *${fmt(m.revenue)}*`)
+    if (campos.includes('gasto')) lines.push(`📣 Gasto em ADS: *${fmt(m.spend)}*`)
+    if (campos.includes('roas')) lines.push(`📈 ROAS: *${m.roas.toFixed(2)}*`)
+    if (campos.includes('lucro')) lines.push(`🟢 Lucro: *${fmt(lucro)}*`)
+    if (campos.includes('vendas')) lines.push(`🛒 Vendas: *${m.salesCount}*`)
+    return lines.length ? lines.join('\n') : null
   }
   if (key === 'top_criativos') {
     const p = await L.perfV2()
     const top = [...(p.criativos ?? [])].sort((a: any, b: any) => b.gasto_7d - a.gasto_7d).slice(0, 5)
     if (!top.length) return null
-    return ['*🎬 Top criativos (7d):*', ...top.map((c: any, i: number) =>
-      `${i + 1}. *${c.criativo}* — ROAS ${roasFmt(c.roas_7d)} · Gasto ${fmt(c.gasto_7d)} · ${c.acao}`)].join('\n')
+    const linkMap = campos.includes('link') ? await L.links() : null
+    const linhas = top.map((c: any, i: number) => {
+      const partes: string[] = []
+      if (campos.includes('roas')) partes.push(`ROAS ${roasFmt(c.roas_7d)}`)
+      if (campos.includes('gasto')) partes.push(`Gasto ${fmt(c.gasto_7d)}`)
+      if (campos.includes('fase') && c.fase) partes.push(c.fase)
+      if (campos.includes('acao')) partes.push(c.acao)
+      let l = `${i + 1}. *${c.criativo}*`
+      if (partes.length) l += ` — ${partes.join(' · ')}`
+      if (linkMap) { const link = linkMap.get(c.ad_name); if (link) l += `\n   ${link}` }
+      return l
+    })
+    return ['*🎬 Top criativos (7d):*', ...linhas].join('\n')
   }
   if (key === 'alertas') {
     const p = await L.perfV2()
@@ -114,7 +133,7 @@ async function renderBloco(key: string, L: Loader): Promise<string | null> {
   return null
 }
 
-async function montarResposta(blocks: string[], header?: string, footer?: string): Promise<string> {
+async function montarResposta(blocks: string[], cmd: WppCommand): Promise<string> {
   const L = makeLoader()
   const agora = toZonedTime(new Date(), TZ)
   const dataBR = format(agora, 'dd/MM/yyyy')
@@ -128,12 +147,12 @@ async function montarResposta(blocks: string[], header?: string, footer?: string
 
   const partes: string[] = []
   partes.push(`📊 *The Track*  _(${dataHora})_`)
-  if (header?.trim()) partes.push(aplicarVars(header.trim()))
+  if (cmd.header?.trim()) partes.push(aplicarVars(cmd.header.trim()))
   for (const b of blocks) {
-    const txt = await renderBloco(b, L)
+    const txt = await renderBloco(b, L, camposDe(cmd, b))
     if (txt) partes.push('\n' + txt)
   }
-  if (footer?.trim()) partes.push('\n_' + aplicarVars(footer.trim()) + '_')
+  if (cmd.footer?.trim()) partes.push('\n_' + aplicarVars(cmd.footer.trim()) + '_')
   return partes.join('\n')
 }
 
@@ -189,7 +208,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ignored: 'no-permission', grupo: remoteJid })
     }
 
-    const resposta = await montarResposta(blocks, cmd.header, cmd.footer)
+    const resposta = await montarResposta(blocks, cmd)
     await enviar(remoteJid, resposta)
     return NextResponse.json({ ok: true, grupo: remoteJid, comando: cmd.trigger, blocks })
   } catch (err) {
