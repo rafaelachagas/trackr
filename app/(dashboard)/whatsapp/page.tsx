@@ -7,7 +7,6 @@ import { BLOCOS, CAMPOS_BLOCO, camposDe, WppConfig, WppCommand, WppGroup, WppNum
 const LABEL_BLOCO: Record<string, string> = Object.fromEntries(BLOCOS.map((b) => [b.key, b.label]))
 import { getWhatsappConfig, saveWhatsappConfig, listWhatsappGroups, GrupoWpp } from '@/app/actions/whatsapp'
 
-const ALL_BLOCKS = BLOCOS.map((b) => b.key)
 let idSeed = 0
 const novoId = () => `cmd_${Date.now()}_${idSeed++}`
 
@@ -29,6 +28,9 @@ export default function WhatsappPage() {
   }
   useEffect(() => { carregar() }, [])
 
+  // Ids de todos os comandos — default de permissão (tudo liberado) ao ligar um alvo.
+  const allCommandIds = () => config.commands.map((c) => c.id)
+
   // —— Grupos ——
   function grupoCfg(jid: string): WppGroup | undefined {
     return config.groups.find((x) => x.jid === jid)
@@ -37,30 +39,31 @@ export default function WhatsappPage() {
     setConfig((prev) => {
       const groups = [...prev.groups]
       const i = groups.findIndex((x) => x.jid === jid)
-      if (i === -1) groups.push({ jid, name, enabled: true, allowedBlocks: [...ALL_BLOCKS], ...patch })
+      if (i === -1) groups.push({ jid, name, enabled: true, allowedCommands: prev.commands.map((c) => c.id), ...patch })
       else groups[i] = { ...groups[i], name, ...patch }
       return { ...prev, groups }
     })
   }
-  function toggleGrupoBloco(jid: string, name: string, bloco: string) {
+  function toggleGrupoComando(jid: string, name: string, cmdId: string) {
     const g = grupoCfg(jid)
-    const atual = g?.allowedBlocks ?? []
-    const novo = atual.includes(bloco) ? atual.filter((b) => b !== bloco) : [...atual, bloco]
-    setGrupo(jid, name, { allowedBlocks: novo })
+    const atual = g?.allowedCommands ?? allCommandIds()
+    const novo = atual.includes(cmdId) ? atual.filter((x) => x !== cmdId) : [...atual, cmdId]
+    setGrupo(jid, name, { allowedCommands: novo })
   }
 
   // —— Números (privado) ——
   function updateNumero(i: number, patch: Partial<WppNumber>) {
     setConfig((prev) => ({ ...prev, numbers: prev.numbers.map((n, idx) => (idx === i ? { ...n, ...patch } : n)) }))
   }
-  function toggleNumeroBloco(i: number, bloco: string) {
+  function toggleNumeroComando(i: number, cmdId: string) {
     const n = config.numbers[i]
     if (!n) return
-    const novo = (n.allowedBlocks ?? []).includes(bloco) ? n.allowedBlocks.filter((b) => b !== bloco) : [...(n.allowedBlocks ?? []), bloco]
-    updateNumero(i, { allowedBlocks: novo })
+    const atual = n.allowedCommands ?? allCommandIds()
+    const novo = atual.includes(cmdId) ? atual.filter((x) => x !== cmdId) : [...atual, cmdId]
+    updateNumero(i, { allowedCommands: novo })
   }
   function addNumero() {
-    setConfig((prev) => ({ ...prev, numbers: [...prev.numbers, { number: '', name: '', enabled: true, allowedBlocks: [...ALL_BLOCKS] }] }))
+    setConfig((prev) => ({ ...prev, numbers: [...prev.numbers, { number: '', name: '', enabled: true, allowedCommands: prev.commands.map((c) => c.id) }] }))
   }
   function removeNumero(i: number) {
     setConfig((prev) => ({ ...prev, numbers: prev.numbers.filter((_, idx) => idx !== i) }))
@@ -133,7 +136,7 @@ export default function WhatsappPage() {
       <div className="rounded-2xl p-5" style={cardStyle}>
         <h2 className="text-sm font-bold mb-1">Grupos & Permissões</h2>
         <p className="text-xs text-muted-foreground mb-4">
-          Ligue o bot por grupo e escolha quais blocos cada grupo pode ver. Grupo desligado = bot não responde nele.
+          Ligue o bot por grupo e escolha quais <b>comandos</b> cada grupo pode usar. O conteúdo de cada comando é definido lá embaixo em &quot;Comandos&quot;. Grupo desligado = bot não responde nele.
           {config.groups.length === 0 && ' (Nenhum grupo configurado ainda: o bot responde em qualquer grupo — configure abaixo para restringir.)'}
         </p>
         {grupoErro && <p className="text-xs text-amber-400 mb-3">Não consegui listar os grupos ({grupoErro}). Confira se o número está conectado.</p>}
@@ -152,16 +155,20 @@ export default function WhatsappPage() {
                   </label>
                 </div>
                 {on && (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {BLOCOS.map((b) => {
-                      const checked = (cfg?.allowedBlocks ?? []).includes(b.key)
-                      return (
-                        <button key={b.key} onClick={() => toggleGrupoBloco(g.jid, g.name, b.key)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${checked ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
-                          {b.label}
-                        </button>
-                      )
-                    })}
+                  <div className="mt-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Comandos permitidos neste grupo</span>
+                    <div className="flex flex-wrap gap-2 mt-1.5">
+                      {config.commands.length === 0 && <span className="text-[11px] text-muted-foreground">Crie um comando lá embaixo primeiro.</span>}
+                      {config.commands.map((cmd) => {
+                        const checked = (cfg?.allowedCommands ?? config.commands.map((c) => c.id)).includes(cmd.id)
+                        return (
+                          <button key={cmd.id} onClick={() => toggleGrupoComando(g.jid, g.name, cmd.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold font-mono border transition ${checked ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
+                            {cmd.trigger || '(sem gatilho)'}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -179,7 +186,7 @@ export default function WhatsappPage() {
           </button>
         </div>
         <p className="text-xs text-muted-foreground mb-4">
-          No privado, só os números cadastrados aqui recebem resposta. Cada número escolhe quais blocos pode ver. Se a lista estiver vazia, o bot não responde no privado.
+          No privado, só os números cadastrados aqui recebem resposta. Cada número escolhe quais <b>comandos</b> pode usar. Se a lista estiver vazia, o bot não responde no privado.
         </p>
         <div className="space-y-3">
           {config.numbers.map((n, i) => (
@@ -195,16 +202,20 @@ export default function WhatsappPage() {
                 <button onClick={() => removeNumero(i)} className="ml-auto text-muted-foreground hover:text-rose-400"><Trash2 className="w-4 h-4" /></button>
               </div>
               {n.enabled && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {BLOCOS.map((b) => {
-                    const checked = (n.allowedBlocks ?? []).includes(b.key)
-                    return (
-                      <button key={b.key} onClick={() => toggleNumeroBloco(i, b.key)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${checked ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
-                        {b.label}
-                      </button>
-                    )
-                  })}
+                <div className="mt-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Comandos permitidos p/ este número</span>
+                  <div className="flex flex-wrap gap-2 mt-1.5">
+                    {config.commands.length === 0 && <span className="text-[11px] text-muted-foreground">Crie um comando lá embaixo primeiro.</span>}
+                    {config.commands.map((cmd) => {
+                      const checked = (n.allowedCommands ?? config.commands.map((c) => c.id)).includes(cmd.id)
+                      return (
+                        <button key={cmd.id} onClick={() => toggleNumeroComando(i, cmd.id)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold font-mono border transition ${checked ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
+                          {cmd.trigger || '(sem gatilho)'}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>

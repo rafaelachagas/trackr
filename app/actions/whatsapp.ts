@@ -31,13 +31,13 @@ export async function saveWhatsappConfig(config: WppConfig): Promise<{ success: 
       jid: g.jid,
       name: g.name ?? '',
       enabled: !!g.enabled,
-      allowedBlocks: Array.isArray(g.allowedBlocks) ? g.allowedBlocks : [],
+      allowedCommands: Array.isArray(g.allowedCommands) ? g.allowedCommands : undefined,
     })),
     numbers: (config.numbers ?? []).map((n) => ({
       number: (n.number ?? '').replace(/\D/g, ''),
       name: n.name ?? '',
       enabled: !!n.enabled,
-      allowedBlocks: Array.isArray(n.allowedBlocks) ? n.allowedBlocks : [],
+      allowedCommands: Array.isArray(n.allowedCommands) ? n.allowedCommands : undefined,
     })).filter((n) => n.number),
   }
   // configuracoes.org_id é NOT NULL — resolve a org (single-tenant) pro insert.

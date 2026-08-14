@@ -5,7 +5,7 @@ import { formatarMoeda, spRangeISO, extrairCriativo } from '@/lib/utils'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
 import {
-  CONFIG_KEY, parseWppConfig, blocosPermitidos, camposDe, mesmoNumero, WppCommand, WppGroup, WppNumber,
+  CONFIG_KEY, parseWppConfig, comandoPermitido, camposDe, mesmoNumero, WppCommand, WppGroup, WppNumber,
   EVOLUTION_URL, EVOLUTION_INSTANCE, EVOLUTION_APIKEY, SITE_URL,
 } from '@/lib/whatsapp'
 
@@ -285,11 +285,13 @@ export async function POST(request: NextRequest) {
 
     if (!EVOLUTION_APIKEY) return NextResponse.json({ error: 'apikey ausente' }, { status: 500 })
 
-    const blocks = blocosPermitidos(cmd, alvo)
-    if (!blocks.length && !cmd.header?.trim() && !cmd.footer?.trim()) {
-      return NextResponse.json({ ignored: 'no-permission', grupo: remoteJid })
+    // Permissão agora é POR COMANDO: o grupo/número escolhe quais comandos pode
+    // usar; o comando define o conteúdo (blocos/campos).
+    if (!comandoPermitido(cmd, alvo)) {
+      return NextResponse.json({ ignored: 'command-not-allowed', grupo: remoteJid, comando: cmd.trigger })
     }
 
+    const blocks = cmd.blocks
     const resposta = await montarResposta(blocks, cmd)
     await enviar(remoteJid, resposta)
     return NextResponse.json({ ok: true, grupo: remoteJid, comando: cmd.trigger, blocks })

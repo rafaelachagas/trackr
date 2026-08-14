@@ -57,23 +57,25 @@ export function camposDe(cmd: WppCommand, blockKey: string): string[] {
   return CAMPOS_DEFAULT[blockKey] ?? []
 }
 
-// Permissão POR GRUPO: cada grupo habilitado escolhe quais blocos pode ver.
-// Ex.: grupo da equipe libera só ['top_criativos'] → o /relatorio nesse grupo
-// esconde o Resumo (faturamento) mesmo que o comando inclua 'resumo'.
+// Permissão POR GRUPO: cada grupo habilitado escolhe quais COMANDOS são
+// permitidos nele. O que cada comando mostra (blocos/campos) é definido no
+// próprio comando. Ex.: grupo da edição libera só o comando /criativos.
 export interface WppGroup {
   jid: string
   name?: string
   enabled: boolean
-  allowedBlocks: string[]  // vazio = todos os blocos liberados
+  allowedCommands?: string[] // ids de comando permitidos; ausente = todos liberados
+  allowedBlocks?: string[]   // legado (modelo antigo por bloco) — não usado mais
 }
 
-// Acesso no PRIVADO (1:1): só números cadastrados respondem, cada um com suas
-// permissões de bloco. Fora da lista, o bot não responde no privado.
+// Acesso no PRIVADO (1:1): só números cadastrados respondem, cada um escolhendo
+// quais comandos pode usar. Fora da lista, o bot não responde no privado.
 export interface WppNumber {
   number: string          // só dígitos (com ou sem 55) — normalizado na comparação
   name?: string
   enabled: boolean
-  allowedBlocks: string[]
+  allowedCommands?: string[] // ids de comando permitidos; ausente = todos liberados
+  allowedBlocks?: string[]   // legado — não usado mais
 }
 
 export interface WppConfig {
@@ -133,12 +135,12 @@ export function parseWppConfig(valor: string | null | undefined): WppConfig {
   }
 }
 
-// Blocos que um comando pode renderizar NUM grupo específico (interseção da
-// config do comando com a permissão do grupo).
-// Aceita grupo OU número (ambos têm allowedBlocks). `undefined` = modo setup.
-export function blocosPermitidos(command: WppCommand, alvo: { allowedBlocks?: string[] } | undefined): string[] {
-  // Sem alvo configurado (modo setup de grupo) → tudo que o comando define.
-  if (!alvo) return command.blocks
-  // Alvo configurado → só os blocos explicitamente liberados pra ele.
-  return command.blocks.filter((b) => (alvo.allowedBlocks ?? []).includes(b))
+// Um comando pode ser usado num alvo (grupo/número)?
+//   - alvo undefined (modo setup de grupo) → sim.
+//   - allowedCommands ausente (nunca configurado) → sim (todos liberados).
+//   - allowedCommands presente → só se o id do comando estiver na lista.
+export function comandoPermitido(command: WppCommand, alvo: { allowedCommands?: string[] } | undefined): boolean {
+  if (!alvo) return true
+  if (!alvo.allowedCommands) return true
+  return alvo.allowedCommands.includes(command.id)
 }
