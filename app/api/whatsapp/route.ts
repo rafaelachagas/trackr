@@ -173,9 +173,7 @@ async function renderBloco(key: string, L: Loader, campos: string[]): Promise<st
       const link = campos.includes('link') ? links[i] : undefined
       return link ? `${cabec}\n${link}` : cabec
     })
-    // Linha em branco entre os itens quando há link (fica mais legível).
-    const sep = campos.includes('link') ? '\n\n' : '\n'
-    return `*Top Criativos (7D)*\n\n${itens.join(sep)}`
+    return `*Top Criativos (7D)*\n${itens.join('\n')}`
   }
   if (key === 'alertas') {
     const p = await L.perfV2()
