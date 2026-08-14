@@ -116,15 +116,24 @@ async function renderBloco(key: string, L: Loader): Promise<string | null> {
 
 async function montarResposta(blocks: string[], header?: string, footer?: string): Promise<string> {
   const L = makeLoader()
-  const dataBR = format(toZonedTime(new Date(), TZ), 'dd/MM/yyyy')
+  const agora = toZonedTime(new Date(), TZ)
+  const dataBR = format(agora, 'dd/MM/yyyy')
+  const horaBR = format(agora, 'HH:mm')
+  const dataHora = `${dataBR} às ${horaBR}`
+  // Variáveis que o usuário pode usar no texto de abertura/rodapé.
+  const aplicarVars = (t: string) => t
+    .replace(/\{datahora\}/gi, dataHora)
+    .replace(/\{data\}/gi, dataBR)
+    .replace(/\{hora\}/gi, horaBR)
+
   const partes: string[] = []
-  partes.push(`📊 *The Track*  _(${dataBR})_`)
-  if (header?.trim()) partes.push(header.trim())
+  partes.push(`📊 *The Track*  _(${dataHora})_`)
+  if (header?.trim()) partes.push(aplicarVars(header.trim()))
   for (const b of blocks) {
     const txt = await renderBloco(b, L)
     if (txt) partes.push('\n' + txt)
   }
-  if (footer?.trim()) partes.push('\n_' + footer.trim() + '_')
+  if (footer?.trim()) partes.push('\n_' + aplicarVars(footer.trim()) + '_')
   return partes.join('\n')
 }
 

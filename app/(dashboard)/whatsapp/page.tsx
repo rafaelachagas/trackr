@@ -205,6 +205,7 @@ export default function WhatsappPage() {
           <div>
             <h2 className="text-sm font-bold">Comandos</h2>
             <p className="text-xs text-muted-foreground">O gatilho é o texto que dispara (ex.: /relatorio). Escolha os blocos que ele responde.</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Na abertura/rodapé dá pra usar variáveis: <span className="font-mono text-primary">{'{data}'}</span>, <span className="font-mono text-primary">{'{hora}'}</span>, <span className="font-mono text-primary">{'{datahora}'}</span>.</p>
           </div>
           <button onClick={addCmd} className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:bg-white/5" style={inputStyle}>
             <Plus className="w-4 h-4" /> Novo comando
