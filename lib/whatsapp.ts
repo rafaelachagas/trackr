@@ -50,12 +50,24 @@ export interface WppConfig {
   numbers: WppNumber[]     // privado — vazio = não responde no privado
 }
 
+// Reduz um número BR a DDD + 8 dígitos (tira código do país 55 e o 9º dígito),
+// pra comparar de forma robusta números que vêm em formatos diferentes.
+function nucleoNumero(n: string): string {
+  let d = (n || '').replace(/\D/g, '')
+  if (d.length > 11 && d.startsWith('55')) d = d.slice(2) // remove país
+  if (d.length === 11 && d[2] === '9') d = d.slice(0, 2) + d.slice(3) // remove 9º dígito
+  return d
+}
+
 // Compara dois números tolerando 9º dígito / código do país (55).
 export function mesmoNumero(a: string, b: string): boolean {
   const da = (a || '').replace(/\D/g, '')
   const db = (b || '').replace(/\D/g, '')
   if (!da || !db) return false
-  return da === db || da.endsWith(db) || db.endsWith(da)
+  if (da === db || da.endsWith(db) || db.endsWith(da)) return true
+  const na = nucleoNumero(da)
+  const nb = nucleoNumero(db)
+  return !!na && na === nb
 }
 
 export const CONFIG_KEY = 'whatsapp_bot'

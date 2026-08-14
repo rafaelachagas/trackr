@@ -163,7 +163,10 @@ export async function POST(request: NextRequest) {
     } else {
       // PRIVADO: só números cadastrados e ativos respondem.
       const num = config.numbers?.find((n) => n.enabled && mesmoNumero(n.number, remoteJid))
-      if (!num) return NextResponse.json({ ignored: 'number-not-allowed', numero: remoteJid })
+      if (!num) {
+        console.log('[whatsapp] DM negado — número não autorizado:', remoteJid, '| cadastrados:', config.numbers?.map((n) => n.number))
+        return NextResponse.json({ ignored: 'number-not-allowed', numero: remoteJid })
+      }
       alvo = num
     }
 
