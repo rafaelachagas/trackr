@@ -37,6 +37,51 @@ async function enviar(to: string, text: string) {
 const fmt = (v: number) => formatarMoeda(v)
 const roasFmt = (r: number | null) => (r == null ? '—' : `${r.toFixed(2)}x`)
 
+const META_API = 'https://graph.facebook.com/v25.0'
+
+// Permalink do Instagram do anúncio, AUTOMÁTICO da Meta (mesma fonte da rota
+// /api/criativos/instagram e do painel): creative.instagram_permalink_url. Casa
+// por CÓDIGO (adNN), preferindo o anúncio ATIVO. Nada é cadastrado à mão.
+async function fetchLinksInstagram(): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>()
+  const { data: cfg } = await supabaseAdmin
+    .from('configuracoes').select('chave, valor')
+    .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id'])
+  const m = Object.fromEntries((cfg ?? []).map((c) => [c.chave, c.valor]))
+  const token = m['meta_access_token']
+  let ids: string[] = []
+  try { ids = JSON.parse(m['meta_ad_account_ids'] || '[]') } catch {}
+  if (!ids.length && m['meta_ad_account_id']) ids = [m['meta_ad_account_id']]
+  if (!token || !ids.length) return mapa
+
+  const ativos = new Map<string, string>()   // código -> link do anúncio ATIVO (preferido)
+  const quaisquer = new Map<string, string>() // código -> qualquer link (fallback)
+  await Promise.all(ids.map(async (id) => {
+    let url: string | null = `${META_API}/act_${String(id).replace('act_', '')}/ads?${new URLSearchParams({
+      fields: 'name,effective_status,creative{instagram_permalink_url}',
+      limit: '100', access_token: token,
+    })}`
+    let paginas = 0
+    while (url && paginas < 40) {
+      try {
+        const j: any = await fetchTimeout(url, {}, 15000).then((r) => r.json())
+        if (j.error) break
+        for (const ad of j.data ?? []) {
+          const cod = extrairCriativo(ad.name)
+          const link = ad.creative?.instagram_permalink_url
+          if (!cod || !link) continue
+          if (!quaisquer.has(cod)) quaisquer.set(cod, link)
+          if (ad.effective_status === 'ACTIVE' && !ativos.has(cod)) ativos.set(cod, link)
+        }
+        url = j.paging?.next ?? null
+      } catch { break }
+      paginas++
+    }
+  }))
+  for (const [cod, link] of quaisquer) mapa.set(cod, ativos.get(cod) ?? link)
+  return mapa
+}
+
 // —— Fontes de dados (carregadas sob demanda, uma vez por requisição) ——
 function makeLoader() {
   const hoje = format(toZonedTime(new Date(), TZ), 'yyyy-MM-dd')
@@ -46,18 +91,19 @@ function makeLoader() {
     async dashboard() { return (dash ??= await getDashboardData('Qualquer', desde, ate)) },
     async links() {
       if (!links) {
-        links = new Map<string, string>()
-        // Indexa por CÓDIGO (adNN extraído do nome) e por NOME completo — o painel
-        // V2 usa o código. Atenção: `prefixo` NÃO é o código (é a inicial da conta,
-        // ex. "IZ"), o código está no começo do nome ("ad12-...").
+        // Fonte principal: permalink AUTOMÁTICO da Meta, por código (adNN).
+        links = await fetchLinksInstagram().catch(() => new Map<string, string>())
+        // Reserva: link cadastrado à mão em criativos (só preenche onde a Meta
+        // não trouxe). Indexa por código e por nome completo.
         const { data } = await supabaseAdmin.from('criativos').select('nome, link_anuncio')
         for (const r of data ?? []) {
           const link = (r as any).link_anuncio
           const nome = (r as any).nome
           if (!link || !nome) continue
-          links.set(String(nome).toLowerCase(), link)
+          const nomeLc = String(nome).toLowerCase()
+          if (!links.has(nomeLc)) links.set(nomeLc, link)
           const cod = extrairCriativo(nome)
-          if (cod && !links.has(cod)) links.set(cod, link) // 1º com link vence (evita colisão de códigos repetidos)
+          if (cod && !links.has(cod)) links.set(cod, link)
         }
       }
       return links
