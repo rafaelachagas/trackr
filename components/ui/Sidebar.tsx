@@ -16,6 +16,7 @@ import {
   Database,
   CreditCard,
   Trophy,
+  MessageCircle,
   ChevronDown,
   DollarSign,
   ChevronLeft,
@@ -31,6 +32,7 @@ const navigation = [
   { href: '/framework', label: 'Framework', icon: TrendingUp },
   { href: '/criativos', label: 'Criativos', icon: Film },
   { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
+  { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
 ]
 
