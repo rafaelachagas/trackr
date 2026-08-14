@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getDashboardData } from '@/app/actions/dashboard'
-import { formatarMoeda, spRangeISO } from '@/lib/utils'
+import { formatarMoeda, spRangeISO, extrairCriativo } from '@/lib/utils'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
 import {
@@ -47,14 +47,17 @@ function makeLoader() {
     async links() {
       if (!links) {
         links = new Map<string, string>()
-        // Indexa por CÓDIGO (prefixo: ad12, ad51…) e por NOME completo — o painel
-        // V2 usa o código, então casar só por nome deixava a maioria sem link.
-        const { data } = await supabaseAdmin.from('criativos').select('nome, prefixo, link_anuncio')
+        // Indexa por CÓDIGO (adNN extraído do nome) e por NOME completo — o painel
+        // V2 usa o código. Atenção: `prefixo` NÃO é o código (é a inicial da conta,
+        // ex. "IZ"), o código está no começo do nome ("ad12-...").
+        const { data } = await supabaseAdmin.from('criativos').select('nome, link_anuncio')
         for (const r of data ?? []) {
           const link = (r as any).link_anuncio
-          if (!link) continue
-          if ((r as any).prefixo) links.set(String((r as any).prefixo).toLowerCase(), link)
-          if ((r as any).nome) links.set(String((r as any).nome).toLowerCase(), link)
+          const nome = (r as any).nome
+          if (!link || !nome) continue
+          links.set(String(nome).toLowerCase(), link)
+          const cod = extrairCriativo(nome)
+          if (cod && !links.has(cod)) links.set(cod, link) // 1º com link vence (evita colisão de códigos repetidos)
         }
       }
       return links
@@ -172,8 +175,15 @@ async function montarResposta(blocks: string[], cmd: WppCommand): Promise<string
   const partes: string[] = []
   // Cabeçalho: se o comando define um header próprio, ele MANDA (a linha fixa
   // "The Track (data/hora)" some). Sem header, mantém o padrão com a hora do envio.
-  if (cmd.header?.trim()) partes.push(aplicarVars(cmd.header.trim()))
-  else partes.push(`📊 *The Track*  _(${dataHora})_`)
+  if (cmd.header?.trim()) {
+    const h = cmd.header.trim()
+    partes.push(aplicarVars(h))
+    // A data/hora do envio sempre aparece. Se o usuário já colocou {data}/{hora}/
+    // {datahora} no cabeçalho, respeita a posição dele e não duplica.
+    if (!/\{(datahora|data|hora)\}/i.test(h)) partes.push(`_${dataHora}_`)
+  } else {
+    partes.push(`📊 *The Track*  _(${dataHora})_`)
+  }
   for (const b of blocks) {
     const txt = await renderBloco(b, L, camposDe(cmd, b))
     if (txt) partes.push('\n' + txt)
