@@ -227,48 +227,78 @@ export default function WhatsappPage() {
         </div>
         <div className="space-y-4">
           {config.commands.map((c) => (
-            <div key={c.id} className="rounded-xl p-4" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div key={c.id} className="rounded-xl p-4 space-y-4" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+              {/* 1 · Gatilho */}
               <div className="flex items-center gap-3 flex-wrap">
-                <input value={c.trigger} onChange={(e) => updateCmd(c.id, { trigger: e.target.value })}
-                  placeholder="/comando" className="px-3 py-2 rounded-lg text-sm font-mono w-40" style={inputStyle} />
-                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Gatilho (o que a pessoa digita)</label>
+                  <input value={c.trigger} onChange={(e) => updateCmd(c.id, { trigger: e.target.value })}
+                    placeholder="/comando" className="px-3 py-2 rounded-lg text-sm font-mono w-44" style={inputStyle} />
+                </div>
+                <label className="flex items-center gap-2 text-xs cursor-pointer mt-5">
                   <input type="checkbox" checked={c.enabled} onChange={(e) => updateCmd(c.id, { enabled: e.target.checked })} /> Ativo
                 </label>
-                <button onClick={() => removeCmd(c.id)} className="ml-auto text-muted-foreground hover:text-rose-400"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => removeCmd(c.id)} className="ml-auto mt-5 text-muted-foreground hover:text-rose-400"><Trash2 className="w-4 h-4" /></button>
               </div>
-              <div className="flex flex-wrap gap-2 mt-3">
-                {BLOCOS.map((b) => {
-                  const checked = c.blocks.includes(b.key)
-                  return (
-                    <button key={b.key} onClick={() => toggleCmdBloco(c.id, b.key)} title={b.desc}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${checked ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
-                      {b.label}
-                    </button>
-                  )
-                })}
+
+              {/* 2 · Blocos */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Blocos da mensagem (clique p/ incluir)</label>
+                <div className="flex flex-wrap gap-2">
+                  {BLOCOS.map((b) => {
+                    const checked = c.blocks.includes(b.key)
+                    return (
+                      <button key={b.key} onClick={() => toggleCmdBloco(c.id, b.key)} title={b.desc}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${checked ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
+                        {b.label}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-              {/* Campos de cada bloco ativo que é configurável */}
-              {c.blocks.filter((bk) => CAMPOS_BLOCO[bk]).map((bk) => (
-                <div key={bk} className="mt-2 pl-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Campos · {LABEL_BLOCO[bk]}</span>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {CAMPOS_BLOCO[bk].map((f) => {
-                      const on = camposDe(c, bk).includes(f.key)
-                      return (
-                        <button key={f.key} onClick={() => toggleCmdCampo(c.id, bk, f.key)}
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition ${on ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
-                          {f.label}
-                        </button>
-                      )
-                    })}
+
+              {/* 3 · Campos de cada bloco ativo que é configurável */}
+              {c.blocks.some((bk) => CAMPOS_BLOCO[bk]) && (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-0.5">Campos de cada bloco</label>
+                  <p className="text-[11px] text-muted-foreground mb-2">
+                    <span className="text-emerald-300 font-semibold">Verde = aparece</span> · <span className="text-muted-foreground">cinza = escondido</span>. Clique pra ligar/desligar.
+                  </p>
+                  <div className="space-y-2">
+                    {c.blocks.filter((bk) => CAMPOS_BLOCO[bk]).map((bk) => (
+                      <div key={bk} className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] text-muted-foreground w-full sm:w-auto sm:min-w-[130px]">{LABEL_BLOCO[bk]}:</span>
+                        {CAMPOS_BLOCO[bk].map((f) => {
+                          const on = camposDe(c, bk).includes(f.key)
+                          return (
+                            <button key={f.key} onClick={() => toggleCmdCampo(c.id, bk, f.key)}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition ${on ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
+                              {f.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-                <input value={c.header ?? ''} onChange={(e) => updateCmd(c.id, { header: e.target.value })}
-                  placeholder="Texto de abertura (opcional)" className="px-3 py-2 rounded-lg text-xs" style={inputStyle} />
-                <input value={c.footer ?? ''} onChange={(e) => updateCmd(c.id, { footer: e.target.value })}
-                  placeholder="Rodapé (opcional)" className="px-3 py-2 rounded-lg text-xs" style={inputStyle} />
+              )}
+
+              {/* 4 · Cabeçalho e rodapé */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Cabeçalho (título/abertura)</label>
+                  <textarea value={c.header ?? ''} onChange={(e) => updateCmd(c.id, { header: e.target.value })} rows={3}
+                    placeholder={'*RELATÓRIO TOP CRIATIVOS*\n\n_Abaixo segue o relatório dos últimos 7 dias._'}
+                    className="w-full px-3 py-2 rounded-lg text-xs resize-y leading-relaxed" style={inputStyle} />
+                  <p className="text-[10px] text-muted-foreground mt-1">Se preencher, substitui a linha padrão &quot;The Track (data/hora)&quot;.</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Rodapé</label>
+                  <textarea value={c.footer ?? ''} onChange={(e) => updateCmd(c.id, { footer: e.target.value })} rows={3}
+                    placeholder={'Enviado por The Track'}
+                    className="w-full px-3 py-2 rounded-lg text-xs resize-y leading-relaxed" style={inputStyle} />
+                  <p className="text-[10px] text-muted-foreground mt-1">Formatação WhatsApp: <span className="font-mono">*negrito*</span> · <span className="font-mono">_itálico_</span>.</p>
+                </div>
               </div>
             </div>
           ))}
