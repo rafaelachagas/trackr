@@ -12,6 +12,10 @@ import {
 export const maxDuration = 60
 const TZ = 'America/Sao_Paulo'
 
+// Piso de gasto (7d) pra um criativo entrar no Top: prova que teve volume real.
+// Ajustável — se o corte estiver alto/baixo pro seu volume, é só mudar aqui.
+const TOP_MIN_GASTO_7D = 1000
+
 function fetchTimeout(url: string, opts: RequestInit, ms: number): Promise<Response> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), ms)
@@ -43,8 +47,15 @@ function makeLoader() {
     async links() {
       if (!links) {
         links = new Map<string, string>()
-        const { data } = await supabaseAdmin.from('criativos').select('nome, link_anuncio')
-        for (const r of data ?? []) if ((r as any).link_anuncio) links.set(r.nome, (r as any).link_anuncio)
+        // Indexa por CÓDIGO (prefixo: ad12, ad51…) e por NOME completo — o painel
+        // V2 usa o código, então casar só por nome deixava a maioria sem link.
+        const { data } = await supabaseAdmin.from('criativos').select('nome, prefixo, link_anuncio')
+        for (const r of data ?? []) {
+          const link = (r as any).link_anuncio
+          if (!link) continue
+          if ((r as any).prefixo) links.set(String((r as any).prefixo).toLowerCase(), link)
+          if ((r as any).nome) links.set(String((r as any).nome).toLowerCase(), link)
+        }
       }
       return links
     },
@@ -82,21 +93,34 @@ async function renderBloco(key: string, L: Loader, campos: string[]): Promise<st
   }
   if (key === 'top_criativos') {
     const p = await L.perfV2()
-    const top = [...(p.criativos ?? [])].sort((a: any, b: any) => b.gasto_7d - a.gasto_7d).slice(0, 5)
+    // Seleção: só FASE02+ (criativo maduro), priorizando VOLUME + LUCRO. ROAS 2
+    // não é requisito — gastou 5k e vendeu 9k (lucro 4k) é ótimo mesmo com ROAS 1,8.
+    // Ranqueia por lucro dos 7d; exige um piso de gasto pra provar volume. Se
+    // ninguém bater o piso, cai pra todos da fase 02+ (não volta vazio).
+    const fase2mais = (p.criativos ?? []).filter((c: any) => c.fase === 'FASE02' || c.fase === 'FASE03')
+    const comVolume = fase2mais.filter((c: any) => (c.gasto_7d ?? 0) >= TOP_MIN_GASTO_7D)
+    const base = comVolume.length ? comVolume : fase2mais
+    const top = [...base].sort((a: any, b: any) => (b.lucro_7d ?? 0) - (a.lucro_7d ?? 0)).slice(0, 5)
     if (!top.length) return null
     const linkMap = campos.includes('link') ? await L.links() : null
-    const linhas = top.map((c: any, i: number) => {
-      const partes: string[] = []
-      if (campos.includes('roas')) partes.push(`ROAS ${roasFmt(c.roas_7d)}`)
-      if (campos.includes('gasto')) partes.push(`Gasto ${fmt(c.gasto_7d)}`)
-      if (campos.includes('fase') && c.fase) partes.push(c.fase)
-      if (campos.includes('acao')) partes.push(c.acao)
-      let l = `${i + 1}. *${c.criativo}*`
-      if (partes.length) l += ` — ${partes.join(' · ')}`
-      if (linkMap) { const link = linkMap.get(c.ad_name); if (link) l += `\n   ${link}` }
-      return l
+    const acharLink = (c: any): string | undefined => {
+      if (!linkMap) return undefined
+      return linkMap.get(String(c.criativo).toLowerCase()) ?? linkMap.get(String(c.ad_name).toLowerCase())
+    }
+    const itens = top.map((c: any, i: number) => {
+      let cabec = `${i + 1}. *${c.criativo}*`
+      if (campos.includes('fase') && c.fase) cabec += ` - ${c.fase}`
+      const metr: string[] = []
+      if (campos.includes('roas')) metr.push(`ROAS ${roasFmt(c.roas_7d)}`)
+      if (campos.includes('gasto')) metr.push(`Gasto ${fmt(c.gasto_7d)}`)
+      if (campos.includes('acao')) metr.push(c.acao)
+      if (metr.length) cabec += ` — ${metr.join(' · ')}`
+      const link = campos.includes('link') ? acharLink(c) : undefined
+      return link ? `${cabec}\n${link}` : cabec
     })
-    return ['*🎬 Top criativos (7d):*', ...linhas].join('\n')
+    // Linha em branco entre os itens quando há link (fica mais legível).
+    const sep = campos.includes('link') ? '\n\n' : '\n'
+    return `*Top Criativos (7D)*\n\n${itens.join(sep)}`
   }
   if (key === 'alertas') {
     const p = await L.perfV2()
@@ -146,8 +170,10 @@ async function montarResposta(blocks: string[], cmd: WppCommand): Promise<string
     .replace(/\{hora\}/gi, horaBR)
 
   const partes: string[] = []
-  partes.push(`📊 *The Track*  _(${dataHora})_`)
+  // Cabeçalho: se o comando define um header próprio, ele MANDA (a linha fixa
+  // "The Track (data/hora)" some). Sem header, mantém o padrão com a hora do envio.
   if (cmd.header?.trim()) partes.push(aplicarVars(cmd.header.trim()))
+  else partes.push(`📊 *The Track*  _(${dataHora})_`)
   for (const b of blocks) {
     const txt = await renderBloco(b, L, camposDe(cmd, b))
     if (txt) partes.push('\n' + txt)
