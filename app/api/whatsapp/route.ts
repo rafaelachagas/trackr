@@ -13,7 +13,14 @@ const TZ = 'America/Sao_Paulo'
 const EVOLUTION_URL = process.env.EVOLUTION_URL ?? 'http://179.198.104.241:8080'
 const INSTANCE = process.env.EVOLUTION_INSTANCE ?? 'thetrack'
 const APIKEY = process.env.EVOLUTION_APIKEY ?? ''
-const SITE_URL = process.env.SITE_URL ?? 'https://thetrack.com.br'
+// Domínio canônico é COM www — o apex (thetrack.com.br) dá 308 e atrapalha.
+const SITE_URL = process.env.SITE_URL ?? 'https://www.thetrack.com.br'
+
+function fetchTimeout(url: string, opts: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), ms)
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t))
+}
 // Se vazio, responde em QUALQUER grupo (modo setup, pra descobrir o id do grupo).
 // Depois de saber o id, setar EVOLUTION_ALLOWED_GROUP pra travar só no grupo certo.
 const ALLOWED_GROUP = process.env.EVOLUTION_ALLOWED_GROUP ?? ''
@@ -23,11 +30,11 @@ function extrairTexto(msg: any): string {
 }
 
 async function enviar(to: string, text: string) {
-  await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE}`, {
+  await fetchTimeout(`${EVOLUTION_URL}/message/sendText/${INSTANCE}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: APIKEY },
     body: JSON.stringify({ number: to, text }),
-  })
+  }, 15000)
 }
 
 const fmt = (v: number) => formatarMoeda(v)
@@ -46,7 +53,7 @@ async function montarRelatorio(): Promise<string> {
   // Top criativos (mesma fonte da tabela Performance por Criativo V2)
   let top: CriativoV2[] = []
   try {
-    const r = await fetch(`${SITE_URL}/api/performance-v2`, { cache: 'no-store' })
+    const r = await fetchTimeout(`${SITE_URL}/api/performance-v2`, { cache: 'no-store' }, 25000)
     const j = await r.json()
     top = (j.criativos ?? []).slice(0, 5)
   } catch {}
