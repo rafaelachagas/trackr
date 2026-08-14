@@ -32,10 +32,20 @@ export async function saveWhatsappConfig(config: WppConfig): Promise<{ success: 
       enabled: !!g.enabled,
       allowedBlocks: Array.isArray(g.allowedBlocks) ? g.allowedBlocks : [],
     })),
+    numbers: (config.numbers ?? []).map((n) => ({
+      number: (n.number ?? '').replace(/\D/g, ''),
+      name: n.name ?? '',
+      enabled: !!n.enabled,
+      allowedBlocks: Array.isArray(n.allowedBlocks) ? n.allowedBlocks : [],
+    })).filter((n) => n.number),
   }
+  // configuracoes.org_id é NOT NULL — resolve a org (single-tenant) pro insert.
+  const { data: org } = await supabaseAdmin
+    .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
+
   const { error } = await supabaseAdmin
     .from('configuracoes')
-    .upsert({ chave: CONFIG_KEY, valor: JSON.stringify(limpo) }, { onConflict: 'chave' })
+    .upsert({ chave: CONFIG_KEY, valor: JSON.stringify(limpo), org_id: org?.id }, { onConflict: 'chave' })
   if (error) return { success: false, error: error.message }
   return { success: true }
 }

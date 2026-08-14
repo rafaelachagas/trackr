@@ -5,7 +5,7 @@ import { formatarMoeda, spRangeISO } from '@/lib/utils'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
 import {
-  CONFIG_KEY, parseWppConfig, blocosPermitidos, WppGroup,
+  CONFIG_KEY, parseWppConfig, blocosPermitidos, mesmoNumero, WppGroup, WppNumber,
   EVOLUTION_URL, EVOLUTION_INSTANCE, EVOLUTION_APIKEY, SITE_URL,
 } from '@/lib/whatsapp'
 
@@ -141,17 +141,30 @@ export async function POST(request: NextRequest) {
     const texto = extrairTexto(data?.message).toLowerCase()
 
     if (fromMe) return NextResponse.json({ ignored: 'fromMe' })
-    if (!remoteJid.endsWith('@g.us')) return NextResponse.json({ ignored: 'not-group' })
+
+    const isGroup = remoteJid.endsWith('@g.us')
+    const isDM = remoteJid.endsWith('@s.whatsapp.net') || remoteJid.endsWith('@c.us')
+    if (!isGroup && !isDM) return NextResponse.json({ ignored: 'not-supported' })
 
     // Config do banco (editável pela aba /whatsapp)
     const { data: cfgRow } = await supabaseAdmin
       .from('configuracoes').select('valor').eq('chave', CONFIG_KEY).maybeSingle()
     const config = parseWppConfig(cfgRow?.valor)
 
-    const setupMode = (config.groups?.length ?? 0) === 0
-    const group: WppGroup | undefined = config.groups?.find((g) => g.jid === remoteJid)
-    if (!setupMode && (!group || !group.enabled)) {
-      return NextResponse.json({ ignored: 'group-not-allowed', grupo: remoteJid })
+    // Resolve o "alvo" (grupo ou número) e checa se pode responder.
+    let alvo: WppGroup | WppNumber | undefined
+    if (isGroup) {
+      const setupMode = (config.groups?.length ?? 0) === 0
+      const group = config.groups?.find((g) => g.jid === remoteJid)
+      if (!setupMode && (!group || !group.enabled)) {
+        return NextResponse.json({ ignored: 'group-not-allowed', grupo: remoteJid })
+      }
+      alvo = group
+    } else {
+      // PRIVADO: só números cadastrados e ativos respondem.
+      const num = config.numbers?.find((n) => n.enabled && mesmoNumero(n.number, remoteJid))
+      if (!num) return NextResponse.json({ ignored: 'number-not-allowed', numero: remoteJid })
+      alvo = num
     }
 
     const cmd = config.commands?.find((c) => c.enabled && c.trigger === texto)
@@ -159,7 +172,7 @@ export async function POST(request: NextRequest) {
 
     if (!EVOLUTION_APIKEY) return NextResponse.json({ error: 'apikey ausente' }, { status: 500 })
 
-    const blocks = blocosPermitidos(cmd, group)
+    const blocks = blocosPermitidos(cmd, alvo)
     if (!blocks.length && !cmd.header?.trim() && !cmd.footer?.trim()) {
       return NextResponse.json({ ignored: 'no-permission', grupo: remoteJid })
     }

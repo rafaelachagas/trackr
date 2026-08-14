@@ -35,9 +35,27 @@ export interface WppGroup {
   allowedBlocks: string[]  // vazio = todos os blocos liberados
 }
 
+// Acesso no PRIVADO (1:1): só números cadastrados respondem, cada um com suas
+// permissões de bloco. Fora da lista, o bot não responde no privado.
+export interface WppNumber {
+  number: string          // só dígitos (com ou sem 55) — normalizado na comparação
+  name?: string
+  enabled: boolean
+  allowedBlocks: string[]
+}
+
 export interface WppConfig {
   commands: WppCommand[]
   groups: WppGroup[]       // vazio = MODO SETUP: responde em qualquer grupo, tudo liberado
+  numbers: WppNumber[]     // privado — vazio = não responde no privado
+}
+
+// Compara dois números tolerando 9º dígito / código do país (55).
+export function mesmoNumero(a: string, b: string): boolean {
+  const da = (a || '').replace(/\D/g, '')
+  const db = (b || '').replace(/\D/g, '')
+  if (!da || !db) return false
+  return da === db || da.endsWith(db) || db.endsWith(da)
 }
 
 export const CONFIG_KEY = 'whatsapp_bot'
@@ -54,6 +72,7 @@ export const DEFAULT_WPP_CONFIG: WppConfig = {
     },
   ],
   groups: [],
+  numbers: [],
 }
 
 export function parseWppConfig(valor: string | null | undefined): WppConfig {
@@ -63,6 +82,7 @@ export function parseWppConfig(valor: string | null | undefined): WppConfig {
     return {
       commands: Array.isArray(c.commands) ? c.commands : DEFAULT_WPP_CONFIG.commands,
       groups: Array.isArray(c.groups) ? c.groups : [],
+      numbers: Array.isArray(c.numbers) ? c.numbers : [],
     }
   } catch {
     return DEFAULT_WPP_CONFIG
@@ -71,9 +91,10 @@ export function parseWppConfig(valor: string | null | undefined): WppConfig {
 
 // Blocos que um comando pode renderizar NUM grupo específico (interseção da
 // config do comando com a permissão do grupo).
-export function blocosPermitidos(command: WppCommand, group: WppGroup | undefined): string[] {
-  // Sem grupo configurado (modo setup) → tudo que o comando define.
-  if (!group) return command.blocks
-  // Grupo configurado → só os blocos explicitamente liberados pra ele.
-  return command.blocks.filter((b) => (group.allowedBlocks ?? []).includes(b))
+// Aceita grupo OU número (ambos têm allowedBlocks). `undefined` = modo setup.
+export function blocosPermitidos(command: WppCommand, alvo: { allowedBlocks?: string[] } | undefined): string[] {
+  // Sem alvo configurado (modo setup de grupo) → tudo que o comando define.
+  if (!alvo) return command.blocks
+  // Alvo configurado → só os blocos explicitamente liberados pra ele.
+  return command.blocks.filter((b) => (alvo.allowedBlocks ?? []).includes(b))
 }

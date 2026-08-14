@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { MessageCircle, Plus, Trash2, RefreshCw, Check } from 'lucide-react'
-import { BLOCOS, WppConfig, WppCommand, WppGroup } from '@/lib/whatsapp'
+import { BLOCOS, WppConfig, WppCommand, WppGroup, WppNumber } from '@/lib/whatsapp'
 import { getWhatsappConfig, saveWhatsappConfig, listWhatsappGroups, GrupoWpp } from '@/app/actions/whatsapp'
 
 const ALL_BLOCKS = BLOCOS.map((b) => b.key)
@@ -10,7 +10,7 @@ let idSeed = 0
 const novoId = () => `cmd_${Date.now()}_${idSeed++}`
 
 export default function WhatsappPage() {
-  const [config, setConfig] = useState<WppConfig>({ commands: [], groups: [] })
+  const [config, setConfig] = useState<WppConfig>({ commands: [], groups: [], numbers: [] })
   const [grupos, setGrupos] = useState<GrupoWpp[]>([])
   const [grupoErro, setGrupoErro] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,6 +45,23 @@ export default function WhatsappPage() {
     const atual = g?.allowedBlocks ?? []
     const novo = atual.includes(bloco) ? atual.filter((b) => b !== bloco) : [...atual, bloco]
     setGrupo(jid, name, { allowedBlocks: novo })
+  }
+
+  // —— Números (privado) ——
+  function updateNumero(i: number, patch: Partial<WppNumber>) {
+    setConfig((prev) => ({ ...prev, numbers: prev.numbers.map((n, idx) => (idx === i ? { ...n, ...patch } : n)) }))
+  }
+  function toggleNumeroBloco(i: number, bloco: string) {
+    const n = config.numbers[i]
+    if (!n) return
+    const novo = (n.allowedBlocks ?? []).includes(bloco) ? n.allowedBlocks.filter((b) => b !== bloco) : [...(n.allowedBlocks ?? []), bloco]
+    updateNumero(i, { allowedBlocks: novo })
+  }
+  function addNumero() {
+    setConfig((prev) => ({ ...prev, numbers: [...prev.numbers, { number: '', name: '', enabled: true, allowedBlocks: [...ALL_BLOCKS] }] }))
+  }
+  function removeNumero(i: number) {
+    setConfig((prev) => ({ ...prev, numbers: prev.numbers.filter((_, idx) => idx !== i) }))
   }
 
   // —— Comandos ——
@@ -136,6 +153,49 @@ export default function WhatsappPage() {
               </div>
             )
           })}
+        </div>
+      </div>
+
+      {/* PRIVADO (1:1) */}
+      <div className="rounded-2xl p-5" style={cardStyle}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-bold">Privado (1:1)</h2>
+          <button onClick={addNumero} className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:bg-white/5" style={inputStyle}>
+            <Plus className="w-4 h-4" /> Adicionar número
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          No privado, só os números cadastrados aqui recebem resposta. Cada número escolhe quais blocos pode ver. Se a lista estiver vazia, o bot não responde no privado.
+        </p>
+        <div className="space-y-3">
+          {config.numbers.map((n, i) => (
+            <div key={i} className="rounded-xl p-3" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex items-center gap-3 flex-wrap">
+                <input value={n.number} onChange={(e) => updateNumero(i, { number: e.target.value })}
+                  placeholder="Número (ex.: 5541988030595)" className="px-3 py-2 rounded-lg text-sm font-mono w-52" style={inputStyle} />
+                <input value={n.name ?? ''} onChange={(e) => updateNumero(i, { name: e.target.value })}
+                  placeholder="Nome (opcional)" className="px-3 py-2 rounded-lg text-sm w-44" style={inputStyle} />
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" checked={n.enabled} onChange={(e) => updateNumero(i, { enabled: e.target.checked })} /> Ativo
+                </label>
+                <button onClick={() => removeNumero(i)} className="ml-auto text-muted-foreground hover:text-rose-400"><Trash2 className="w-4 h-4" /></button>
+              </div>
+              {n.enabled && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {BLOCOS.map((b) => {
+                    const checked = (n.allowedBlocks ?? []).includes(b.key)
+                    return (
+                      <button key={b.key} onClick={() => toggleNumeroBloco(i, b.key)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${checked ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>
+                        {b.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+          {config.numbers.length === 0 && <p className="text-xs text-muted-foreground">Nenhum número. O bot não responde no privado.</p>}
         </div>
       </div>
 
