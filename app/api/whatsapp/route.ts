@@ -30,7 +30,8 @@ async function enviar(to: string, text: string) {
   await fetchTimeout(`${EVOLUTION_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_APIKEY },
-    body: JSON.stringify({ number: to, text }),
+    // linkPreview:false → sem o card gigante de preview do 1º link.
+    body: JSON.stringify({ number: to, text, linkPreview: false }),
   }, 15000)
 }
 
@@ -39,11 +40,8 @@ const roasFmt = (r: number | null) => (r == null ? '—' : `${r.toFixed(2)}x`)
 
 const META_API = 'https://graph.facebook.com/v25.0'
 
-// Permalink do Instagram do anúncio, AUTOMÁTICO da Meta (mesma fonte da rota
-// /api/criativos/instagram e do painel): creative.instagram_permalink_url. Casa
-// por CÓDIGO (adNN), preferindo o anúncio ATIVO. Nada é cadastrado à mão.
-async function fetchLinksInstagram(): Promise<Map<string, string>> {
-  const mapa = new Map<string, string>()
+type MetaCfg = { token: string; ids: string[] }
+async function carregarMetaCfg(): Promise<MetaCfg | null> {
   const { data: cfg } = await supabaseAdmin
     .from('configuracoes').select('chave, valor')
     .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id'])
@@ -52,61 +50,70 @@ async function fetchLinksInstagram(): Promise<Map<string, string>> {
   let ids: string[] = []
   try { ids = JSON.parse(m['meta_ad_account_ids'] || '[]') } catch {}
   if (!ids.length && m['meta_ad_account_id']) ids = [m['meta_ad_account_id']]
-  if (!token || !ids.length) return mapa
+  if (!token || !ids.length) return null
+  return { token, ids }
+}
 
-  const ativos = new Map<string, string>()   // código -> link do anúncio ATIVO (preferido)
-  const quaisquer = new Map<string, string>() // código -> qualquer link (fallback)
-  await Promise.all(ids.map(async (id) => {
-    let url: string | null = `${META_API}/act_${String(id).replace('act_', '')}/ads?${new URLSearchParams({
-      fields: 'name,effective_status,creative{instagram_permalink_url}',
-      limit: '100', access_token: token,
-    })}`
-    let paginas = 0
-    while (url && paginas < 40) {
-      try {
-        const j: any = await fetchTimeout(url, {}, 15000).then((r) => r.json())
-        if (j.error) break
-        for (const ad of j.data ?? []) {
-          const cod = extrairCriativo(ad.name)
-          const link = ad.creative?.instagram_permalink_url
-          if (!cod || !link) continue
-          if (!quaisquer.has(cod)) quaisquer.set(cod, link)
-          if (ad.effective_status === 'ACTIVE' && !ativos.has(cod)) ativos.set(cod, link)
-        }
-        url = j.paging?.next ?? null
-      } catch { break }
-      paginas++
-    }
-  }))
-  for (const [cod, link] of quaisquer) mapa.set(cod, ativos.get(cod) ?? link)
-  return mapa
+// Permalink do Instagram de UM código (adNN), AUTOMÁTICO da Meta. Busca DIRECIONADA
+// (filtro por nome CONTAIN o código) — rápida, sem listar a conta inteira. Prefere
+// o anúncio ATIVO. Mesma fonte da rota /api/criativos/instagram e do painel.
+async function resolverLinkInstagram(codigo: string, cfg: MetaCfg): Promise<string | null> {
+  const re = new RegExp(`(^|[^a-z0-9])${codigo}([^0-9]|$)`, 'i')
+  let ativo: string | null = null
+  let qualquer: string | null = null
+  for (const id of cfg.ids) {
+    const filtering = encodeURIComponent(JSON.stringify([{ field: 'name', operator: 'CONTAIN', value: codigo }]))
+    const url = `${META_API}/act_${String(id).replace('act_', '')}/ads?fields=name,effective_status,creative{instagram_permalink_url}&filtering=${filtering}&limit=100&access_token=${cfg.token}`
+    try {
+      const j: any = await fetchTimeout(url, {}, 12000).then((r) => r.json())
+      if (j.error) continue
+      for (const ad of j.data ?? []) {
+        if (!re.test(ad.name || '')) continue
+        const link = ad.creative?.instagram_permalink_url
+        if (!link) continue
+        if (!qualquer) qualquer = link
+        if (ad.effective_status === 'ACTIVE' && !ativo) ativo = link
+      }
+    } catch { /* ignora conta que falhou */ }
+    if (ativo) break
+  }
+  return ativo ?? qualquer
 }
 
 // —— Fontes de dados (carregadas sob demanda, uma vez por requisição) ——
 function makeLoader() {
   const hoje = format(toZonedTime(new Date(), TZ), 'yyyy-MM-dd')
   const { desde, ate } = spRangeISO(hoje, hoje)
-  let dash: any, perf: any, brk: any, links: Map<string, string> | undefined
+  let dash: any, perf: any, brk: any
+  let metaCfg: MetaCfg | null | undefined         // undefined = ainda não carregou
+  let dbLinks: Map<string, string> | undefined    // reserva (link cadastrado à mão)
+  const cacheLink = new Map<string, string | null>() // código -> link (evita refetch)
   return {
     async dashboard() { return (dash ??= await getDashboardData('Qualquer', desde, ate)) },
-    async links() {
-      if (!links) {
-        // Fonte principal: permalink AUTOMÁTICO da Meta, por código (adNN).
-        links = await fetchLinksInstagram().catch(() => new Map<string, string>())
-        // Reserva: link cadastrado à mão em criativos (só preenche onde a Meta
-        // não trouxe). Indexa por código e por nome completo.
-        const { data } = await supabaseAdmin.from('criativos').select('nome, link_anuncio')
-        for (const r of data ?? []) {
-          const link = (r as any).link_anuncio
-          const nome = (r as any).nome
-          if (!link || !nome) continue
-          const nomeLc = String(nome).toLowerCase()
-          if (!links.has(nomeLc)) links.set(nomeLc, link)
-          const cod = extrairCriativo(nome)
-          if (cod && !links.has(cod)) links.set(cod, link)
+    // Link do Instagram de um código, sob demanda: Meta (direcionado) e, se não
+    // vier, o link cadastrado à mão. Cacheia por código dentro da requisição.
+    async linkDe(codigo: string | null | undefined, adName?: string | null): Promise<string | undefined> {
+      const cod = (codigo || '').toLowerCase()
+      if (!cod) return undefined
+      if (cacheLink.has(cod)) return cacheLink.get(cod) ?? undefined
+      if (metaCfg === undefined) metaCfg = await carregarMetaCfg().catch(() => null)
+      let link: string | null = metaCfg ? await resolverLinkInstagram(cod, metaCfg).catch(() => null) : null
+      if (!link) {
+        if (!dbLinks) {
+          dbLinks = new Map<string, string>()
+          const { data } = await supabaseAdmin.from('criativos').select('nome, link_anuncio')
+          for (const r of data ?? []) {
+            const l = (r as any).link_anuncio, nome = (r as any).nome
+            if (!l || !nome) continue
+            dbLinks.set(String(nome).toLowerCase(), l)
+            const c = extrairCriativo(nome)
+            if (c && !dbLinks.has(c)) dbLinks.set(c, l)
+          }
         }
+        link = dbLinks.get(cod) ?? (adName ? dbLinks.get(String(adName).toLowerCase()) ?? null : null)
       }
-      return links
+      cacheLink.set(cod, link)
+      return link ?? undefined
     },
     async perfV2() {
       if (!perf) {
@@ -151,11 +158,10 @@ async function renderBloco(key: string, L: Loader, campos: string[]): Promise<st
     const base = comVolume.length ? comVolume : fase2mais
     const top = [...base].sort((a: any, b: any) => (b.lucro_7d ?? 0) - (a.lucro_7d ?? 0)).slice(0, 5)
     if (!top.length) return null
-    const linkMap = campos.includes('link') ? await L.links() : null
-    const acharLink = (c: any): string | undefined => {
-      if (!linkMap) return undefined
-      return linkMap.get(String(c.criativo).toLowerCase()) ?? linkMap.get(String(c.ad_name).toLowerCase())
-    }
+    // Resolve os links só dos 5 do topo, em paralelo (rápido).
+    const links = campos.includes('link')
+      ? await Promise.all(top.map((c: any) => L.linkDe(c.criativo, c.ad_name)))
+      : []
     const itens = top.map((c: any, i: number) => {
       let cabec = `${i + 1}. *${c.criativo}*`
       if (campos.includes('fase') && c.fase) cabec += ` - ${c.fase}`
@@ -164,7 +170,7 @@ async function renderBloco(key: string, L: Loader, campos: string[]): Promise<st
       if (campos.includes('gasto')) metr.push(`Gasto ${fmt(c.gasto_7d)}`)
       if (campos.includes('acao')) metr.push(c.acao)
       if (metr.length) cabec += ` — ${metr.join(' · ')}`
-      const link = campos.includes('link') ? acharLink(c) : undefined
+      const link = campos.includes('link') ? links[i] : undefined
       return link ? `${cabec}\n${link}` : cabec
     })
     // Linha em branco entre os itens quando há link (fica mais legível).
@@ -218,15 +224,16 @@ async function montarResposta(blocks: string[], cmd: WppCommand): Promise<string
     .replace(/\{data\}/gi, dataBR)
     .replace(/\{hora\}/gi, horaBR)
 
+  // Se o usuário usa {data}/{hora}/{datahora} no cabeçalho OU no rodapé, ele
+  // controla onde a hora aparece — não anexo nada. Senão, garanto a hora do envio.
+  const temVarTempo = /\{(datahora|data|hora)\}/i.test(`${cmd.header ?? ''} ${cmd.footer ?? ''}`)
+
   const partes: string[] = []
   // Cabeçalho: se o comando define um header próprio, ele MANDA (a linha fixa
   // "The Track (data/hora)" some). Sem header, mantém o padrão com a hora do envio.
   if (cmd.header?.trim()) {
-    const h = cmd.header.trim()
-    partes.push(aplicarVars(h))
-    // A data/hora do envio sempre aparece. Se o usuário já colocou {data}/{hora}/
-    // {datahora} no cabeçalho, respeita a posição dele e não duplica.
-    if (!/\{(datahora|data|hora)\}/i.test(h)) partes.push(`_${dataHora}_`)
+    partes.push(aplicarVars(cmd.header.trim()))
+    if (!temVarTempo) partes.push(`_${dataHora}_`)
   } else {
     partes.push(`📊 *The Track*  _(${dataHora})_`)
   }
