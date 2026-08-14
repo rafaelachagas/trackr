@@ -121,7 +121,7 @@ function CardChart({ title, tooltip, seletores, children, isPrivate }: {
   )
 }
 
-function GraficoAcumulado({ pontos, isPrivate }: { pontos: HoraPonto[]; isPrivate: boolean }) {
+function GraficoAcumulado({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[]; isPrivate: boolean; corteHora: number | null }) {
   const [fonte, setFonte] = useState<Fonte>('geral')
   const [valor, setValor] = useState<Valor>('liquido')
 
@@ -130,9 +130,11 @@ function GraficoAcumulado({ pontos, isPrivate }: { pontos: HoraPonto[]; isPrivat
     let ai = 0, af = 0, al = 0
     return s.map((p) => {
       ai += p.investimento; af += p.faturamento; al += p.lucro
-      return { label: p.label, investimento: ai, faturamento: af, lucro: al }
+      // "Hoje": não desenha horas que ainda não chegaram (linha para na hora atual).
+      const futuro = corteHora != null && p.hora > corteHora
+      return { label: p.label, investimento: futuro ? null : ai, faturamento: futuro ? null : af, lucro: futuro ? null : al }
     })
-  }, [pontos, fonte, valor])
+  }, [pontos, fonte, valor, corteHora])
 
   return (
     <CardChart
@@ -161,11 +163,14 @@ function GraficoAcumulado({ pontos, isPrivate }: { pontos: HoraPonto[]; isPrivat
   )
 }
 
-function GraficoLucroPorHorario({ pontos, isPrivate }: { pontos: HoraPonto[]; isPrivate: boolean }) {
+function GraficoLucroPorHorario({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[]; isPrivate: boolean; corteHora: number | null }) {
   const [fonte, setFonte] = useState<Fonte>('geral')
   const [valor, setValor] = useState<Valor>('liquido')
 
-  const dados = useMemo(() => derivarSerie(pontos, fonte, valor).map((p) => ({ label: p.label, lucro: p.lucro })), [pontos, fonte, valor])
+  const dados = useMemo(() => derivarSerie(pontos, fonte, valor).map((p) => ({
+    label: p.label,
+    lucro: (corteHora != null && p.hora > corteHora) ? null : p.lucro,
+  })), [pontos, fonte, valor, corteHora])
 
   return (
     <CardChart
@@ -187,7 +192,7 @@ function GraficoLucroPorHorario({ pontos, isPrivate }: { pontos: HoraPonto[]; is
             </div>
           )} />
           <Bar dataKey="lucro" name="Lucro" radius={[3, 3, 0, 0]}>
-            {dados.map((d, i) => <Cell key={i} fill={d.lucro >= 0 ? COR.faturamento : COR.prejuizo} />)}
+            {dados.map((d, i) => <Cell key={i} fill={(d.lucro ?? 0) >= 0 ? COR.faturamento : COR.prejuizo} />)}
             <LabelList dataKey="lucro" position="top" formatter={(v: any) => (v == null ? '' : fmtCurto(Number(v)))} style={{ fontSize: 8, fill: 'var(--muted-foreground)', fontWeight: 700 }} />
           </Bar>
         </ComposedChart>
@@ -199,6 +204,20 @@ function GraficoLucroPorHorario({ pontos, isPrivate }: { pontos: HoraPonto[]; is
 export default function GraficosPorHora() {
   const { dateRange, lastUpdate, isPrivate } = useDashboard()
   const [pontos, setPontos] = useState<HoraPonto[]>([])
+
+  // Corte de horas futuras: só faz sentido quando o período é exatamente HOJE
+  // (dia único = hoje em SP). Em período de vários dias, todas as horas somam
+  // dias anteriores e continuam válidas.
+  const corteHora = useMemo(() => {
+    try {
+      const TZ = 'America/Sao_Paulo'
+      const hoje = formatInTimeZone(new Date(), TZ, 'yyyy-MM-dd')
+      const ini = dateRange.start ? formatInTimeZone(dateRange.start, TZ, 'yyyy-MM-dd') : ''
+      const fim = dateRange.end ? formatInTimeZone(dateRange.end, TZ, 'yyyy-MM-dd') : ''
+      if (ini === hoje && fim === hoje) return Number(formatInTimeZone(new Date(), TZ, 'H'))
+    } catch {}
+    return null
+  }, [dateRange, lastUpdate])
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -215,8 +234,8 @@ export default function GraficosPorHora() {
 
   return (
     <div className="space-y-6">
-      <GraficoAcumulado pontos={pontos} isPrivate={isPrivate} />
-      <GraficoLucroPorHorario pontos={pontos} isPrivate={isPrivate} />
+      <GraficoAcumulado pontos={pontos} isPrivate={isPrivate} corteHora={corteHora} />
+      <GraficoLucroPorHorario pontos={pontos} isPrivate={isPrivate} corteHora={corteHora} />
     </div>
   )
 }
