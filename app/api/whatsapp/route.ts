@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getDashboardData } from '@/app/actions/dashboard'
 import { formatarMoeda, spRangeISO, extrairCriativo } from '@/lib/utils'
 import { toZonedTime } from 'date-fns-tz'
-import { format } from 'date-fns'
+import { format, subDays } from 'date-fns'
 import {
   CONFIG_KEY, parseWppConfig, comandoPermitido, camposDe, mesmoNumero, WppCommand, WppGroup, WppNumber,
   EVOLUTION_URL, EVOLUTION_INSTANCE, EVOLUTION_APIKEY, SITE_URL,
@@ -82,14 +82,24 @@ async function resolverLinkInstagram(codigo: string, cfg: MetaCfg): Promise<stri
 
 // —— Fontes de dados (carregadas sob demanda, uma vez por requisição) ——
 function makeLoader() {
-  const hoje = format(toZonedTime(new Date(), TZ), 'yyyy-MM-dd')
+  const agoraSP = toZonedTime(new Date(), TZ)
+  const hoje = format(agoraSP, 'yyyy-MM-dd')
   const { desde, ate } = spRangeISO(hoje, hoje)
   let dash: any, perf: any, brk: any
   let metaCfg: MetaCfg | null | undefined         // undefined = ainda não carregou
   let dbLinks: Map<string, string> | undefined    // reserva (link cadastrado à mão)
   const cacheLink = new Map<string, string | null>() // código -> link (evita refetch)
+  const cacheDash = new Map<string, any>()           // "ini|fim" -> métricas
+  const diaSP = (n: number) => format(subDays(agoraSP, n), 'yyyy-MM-dd')
   return {
+    hoje, agoraSP, diaSP,
     async dashboard() { return (dash ??= await getDashboardData('Qualquer', desde, ate)) },
+    // Métricas de qualquer intervalo (yyyy-MM-dd), cacheadas por requisição.
+    async dashboardDe(ini: string, fim: string) {
+      const k = `${ini}|${fim}`
+      if (!cacheDash.has(k)) cacheDash.set(k, await getDashboardData('Qualquer', ini, fim).catch(() => null))
+      return cacheDash.get(k)
+    },
     // Link do Instagram de um código, sob demanda: Meta (direcionado) e, se não
     // vier, o link cadastrado à mão. Cacheia por código dentro da requisição.
     async linkDe(codigo: string | null | undefined, adName?: string | null): Promise<string | undefined> {
@@ -206,6 +216,80 @@ async function renderBloco(key: string, L: Loader, campos: string[]): Promise<st
     const total = pg.reduce((a: number, m: any) => a + m.total, 0)
     return ['*💳 Vendas por pagamento (hoje):*', ...pg.map((m: any) =>
       `${m.metodo}: *${m.total}* (${total > 0 ? ((m.total / total) * 100).toFixed(0) : 0}%)`)].join('\n')
+  }
+  if (key === 'comparativo') {
+    // Tendência com dias FECHADOS (sem o parcial de hoje distorcer):
+    // ontem vs anteontem e últimos 7d fechados vs 7d anteriores.
+    const [ontem, anteontem, semAtual, semAnterior] = await Promise.all([
+      L.dashboardDe(L.diaSP(1), L.diaSP(1)),
+      L.dashboardDe(L.diaSP(2), L.diaSP(2)),
+      L.dashboardDe(L.diaSP(7), L.diaSP(1)),
+      L.dashboardDe(L.diaSP(14), L.diaSP(8)),
+    ])
+    const rev = (d: any) => Number(d?.metrics?.revenue ?? 0)
+    const linha = (rot: string, cur: any, prev: any) => {
+      const c = rev(cur), p = rev(prev)
+      const var_ = p > 0 ? ((c - p) / p) * 100 : null
+      const seta = var_ == null ? '' : var_ >= 0 ? `📈 +${var_.toFixed(0)}%` : `📉 ${var_.toFixed(0)}%`
+      return `${rot}: *${fmt(c)}* ${seta}`
+    }
+    return ['*📊 Comparativo (faturamento):*',
+      linha('Ontem vs anteontem', ontem, anteontem),
+      linha('7 dias vs 7 anteriores', semAtual, semAnterior)].join('\n')
+  }
+  if (key === 'meta') {
+    const d = await L.dashboard()
+    const m = d?.metrics
+    if (!m) return null
+    const fatAgora = m.revenue
+    const minutos = L.agoraSP.getHours() * 60 + L.agoraSP.getMinutes()
+    const fracaoDia = Math.max(minutos / 1440, 0.01)
+    const projecao = fatAgora / fracaoDia
+    const lines = [`*🎯 Projeção do dia:*`,
+      `Faturamento agora: *${fmt(fatAgora)}*`,
+      `Projeção no ritmo atual: *${fmt(projecao)}*`]
+    const { data: cfgMeta } = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', 'meta_faturamento_diario').maybeSingle()
+    const meta = Number(cfgMeta?.valor ?? 0)
+    if (meta > 0) lines.push(`Meta: *${fmt(meta)}* (${((fatAgora / meta) * 100).toFixed(0)}% batido)`)
+    return lines.join('\n')
+  }
+  if (key === 'reembolsos') {
+    const b = await L.breakdown()
+    const cr = b.porCriativo ?? []
+    const totCount = cr.reduce((a: number, c: any) => a + (c.reembolsoCount ?? 0), 0)
+    const totValor = cr.reduce((a: number, c: any) => a + (c.reembolsoValor ?? 0), 0)
+    if (!totCount) return '*↩️ Reembolsos (hoje):* nenhum 🎉'
+    const top = [...cr].filter((c: any) => c.reembolsoCount > 0).sort((a: any, b: any) => b.reembolsoCount - a.reembolsoCount).slice(0, 3)
+    return [`*↩️ Reembolsos (hoje):* *${totCount}* (${fmt(totValor)})`,
+      ...top.map((c: any) => `• ${c.criativo}: ${c.reembolsoCount}`)].join('\n')
+  }
+  if (key === 'produtos') {
+    const b = await L.breakdown()
+    const ps = (b.porProduto ?? []).slice(0, 6)
+    if (!ps.length) return null
+    return ['*🛍️ Vendas por produto (hoje):*',
+      ...ps.map((p: any) => `${p.produto}: *${p.count}* (${fmt(p.receita)})`)].join('\n')
+  }
+  if (key === 'caindo') {
+    const p = await L.perfV2()
+    const min = Number(p.roasMinimo ?? 1)
+    // Bom em 7d, mas 1d abaixo do mínimo → esfriando. Ordena pela maior queda.
+    const caindo = (p.criativos ?? [])
+      .filter((c: any) => c.roas_7d != null && c.roas_7d >= min && c.roas_1d != null && c.roas_1d < min && c.gasto_1d >= 1)
+      .sort((a: any, b: any) => (a.roas_1d - a.roas_7d) - (b.roas_1d - b.roas_7d))
+      .slice(0, 5)
+    if (!caindo.length) return '*🧊 Criativos esfriando:* nenhum no momento'
+    return ['*🧊 Criativos esfriando (7d ok, 1d ruim):*',
+      ...caindo.map((c: any, i: number) => `${i + 1}. *${c.criativo}* — ROAS 7d ${roasFmt(c.roas_7d)} → 1d ${roasFmt(c.roas_1d)}`)].join('\n')
+  }
+  if (key === 'novos') {
+    const { desde, ate } = spRangeISO(L.hoje, L.hoje)
+    const { data } = await supabaseAdmin
+      .from('criativos').select('nome, fase, created_at')
+      .gte('created_at', desde).lte('created_at', ate).order('created_at', { ascending: false })
+    if (!data?.length) return '*🆕 Criativos novos (hoje):* nenhum'
+    return ['*🆕 Criativos novos (hoje):*',
+      ...data.slice(0, 10).map((c: any) => `• ${c.nome}${c.fase ? ` (${c.fase})` : ''}`)].join('\n')
   }
   return null
 }

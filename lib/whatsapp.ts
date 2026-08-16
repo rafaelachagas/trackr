@@ -8,9 +8,15 @@ export const SITE_URL = process.env.SITE_URL ?? 'https://www.thetrack.com.br'
 // Seções prontas que um comando pode incluir na resposta.
 export const BLOCOS = [
   { key: 'resumo', label: 'Resumo do dia', desc: 'Faturamento, gasto, ROAS, lucro, vendas' },
-  { key: 'top_criativos', label: 'Top criativos (7d)', desc: 'Top 5 por gasto, com ROAS e ação' },
+  { key: 'comparativo', label: 'Comparativo (tendência)', desc: 'Ontem vs anteontem e 7d vs 7d anteriores' },
+  { key: 'meta', label: 'Projeção do dia', desc: 'Projeção de faturamento no ritmo atual (e % da meta)' },
+  { key: 'top_criativos', label: 'Top criativos (7d)', desc: 'Top 5 por lucro (fase 02+), com link' },
+  { key: 'caindo', label: 'Criativos caindo', desc: 'ROAS bom em 7d mas ruim em 1d (esfriando)' },
+  { key: 'novos', label: 'Criativos novos (hoje)', desc: 'Criativos cadastrados hoje' },
   { key: 'ranking', label: 'Ranking front/upsell/reembolso', desc: 'Criativos que mais vendem e mais reembolsam' },
+  { key: 'produtos', label: 'Vendas por produto', desc: 'Contagem e receita por produto' },
   { key: 'pagamento', label: 'Vendas por pagamento', desc: 'Distribuição por método' },
+  { key: 'reembolsos', label: 'Reembolsos do dia', desc: 'Quantos, quanto e de quais criativos' },
   { key: 'alertas', label: 'Alertas de ação', desc: 'Criativos p/ escalar (+20%) ou pausar' },
 ] as const
 
