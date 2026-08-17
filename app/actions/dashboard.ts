@@ -108,17 +108,34 @@ export async function getDashboardData(product: string, startDate: string, endDa
     for (const p of (produtosRes.data ?? [])) {
       produtoTipoMap.set(p.nome_produto, p.tipo)
     }
-    // Faturamento LÍQUIDO: usa valor_liquido (comissão do produtor = o que a Hotmart
-    // mostra como "Receita Líquida"). Fallback para valor bruto se o líquido não
-    // estiver preenchido (venda ainda não reconciliada via /sales/commissions).
-    const totalRevenue = vendas.reduce((acc, v) => acc + Number(v.valor_liquido ?? v.valor), 0)
+    // Soma o LÍQUIDO (comissão do produtor = "Receita Líquida" da Hotmart). Nem toda
+    // venda foi reconciliada via /sales/commissions, então parte fica com valor_liquido
+    // NULO. O fallback antigo somava o valor BRUTO nessas — o que inflava (nos reembolsos
+    // antigos de Junho chegava a ~5×, pois 42% não tinham líquido). Aqui, em vez de usar
+    // o bruto, IMPUTAMOS o líquido dos nulos pela razão líquido/bruto observada nas linhas
+    // do PRÓPRIO conjunto que têm ambos — estimativa consistente e sem inflar. O ideal
+    // definitivo é backfill via /sales/commissions; enquanto não vem, a imputação é o certo.
+    function somaLiquido(rows: { valor: number; valor_liquido: number | null }[]) {
+      let liqBase = 0, brutoBase = 0
+      for (const r of rows) {
+        if (r.valor_liquido != null) { liqBase += Number(r.valor_liquido); brutoBase += Number(r.valor) }
+      }
+      const ratio = brutoBase > 0 ? liqBase / brutoBase : 1
+      let total = 0
+      for (const r of rows) {
+        total += r.valor_liquido != null ? Number(r.valor_liquido) : Number(r.valor) * ratio
+      }
+      return total
+    }
+
+    const totalRevenue = somaLiquido(vendas)
     const totalSpend = gastos.reduce((acc, g) => acc + Number(g.valor_gasto), 0)
     const salesCount = vendas.length
     const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0
 
     // Reembolsos/estornos: valor líquido devolvido + taxa sobre a base de vendas
     // pagas do período (aprovadas + reembolsadas). Não afeta ROAS/Lucro/Faturamento.
-    const reembolsoValor = reembolsos.reduce((acc, v) => acc + Number(v.valor_liquido ?? v.valor), 0)
+    const reembolsoValor = somaLiquido(reembolsos)
     const reembolsoCount = reembolsos.length
     const baseVendasPagas = totalRevenue + reembolsoValor
     const taxaReembolso = baseVendasPagas > 0 ? (reembolsoValor / baseVendasPagas) * 100 : 0

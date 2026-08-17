@@ -83,7 +83,20 @@ export async function GET(request: NextRequest) {
         .range(from, to)
     )
 
-    const liq = (v: { valor: number; valor_liquido: number | null }) => Number(v.valor_liquido ?? v.valor) || 0
+    // Líquido com imputação: linhas sem valor_liquido (não reconciliadas via
+    // /sales/commissions) não somam o BRUTO (inflava os reembolsos antigos ~5×);
+    // usam a razão líquido/bruto observada no próprio conjunto. Ver dashboard.ts.
+    function ratioOf(rows: { valor: number; valor_liquido: number | null }[]) {
+      let l = 0, b = 0
+      for (const r of rows) if (r.valor_liquido != null) { l += Number(r.valor_liquido) || 0; b += Number(r.valor) || 0 }
+      return b > 0 ? l / b : 1
+    }
+    const ratioAprov = ratioOf(aprovadas)
+    const ratioReemb = ratioOf(reembolsos)
+    const liqCom = (v: { valor: number; valor_liquido: number | null }, ratio: number) =>
+      v.valor_liquido != null ? (Number(v.valor_liquido) || 0) : (Number(v.valor) || 0) * ratio
+    const liq = (v: { valor: number; valor_liquido: number | null }) => liqCom(v, ratioAprov)
+    const liqR = (v: { valor: number; valor_liquido: number | null }) => liqCom(v, ratioReemb)
 
     // Por produto
     const prodMap = new Map<string, ProdutoBreak>()
@@ -118,7 +131,7 @@ export async function GET(request: NextRequest) {
     for (const r of reembolsos) {
       if (!r.criativo) continue
       const c = criMap.get(r.criativo) ?? { criativo: r.criativo, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
-      c.reembolsoCount++; c.reembolsoValor += liq(r)
+      c.reembolsoCount++; c.reembolsoValor += liqR(r)
       criMap.set(r.criativo, c)
     }
 
