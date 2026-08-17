@@ -8,6 +8,10 @@ import { subDays, format } from 'date-fns'
 const META_API_VERSION = 'v25.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
 
+// Sync de várias contas × até 90 dias é pesado — sem isso a função corta no
+// tempo padrão e (no modelo antigo) deixava o gasto apagado. Ver reorder abaixo.
+export const maxDuration = 300
+
 export async function GET(request: NextRequest) {
   return sincronizarMeta(request)
 }
@@ -71,13 +75,9 @@ async function sincronizarMeta(request: NextRequest) {
       .select()
       .single()
 
-    // Limpa apenas gastos vindos da Meta API (ad_id IS NOT NULL) — nunca apaga entradas manuais do framework
-    await supabaseAdmin
-      .from('gastos')
-      .delete()
-      .gte('data', dataInicio)
-      .lte('data', dataFim)
-      .not('ad_id', 'is', null)
+    // (O DELETE dos gastos Meta do período foi movido pra DEPOIS da busca na Meta —
+    // ver abaixo. Assim, se a Meta falhar/estourar tempo, não apagamos nada e o
+    // gasto existente é preservado, em vez de sumir.)
 
     // Fator por conta (só câmbio: USD→BRL; BRL fica cru) + alíquota do imposto.
     // O imposto NÃO entra no valor_gasto — é salvo por dia em meta_imposto_diario
@@ -142,6 +142,16 @@ async function sincronizarMeta(request: NextRequest) {
     let totalRegistros = 0
     const registros = Array.from(mapaRegistros.values())
     if (registros.length > 0) {
+      // Agora sim (Meta respondeu OK): apaga os gastos Meta do período e reinsere.
+      // Se a busca acima tivesse falhado, já teríamos retornado ANTES daqui, sem
+      // apagar nada — some o risco de "apagou e não repôs".
+      await supabaseAdmin
+        .from('gastos')
+        .delete()
+        .gte('data', dataInicio)
+        .lte('data', dataFim)
+        .not('ad_id', 'is', null)
+
       const { error: erroUpsert } = await supabaseAdmin
         .from('gastos')
         .upsert(registros, { onConflict: 'data,ad_name' })
