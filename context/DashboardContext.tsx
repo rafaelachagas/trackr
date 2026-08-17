@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { subDays, startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 import { toZonedTime, fromZonedTime, formatInTimeZone } from "date-fns-tz";
 
@@ -232,10 +232,15 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     refreshData();
   }, [period, product, dateRange]);
 
-  // Auto-sync on mount and every 5 minutes
+  // Auto-sync on mount and every 5 minutes.
+  // Via REF pra sempre usar o dateRange ATUAL — sem isso, o intervalo (montado com
+  // deps []) fica preso no dateRange inicial ("Hoje") e, a cada 5 min, o refresh
+  // sobrescrevia os dados com os de hoje mesmo com o filtro no mês. (stale closure)
+  const sincronizarRef = useRef(sincronizarTudo);
+  useEffect(() => { sincronizarRef.current = sincronizarTudo; });
   useEffect(() => {
-    sincronizarTudo();
-    const interval = setInterval(sincronizarTudo, 5 * 60 * 1000);
+    sincronizarRef.current();
+    const interval = setInterval(() => sincronizarRef.current(), 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 

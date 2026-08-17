@@ -69,7 +69,7 @@ export default function ContasAnunciosPage() {
   }
 
   async function carregarGastos() {
-    const res = await fetch('/api/meta/gastos-mensais')
+    const res = await fetch('/api/meta/gastos-mensais', { cache: 'no-store' })
     const json = await res.json()
     if (json.gastos) setGastosMensais(json.gastos)
   }

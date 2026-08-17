@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
+// Sem isso o Next cacheia a resposta (rota GET sem API dinâmica) e o card
+// "Gasto Mensal" fica mostrando número velho mesmo depois de sincronizar.
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   // Start of the month 2 months ago = 3 months total (e.g. April, May, June when today is June)
   const hoje = new Date()
