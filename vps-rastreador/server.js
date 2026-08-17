@@ -107,21 +107,26 @@ async function scrape(url, { maxScrolls = 12, debug = false } = {}) {
   let primeiraRaiz = null
   const debugUrls = []
   let respostasComAd = 0
+  let graphqlCount = 0
+  let amostraTexto = null
 
   page.on('response', async (res) => {
     try {
       const u = res.url()
       const ct = res.headers()['content-type'] || ''
+      if (u.includes('graphql')) graphqlCount++
       // Rede mais ampla: qualquer resposta JSON/graphql/ads que tenha marcador de anúncio.
       if (!u.includes('graphql') && !u.includes('/ads/') && !ct.includes('json')) return
       const txt = await res.text()
       if (!txt) return
-      const temAd = txt.includes('ad_archive') || txt.includes('adArchiveID') || txt.includes('collationCount') || txt.includes('"snapshot"')
-      if (!temAd) return
+      const idx = txt.search(/ad_archive_id|adArchiveID|"snapshot"|collationCount/)
+      if (idx < 0) return
       respostasComAd++
-      if (debug && debugUrls.length < 25) debugUrls.push(u.slice(0, 120))
+      if (debug && debugUrls.length < 25) debugUrls.push(u.slice(0, 100))
+      // Guarda um trecho cru em volta do 1º anúncio pra eu calibrar o extrator.
+      if (debug && !amostraTexto) amostraTexto = txt.slice(Math.max(0, idx - 200), idx + 2500)
       for (const obj of tentarJSON(txt)) {
-        if (debug && !primeiraRaiz) primeiraRaiz = obj
+        if (!primeiraRaiz) primeiraRaiz = obj
         coletarAnuncios(obj, nodes)
       }
     } catch (_) {}
@@ -144,6 +149,18 @@ async function scrape(url, { maxScrolls = 12, debug = false } = {}) {
     await page.waitForTimeout(1500)
   }
 
+  // FONTE PRINCIPAL: dados SSR embutidos nos <script type="application/json"> do
+  // HTML (a Meta renderiza a 1ª leva de anúncios ali). Varre todos e extrai os nós.
+  let scriptsComAd = 0
+  try {
+    const blobs = await page.$$eval('script[type="application/json"]', (els) => els.map((e) => e.textContent || ''))
+    for (const s of blobs) {
+      if (!s || (!s.includes('ad_archive') && !s.includes('adArchiveID') && !s.includes('"snapshot"'))) continue
+      scriptsComAd++
+      try { coletarAnuncios(JSON.parse(s), nodes) } catch (_) {}
+    }
+  } catch (_) {}
+
   // Diagnóstico (só em debug): pra onde foi, o que apareceu, quantas respostas de anúncio.
   let diag = null
   if (debug) {
@@ -151,8 +168,12 @@ async function scrape(url, { maxScrolls = 12, debug = false } = {}) {
       final_url: page.url(),
       title: await page.title().catch(() => null),
       respostas_com_ad: respostasComAd,
+      graphql_count: graphqlCount,
+      scripts_com_ad: scriptsComAd,
+      nodes_coletados: nodes.length,
       urls_capturadas: debugUrls,
-      body_inicio: await page.evaluate(() => document.body ? document.body.innerText.slice(0, 500) : '').catch(() => ''),
+      amostra_texto: amostraTexto,
+      body_inicio: await page.evaluate(() => document.body ? document.body.innerText.slice(0, 300) : '').catch(() => ''),
     }
   }
 
