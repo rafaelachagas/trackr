@@ -103,7 +103,7 @@ export default function Sidebar() {
             <Zap className="w-3.5 h-3.5 text-primary relative z-10" strokeWidth={2.5} />
           </div>
           <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-2'}`}>
-            <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground whitespace-nowrap">TRACKR</h1>
+            <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground whitespace-nowrap">The Track</h1>
           </div>
         </div>
 

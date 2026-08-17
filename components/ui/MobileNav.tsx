@@ -65,7 +65,7 @@ export default function MobileNav() {
             <div className="absolute inset-0 bg-primary/10" />
             <Zap className="w-3.5 h-3.5 text-primary relative z-10" strokeWidth={2.5} />
           </div>
-          <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground">TRACKR</h1>
+          <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground">The Track</h1>
         </div>
 
         <div className="flex items-center gap-1">
@@ -104,7 +104,7 @@ export default function MobileNav() {
                 <div className="absolute inset-0 bg-primary/10" />
                 <Zap className="w-3.5 h-3.5 text-primary relative z-10" strokeWidth={2.5} />
               </div>
-              <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground">TRACKR</h1>
+              <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground">The Track</h1>
             </div>
             <button onClick={() => setOpen(false)} className="flex items-center gap-1.5 text-sm font-bold text-foreground">
               Fechar
