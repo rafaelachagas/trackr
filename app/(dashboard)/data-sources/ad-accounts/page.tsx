@@ -79,7 +79,11 @@ export default function ContasAnunciosPage() {
     const popup = window.open('/api/auth/meta', 'meta_oauth', 'width=600,height=700,scrollbars=yes')
 
     const handler = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return
+      // O callback do OAuth pode vir de outro domínio (ex.: *.vercel.app) quando o
+      // site roda em domínio próprio (www.thetrack.com.br). Aceita o mesmo origin
+      // OU o domínio do deploy — senão a mensagem de sucesso é ignorada e "não conecta".
+      const ok = event.origin === window.location.origin || /\.vercel\.app$/.test(event.origin)
+      if (!ok) return
       if (event.data?.type === 'meta_auth_success') {
         window.removeEventListener('message', handler)
         setMetaConectando(false)

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
   if (error || !code) {
     return htmlResponse(
-      `window.opener?.postMessage({type:'meta_auth_error',error:${JSON.stringify(error ?? 'Cancelado')}},window.location.origin);window.close()`
+      `window.opener?.postMessage({type:'meta_auth_error',error:${JSON.stringify(error ?? 'Cancelado')}},'*');window.close()`
     )
   }
 
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     if (tokenJson.error) {
       return htmlResponse(
-        `window.opener?.postMessage({type:'meta_auth_error',error:${JSON.stringify(tokenJson.error.message)}},window.location.origin);window.close()`
+        `window.opener?.postMessage({type:'meta_auth_error',error:${JSON.stringify(tokenJson.error.message)}},'*');window.close()`
       )
     }
 
@@ -77,11 +77,11 @@ export async function GET(request: NextRequest) {
     }
 
     return htmlResponse(
-      `window.opener?.postMessage({type:'meta_auth_success',accounts:${JSON.stringify(accounts)},userName:${JSON.stringify(userName)}},window.location.origin);window.close()`
+      `window.opener?.postMessage({type:'meta_auth_success',accounts:${JSON.stringify(accounts)},userName:${JSON.stringify(userName)}},'*');window.close()`
     )
   } catch (err) {
     return htmlResponse(
-      `window.opener?.postMessage({type:'meta_auth_error',error:'Erro interno no servidor'},window.location.origin);window.close()`
+      `window.opener?.postMessage({type:'meta_auth_error',error:'Erro interno no servidor'},'*');window.close()`
     )
   }
 }
