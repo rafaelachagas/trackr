@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Manrope } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+// Manrope: alternativa gratuita (Google Fonts) próxima da Uber Move usada pela Utmify.
+// Uber Move é proprietária da Uber, não licenciável. Teste — reverter é só voltar pra Inter.
+const inter = Manrope({ subsets: ["latin"], variable: "--font-app" });
 
 export const metadata: Metadata = {
   title: "The Track",
