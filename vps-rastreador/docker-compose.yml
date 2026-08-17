@@ -1,0 +1,14 @@
+services:
+  rastreador-scraper:
+    build: .
+    container_name: rastreador-scraper
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      # Troque por um segredo forte. O The Track manda ele no header x-api-key.
+      - SCRAPER_APIKEY=${SCRAPER_APIKEY}
+      - HEADLESS=true
+    # Chromium precisa de um pouco de shm; sem isso pode travar em páginas pesadas.
+    shm_size: "1gb"
