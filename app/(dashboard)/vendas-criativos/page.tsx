@@ -2,16 +2,28 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
-import { formatInTimeZone } from 'date-fns-tz'
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz'
+import { subDays, startOfMonth, format } from 'date-fns'
 import { formatarMoeda } from '@/lib/utils'
-import { ArrowDown, Trophy } from 'lucide-react'
+import { ArrowDown, Trophy, ShoppingCart, TrendingUp, Undo2 } from 'lucide-react'
 import type { CriativoBreak } from '@/app/api/dashboard/vendas-breakdown/route'
+
+const TZ = 'America/Sao_Paulo'
 
 type SortKey = 'front' | 'upsell' | 'reembolsoCount'
 const SORTS: { key: SortKey; label: string }[] = [
   { key: 'front', label: 'Mais Front' },
   { key: 'upsell', label: 'Mais Upsell' },
   { key: 'reembolsoCount', label: 'Maior Taxa de Reembolso' },
+]
+
+type Periodo = 'hoje' | '3d' | '7d' | 'mes' | 'global'
+const PERIODOS: { key: Periodo; label: string }[] = [
+  { key: 'hoje', label: 'Hoje' },
+  { key: '3d', label: '3 dias' },
+  { key: '7d', label: '7 dias' },
+  { key: 'mes', label: 'Mês' },
+  { key: 'global', label: 'Filtro global' },
 ]
 
 // Taxas proporcionais às vendas do PRÓPRIO criativo (não ao total).
@@ -26,30 +38,46 @@ export default function VendasCriativosPage() {
   const [linhas, setLinhas] = useState<CriativoBreak[]>([])
   const [loading, setLoading] = useState(true)
   const [sortKey, setSortKey] = useState<SortKey>('front')
+  const [periodo, setPeriodo] = useState<Periodo>('7d')
+
+  // Range do período local (ancorado em São Paulo). "global" usa o filtro do topo.
+  const range = useMemo(() => {
+    if (periodo === 'global') {
+      try {
+        return {
+          ini: dateRange.start ? formatInTimeZone(dateRange.start, TZ, 'yyyy-MM-dd') : null,
+          fim: dateRange.end ? formatInTimeZone(dateRange.end, TZ, 'yyyy-MM-dd') : null,
+        }
+      } catch { return { ini: null, fim: null } }
+    }
+    const nowSP = toZonedTime(new Date(), TZ)
+    const fim = format(nowSP, 'yyyy-MM-dd')
+    let ini = fim
+    if (periodo === '3d') ini = format(subDays(nowSP, 2), 'yyyy-MM-dd')
+    else if (periodo === '7d') ini = format(subDays(nowSP, 6), 'yyyy-MM-dd')
+    else if (periodo === 'mes') ini = format(startOfMonth(nowSP), 'yyyy-MM-dd')
+    return { ini, fim }
+  }, [periodo, dateRange])
 
   useEffect(() => {
-    const params = new URLSearchParams()
-    try {
-      if (dateRange.start && !isNaN(dateRange.start.getTime())) params.set('d_inicio', formatInTimeZone(dateRange.start, 'America/Sao_Paulo', 'yyyy-MM-dd'))
-      if (dateRange.end && !isNaN(dateRange.end.getTime())) params.set('d_fim', formatInTimeZone(dateRange.end, 'America/Sao_Paulo', 'yyyy-MM-dd'))
-    } catch { return }
+    if (!range.ini || !range.fim) return
+    const params = new URLSearchParams({ d_inicio: range.ini, d_fim: range.fim })
     setLoading(true)
     fetch(`/api/dashboard/vendas-breakdown?${params}`)
       .then((r) => r.json())
       .then((j) => setLinhas(j.porCriativo ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [lastUpdate, dateRange])
+  }, [lastUpdate, range])
 
   const totais = useMemo(() => ({
     front: linhas.reduce((a, c) => a + c.front, 0),
     upsell: linhas.reduce((a, c) => a + c.upsell, 0),
     reemb: linhas.reduce((a, c) => a + c.reembolsoCount, 0),
+    reembValor: linhas.reduce((a, c) => a + (c.reembolsoValor || 0), 0),
   }), [linhas])
 
   const ordenadas = useMemo(() => {
-    // Reembolso ordena pela TAXA (proporcional às vendas do criativo), não pelo
-    // volume — senão criativo grande sempre lidera só por ter mais venda.
     if (sortKey === 'reembolsoCount') {
       return [...linhas].sort((a, b) => taxaReemb(b) - taxaReemb(a) || b.reembolsoCount - a.reembolsoCount)
     }
@@ -58,20 +86,40 @@ export default function VendasCriativosPage() {
 
   const priv = (n: React.ReactNode) => (isPrivate ? '••' : n)
   const fmtPct = (n: number) => `${n.toFixed(1).replace('.', ',')}%`
+  const taxaUpsellMedia = totais.front > 0 ? (totais.upsell / totais.front) * 100 : 0
+  const taxaReembMedia = (totais.front + totais.upsell) > 0 ? (totais.reemb / (totais.front + totais.upsell)) * 100 : 0
 
   return (
-    <div className="pb-12 space-y-6 max-w-[1200px] mx-auto w-full text-foreground">
-      <div className="flex items-center gap-2">
-        <Trophy className="w-5 h-5 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight">Vendas × Criativos</h1>
+    <div className="pb-12 space-y-6 max-w-[1200px] mx-auto w-full text-foreground px-4 sm:px-6 lg:px-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <Trophy className="w-5 h-5 text-primary" />
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Vendas × Criativos</h1>
+        </div>
+        {/* Seletor de período */}
+        <div className="flex items-center gap-1 flex-wrap bg-card border border-border rounded-xl p-1">
+          {PERIODOS.map((p) => (
+            <button key={p.key} onClick={() => setPeriodo(p.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${periodo === p.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'}`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex items-center gap-1 px-5 py-3 flex-wrap" style={{ borderBottom: '1px solid rgba(85,182,247,0.08)' }}>
+      {/* Totais do período */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <ResumoCard icon={<ShoppingCart className="w-4 h-4" />} label="Vendas Front" valor={priv(totais.front)} sub={`${ordenadas.length} criativos`} cor="text-primary" />
+        <ResumoCard icon={<TrendingUp className="w-4 h-4" />} label="Vendas Upsell" valor={priv(totais.upsell)} sub={`taxa média ${fmtPct(taxaUpsellMedia)}`} cor="text-cyan-400" />
+        <ResumoCard icon={<Undo2 className="w-4 h-4" />} label="Reembolsos" valor={priv(totais.reemb)} sub={`${fmtPct(taxaReembMedia)} · ${totais.reembValor > 0 ? priv(formatarMoeda(totais.reembValor)) : '—'}`} cor="text-rose-400" />
+      </div>
+
+      <div className="rounded-2xl overflow-hidden bg-card border border-border">
+        <div className="flex items-center gap-1 px-5 py-3 flex-wrap border-b border-border">
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mr-3">Ranking por criativo</p>
           {SORTS.map((s) => (
             <button key={s.key} onClick={() => setSortKey(s.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${sortKey === s.key ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${sortKey === s.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'}`}>
               {s.label}
             </button>
           ))}
@@ -85,7 +133,7 @@ export default function VendasCriativosPage() {
           <div className="text-center py-20 text-muted-foreground text-sm">Sem vendas por criativo no período.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[560px]">
               <thead>
                 <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                   <th className="text-left px-5 py-3">Criativo</th>
@@ -99,13 +147,13 @@ export default function VendasCriativosPage() {
                 {ordenadas.map((c, i) => {
                   const shareFront = totais.front > 0 ? (c.front / totais.front) * 100 : 0
                   return (
-                    <tr key={c.criativo} className="border-t border-white/5 hover:bg-white/[0.02]">
+                    <tr key={c.criativo} className="border-t border-border hover:bg-accent/30">
                       <td className="px-5 py-3 font-semibold text-foreground">
                         <span className="text-muted-foreground mr-2 tabular-nums">{i + 1}.</span>{c.criativo}
                       </td>
                       <Cell n={priv(c.front)} pct={fmtPct(shareFront)} />
-                      <Cell n={priv(c.upsell)} pct={c.front > 0 ? fmtPct(taxaUpsell(c)) : '—'} cor="#22d3ee" />
-                      <Cell n={priv(c.reembolsoCount)} pct={fmtPct(taxaReemb(c))} cor={c.reembolsoCount > 0 ? '#f43f5e' : undefined} />
+                      <Cell n={priv(c.upsell)} pct={c.front > 0 ? fmtPct(taxaUpsell(c)) : '—'} cor="text-cyan-400" />
+                      <Cell n={priv(c.reembolsoCount)} pct={fmtPct(taxaReemb(c))} cor={c.reembolsoCount > 0 ? 'text-rose-400' : undefined} />
                       <td className="text-right px-5 py-3 tabular-nums text-muted-foreground">{c.reembolsoValor > 0 ? priv(formatarMoeda(c.reembolsoValor)) : '—'}</td>
                     </tr>
                   )
@@ -119,10 +167,23 @@ export default function VendasCriativosPage() {
   )
 }
 
+function ResumoCard({ icon, label, valor, sub, cor }: { icon: React.ReactNode; label: string; valor: React.ReactNode; sub: string; cor: string }) {
+  return (
+    <div className="bg-card border border-border rounded-2xl p-4">
+      <div className="flex items-center gap-2 text-muted-foreground mb-2">
+        <span className={cor}>{icon}</span>
+        <span className="text-[11px] font-bold uppercase tracking-widest">{label}</span>
+      </div>
+      <div className={`text-2xl font-bold tabular-nums ${cor}`}>{valor}</div>
+      <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>
+    </div>
+  )
+}
+
 function Cell({ n, pct, cor }: { n: React.ReactNode; pct: string; cor?: string }) {
   return (
     <td className="text-right px-5 py-3">
-      <div className="tabular-nums font-bold leading-tight" style={{ color: cor }}>{n}</div>
+      <div className={`tabular-nums font-bold leading-tight ${cor ?? 'text-foreground'}`}>{n}</div>
       <div className="text-[10px] text-muted-foreground tabular-nums leading-tight">{pct}</div>
     </td>
   )
