@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Search, X, Check, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { salvarContasAnuncio, desconectarContaMeta, salvarImpostoMeta } from '@/app/actions/meta'
+import { salvarContasAnuncio, desconectarContaMeta, salvarImpostoMeta, conectarMetaComToken } from '@/app/actions/meta'
 
 type Conta = { id: string; name: string; account_status?: number; currency?: string }
 type GastoMensal = { mes: string; total: number }
@@ -24,6 +24,9 @@ export default function ContasAnunciosPage() {
   const [gastosMensais, setGastosMensais] = useState<GastoMensal[]>([])
   const [impostoPct, setImpostoPct] = useState('')
   const [salvandoImposto, setSalvandoImposto] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [tokenManual, setTokenManual] = useState('')
+  const [conectandoManual, setConectandoManual] = useState(false)
 
   useEffect(() => { carregar(); carregarGastos() }, [])
 
@@ -104,6 +107,25 @@ export default function ContasAnunciosPage() {
       }
     }, 1000)
   }, [adAccountIds])
+
+  async function conectarComToken() {
+    if (!tokenManual.trim()) { alert('Cole o token antes de conectar.'); return }
+    setConectandoManual(true)
+    try {
+      const res = await conectarMetaComToken(tokenManual.trim())
+      if (!res.success) { alert(`Não deu pra conectar: ${res.error}`); return }
+      setMetaAccessToken(tokenManual.trim())
+      if (res.userName) setMetaUserName(res.userName)
+      setMetaContas((res.accounts ?? []) as Conta[])
+      setTokenManual('')
+      setManualOpen(false)
+      setSelecionadas(adAccountIds)
+      setModalAberto(true)   // abre a seleção de contas, igual ao fluxo do OAuth
+      carregar()
+    } finally {
+      setConectandoManual(false)
+    }
+  }
 
   async function desconectarMeta() {
     if (!confirm('Deseja desconectar sua conta do Meta Ads?')) return
@@ -280,6 +302,34 @@ export default function ContasAnunciosPage() {
               </svg>
               {metaConectando ? 'Abrindo Facebook...' : 'Entrar com Facebook'}
             </button>
+          )}
+        </div>
+
+        {/* Token manual (alternativa ao OAuth / usar token vitalício System User) */}
+        <div className="px-6 py-3 border-b border-slate-800">
+          <button onClick={() => setManualOpen(v => !v)} className="text-xs font-semibold text-slate-400 hover:text-slate-200 transition">
+            {manualOpen ? '▾' : '▸'} Usar token manual {metaAccessToken ? '(trocar)' : '(alternativa ao Facebook)'}
+          </button>
+          {manualOpen && (
+            <div className="mt-3 space-y-2">
+              <p className="text-[11px] text-slate-500">Cole aqui o token da Meta (System User vitalício, ou o token estendido do Graph Explorer). Ele valida, salva e lista suas contas.</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={tokenManual}
+                  onChange={(e) => setTokenManual(e.target.value)}
+                  placeholder="Cole o token aqui"
+                  className="flex-1 px-3 py-2 rounded-lg text-sm bg-slate-800 border border-slate-700 text-slate-200 outline-none focus:border-slate-500"
+                />
+                <button
+                  onClick={conectarComToken}
+                  disabled={conectandoManual}
+                  className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {conectandoManual ? 'Validando...' : 'Conectar'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

@@ -84,6 +84,44 @@ export async function salvarImpostoMeta(aliquota: string) {
   return { success: true, pct }
 }
 
+/**
+ * Conecta a Meta colando um token manualmente (System User vitalício ou token
+ * estendido do Graph Explorer). Alternativa ao "Entrar com Facebook" (OAuth) —
+ * útil quando o OAuth falha ou quando se quer um token que não expira.
+ * Valida o token na Meta, salva e devolve nome + contas pra seleção.
+ */
+export async function conectarMetaComToken(tokenRaw: string) {
+  const token = (tokenRaw ?? '').trim()
+  if (!token) return { success: false, error: 'Cole um token antes de conectar.' }
+  const org_id = await resolveOrgId()
+  if (!org_id) return { success: false, error: 'Organização não encontrada. Faça login novamente.' }
+
+  const V = 'https://graph.facebook.com/v25.0'
+  try {
+    const me = await fetch(`${V}/me?fields=name&access_token=${encodeURIComponent(token)}`).then((r) => r.json())
+    if (me?.error) return { success: false, error: `Token inválido: ${me.error.message}` }
+
+    const accRes = await fetch(`${V}/me/adaccounts?fields=id,name,currency,account_status&limit=500&access_token=${encodeURIComponent(token)}`).then((r) => r.json())
+    if (accRes?.error) return { success: false, error: `Erro ao listar contas: ${accRes.error.message}` }
+    const accounts = (accRes?.data ?? []).map((a: any) => ({ id: a.id, name: a.name, currency: a.currency, account_status: a.account_status }))
+
+    const now = new Date().toISOString()
+    const { error } = await supabaseAdmin.from('configuracoes').upsert(
+      [
+        { chave: 'meta_access_token', valor: token, org_id, updated_at: now },
+        { chave: 'meta_user_name', valor: me?.name || 'Token manual', org_id, updated_at: now },
+      ],
+      { onConflict: 'chave' }
+    )
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/data-sources/ad-accounts')
+    return { success: true, userName: me?.name || '', accounts }
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? String(e) }
+  }
+}
+
 export async function desconectarContaMeta() {
   const org_id = await resolveOrgId()
   if (!org_id) return { success: false, error: 'Organização não encontrada. Faça login novamente.' }
