@@ -12,8 +12,12 @@ export async function GET() {
     .toISOString()
     .slice(0, 10)
 
+  // PostgREST corta em 1000 linhas por request (db-max-rows). Se pedir range de
+  // 10000, ele devolve só as 1000 mais recentes (Agosto) e o loop para achando
+  // que acabou — Junho/Julho sumiam. pageSize TEM que ser <= 1000. Ver memory
+  // paginacao-1000-postgrest.
   let page = 0
-  const pageSize = 10000
+  const pageSize = 1000
   const mapa: Record<string, number> = {}
 
   while (true) {
