@@ -9,6 +9,34 @@ import {
 import { ptBR } from 'date-fns/locale'
 import { Calendar, ChevronDown, ArrowUpDown, ExternalLink, RefreshCw, ImageOff, ChevronLeft, ChevronRight, AlertCircle, Maximize2, X } from 'lucide-react'
 import type { AdMetric } from '@/app/api/meta/ad-metrics/route'
+import type { AcaoOtimizacao } from '@/types'
+import { supabase } from '@/lib/supabase'
+
+// ─── Framework de decisão (mesma matriz do Setup) ──────────────────
+type RegraFramework = { p7: boolean; p3: boolean; p1: boolean; acao: AcaoOtimizacao }
+const REGRAS_PADRAO: RegraFramework[] = [
+  { p7: true,  p3: true,  p1: true,  acao: '+20% orçamento' },
+  { p7: true,  p3: true,  p1: false, acao: 'Manter' },
+  { p7: true,  p3: false, p1: true,  acao: '+20% orçamento' },
+  { p7: true,  p3: false, p1: false, acao: '-20% ou pausar' },
+  { p7: false, p3: true,  p1: true,  acao: '+20% orçamento' },
+  { p7: false, p3: true,  p1: false, acao: 'Manter' },
+  { p7: false, p3: false, p1: true,  acao: 'Manter' },
+  { p7: false, p3: false, p1: false, acao: 'Pausar' },
+]
+const ACAO_META: Record<AcaoOtimizacao, { label: string; badge: string; chip: string; chipOn: string }> = {
+  '+20% orçamento': { label: '▲ Escalar', badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', chip: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30', chipOn: 'bg-emerald-500/40 text-emerald-200 border-emerald-400/60 ring-1 ring-emerald-400/30' },
+  'Manter':         { label: '→ Manter',  badge: 'bg-amber-500/20 text-amber-300 border-amber-500/30',     chip: 'bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30',       chipOn: 'bg-amber-500/40 text-amber-200 border-amber-400/60 ring-1 ring-amber-400/30' },
+  '-20% ou pausar': { label: '▼ Reduzir', badge: 'bg-orange-500/20 text-orange-300 border-orange-500/30',  chip: 'bg-orange-500/20 text-orange-300 border-orange-500/30 hover:bg-orange-500/30',    chipOn: 'bg-orange-500/40 text-orange-200 border-orange-400/60 ring-1 ring-orange-400/30' },
+  'Pausar':         { label: '✕ Pausar',  badge: 'bg-red-500/20 text-red-300 border-red-500/30',           chip: 'bg-red-500/20 text-red-300 border-red-500/30 hover:bg-red-500/30',                chipOn: 'bg-red-500/40 text-red-200 border-red-400/60 ring-1 ring-red-400/30' },
+}
+function calcAcao(m: AdMetric, roasMin: number, regras: RegraFramework[]): AcaoOtimizacao | null {
+  if (m.roas_7d === null && m.roas_3d === null && m.roas_1d === null) return null
+  const p7 = (m.roas_7d ?? 0) >= roasMin
+  const p3 = (m.roas_3d ?? 0) >= roasMin
+  const p1 = (m.roas_1d ?? 0) >= roasMin
+  return regras.find(r => r.p7 === p7 && r.p3 === p3 && r.p1 === p1)?.acao ?? null
+}
 
 function cpmColor(v: number) { return v < 20 ? 'bg-emerald-500' : v < 40 ? 'bg-amber-500' : 'bg-red-500' }
 function ctrColor(v: number) { return v >= 3 ? 'bg-emerald-500' : v >= 1.5 ? 'bg-amber-500' : 'bg-red-500' }
@@ -289,7 +317,7 @@ function DetailModal({ metric: m, onClose }: { metric: AdMetric; onClose: () => 
 }
 
 /* ─── Ad Card ────────────────────────────────────────────────────── */
-function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => void }) {
+function AdCard({ metric: m, onExpand, acao }: { metric: AdMetric; onExpand: () => void; acao: AcaoOtimizacao | null }) {
   const [imgErr, setImgErr] = useState(false)
 
   const cpmPct = m.cpm !== null ? Math.min((m.cpm / 60) * 100, 100) : 0
@@ -358,6 +386,13 @@ function AdCard({ metric: m, onExpand }: { metric: AdMetric; onExpand: () => voi
             </span>
           )}
       </div>
+
+      {/* Selo de ação (Framework) */}
+      {acao && (
+        <div className={`mb-3 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${ACAO_META[acao].badge}`}>
+          {ACAO_META[acao].label}
+        </div>
+      )}
 
       {/* Main stats — mini-cards lado a lado */}
       <div className="flex gap-2 mb-3">
@@ -450,8 +485,21 @@ export default function AdAnalysisPage() {
   const [showSort, setShowSort] = useState(false)
   const [atualizado, setAtualizado] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<AdMetric | null>(null)
+  const [roasMin, setRoasMin] = useState(2)
+  const [regras, setRegras] = useState<RegraFramework[]>(REGRAS_PADRAO)
+  const [filtroAcao, setFiltroAcao] = useState<AcaoOtimizacao | null>(null)
   const dateRef = useRef<HTMLDivElement>(null)
   const sortRef = useRef<HTMLDivElement>(null)
+
+  // Lê a matriz de decisão do Setup (mesma fonte do Framework) pra rotular cada criativo.
+  useEffect(() => {
+    supabase.from('configuracoes').select('chave,valor').in('chave', ['roas_minimo', 'framework_regras']).then(({ data }) => {
+      data?.forEach(c => {
+        if (c.chave === 'roas_minimo' && c.valor) setRoasMin(parseFloat(c.valor) || 2)
+        if (c.chave === 'framework_regras' && c.valor) { try { setRegras(JSON.parse(c.valor)) } catch {} }
+      })
+    })
+  }, [])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -505,6 +553,7 @@ export default function AdAnalysisPage() {
   const filtered = useMemo(() => {
     let list = [...metrics]
     if (filtroFase) list = list.filter(m => m.fase === filtroFase)
+    if (filtroAcao) list = list.filter(m => calcAcao(m, roasMin, regras) === filtroAcao)
     if (tab === 'roas') list = list.filter(m => m.roas !== null).sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))
     else if (tab === 'ctr') list = list.filter(m => m.ctr !== null).sort((a, b) => (b.ctr ?? 0) - (a.ctr ?? 0))
     else {
@@ -515,7 +564,15 @@ export default function AdAnalysisPage() {
       })
     }
     return list
-  }, [metrics, sortKey, sortAsc, tab, filtroFase])
+  }, [metrics, sortKey, sortAsc, tab, filtroFase, filtroAcao, roasMin, regras])
+
+  // Contagem por ação (respeita o filtro de fase, ignora o de ação pra os chips mostrarem o total)
+  const contagemAcao = useMemo(() => {
+    const base = filtroFase ? metrics.filter(m => m.fase === filtroFase) : metrics
+    const c: Record<string, number> = {}
+    for (const m of base) { const a = calcAcao(m, roasMin, regras); if (a) c[a] = (c[a] ?? 0) + 1 }
+    return c
+  }, [metrics, filtroFase, roasMin, regras])
 
   const fmtDate = (d: string) => format(parseISO(d), 'dd/MM/yy')
 
@@ -617,6 +674,30 @@ export default function AdAnalysisPage() {
           </div>
         </div>
 
+        {/* Barra de decisão (Framework fundido) */}
+        {!loading && metrics.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mr-1">Decisão</span>
+            <button
+              onClick={() => setFiltroAcao(null)}
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border transition ${filtroAcao === null ? 'bg-primary/20 text-primary border-primary/40' : 'bg-muted/30 text-muted-foreground border-border hover:border-primary/30'}`}
+            >
+              Todos
+            </button>
+            {(['+20% orçamento', 'Manter', '-20% ou pausar', 'Pausar'] as AcaoOtimizacao[]).map(a =>
+              (contagemAcao[a] ?? 0) > 0 ? (
+                <button
+                  key={a}
+                  onClick={() => setFiltroAcao(filtroAcao === a ? null : a)}
+                  className={`text-xs font-bold px-2.5 py-1 rounded-full border transition ${filtroAcao === a ? ACAO_META[a].chipOn : ACAO_META[a].chip}`}
+                >
+                  {ACAO_META[a].label} · {contagemAcao[a]}
+                </button>
+              ) : null
+            )}
+          </div>
+        )}
+
         {/* Cards grid */}
         <div className="p-5">
           {loading ? (
@@ -634,6 +715,7 @@ export default function AdAnalysisPage() {
                   key={`${m.ad_name}-${m.fase ?? 'x'}-${i}`}
                   metric={m}
                   onExpand={() => setExpanded(m)}
+                  acao={calcAcao(m, roasMin, regras)}
                 />
               ))}
             </div>

@@ -16,7 +16,6 @@ const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/sales', label: 'Vendas', icon: ShoppingCart },
   { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
-  { href: '/framework', label: 'Framework', icon: TrendingUp },
   { href: '/criativos', label: 'Criativos', icon: Film },
   { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
