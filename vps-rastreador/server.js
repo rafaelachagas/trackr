@@ -105,13 +105,21 @@ async function scrape(url, { maxScrolls = 12, debug = false } = {}) {
   const page = await ctx.newPage()
   const nodes = []
   let primeiraRaiz = null
+  const debugUrls = []
+  let respostasComAd = 0
 
   page.on('response', async (res) => {
     try {
       const u = res.url()
-      if (!u.includes('/api/graphql') && !u.includes('/ads/library/async')) return
+      const ct = res.headers()['content-type'] || ''
+      // Rede mais ampla: qualquer resposta JSON/graphql/ads que tenha marcador de anúncio.
+      if (!u.includes('graphql') && !u.includes('/ads/') && !ct.includes('json')) return
       const txt = await res.text()
-      if (!txt || (!txt.includes('snapshot') && !txt.includes('ad_archive'))) return
+      if (!txt) return
+      const temAd = txt.includes('ad_archive') || txt.includes('adArchiveID') || txt.includes('collationCount') || txt.includes('"snapshot"')
+      if (!temAd) return
+      respostasComAd++
+      if (debug && debugUrls.length < 25) debugUrls.push(u.slice(0, 120))
       for (const obj of tentarJSON(txt)) {
         if (debug && !primeiraRaiz) primeiraRaiz = obj
         coletarAnuncios(obj, nodes)
@@ -119,13 +127,33 @@ async function scrape(url, { maxScrolls = 12, debug = false } = {}) {
     } catch (_) {}
   })
 
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {})
-  await page.waitForTimeout(3500)
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {})
+
+  // Dispensa o aviso de cookies (vários rótulos/idiomas) que bloqueia o carregamento.
+  for (const rotulo of ['Permitir todos os cookies', 'Recusar cookies opcionais', 'Allow all cookies', 'Decline optional cookies', 'Aceitar tudo', 'Only allow essential cookies']) {
+    try {
+      const btn = page.getByRole('button', { name: rotulo })
+      if (await btn.count()) { await btn.first().click({ timeout: 2000 }); break }
+    } catch (_) {}
+  }
+  await page.waitForTimeout(4000)
 
   // Rola pra disparar a paginação (lazy-load) e junta mais anúncios.
   for (let i = 0; i < maxScrolls; i++) {
     await page.mouse.wheel(0, 4000)
     await page.waitForTimeout(1500)
+  }
+
+  // Diagnóstico (só em debug): pra onde foi, o que apareceu, quantas respostas de anúncio.
+  let diag = null
+  if (debug) {
+    diag = {
+      final_url: page.url(),
+      title: await page.title().catch(() => null),
+      respostas_com_ad: respostasComAd,
+      urls_capturadas: debugUrls,
+      body_inicio: await page.evaluate(() => document.body ? document.body.innerText.slice(0, 500) : '').catch(() => ''),
+    }
   }
 
   await ctx.close()
@@ -149,12 +177,30 @@ async function scrape(url, { maxScrolls = 12, debug = false } = {}) {
   }
 
   const resp = { ok: true, stats, criativos }
-  if (debug) resp.raw_amostra = primeiraRaiz
+  if (debug) { resp.raw_amostra = primeiraRaiz; resp.diag = diag }
   return resp
 }
 
 // —— Rotas —————————————————————————————————————————————————————————————
 app.get('/', (_req, res) => res.json({ ok: true, service: 'rastreador-scraper' }))
+
+// Teste fácil: GET /scrape?page_id=NUMERO (só dígitos, à prova de terminal ruim).
+// Monta a URL padrão da biblioteca a partir do page_id. Auth por ?key= ou header.
+app.get('/scrape', async (req, res) => {
+  const key = req.query.key || req.headers['x-api-key']
+  if (APIKEY && key !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
+  const pageId = String(req.query.page_id || '').replace(/\D/g, '')
+  if (!pageId) return res.status(400).json({ error: 'page_id ausente (só o número da página)' })
+  const country = String(req.query.country || 'BR').replace(/[^A-Za-z]/g, '') || 'BR'
+  const url = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&is_targeted_country=false&media_type=all&search_type=page&view_all_page_id=${pageId}`
+  try {
+    const out = await scrape(url, { maxScrolls: Number(req.query.maxScrolls) || 12, debug: req.query.debug === '1' })
+    res.json(out)
+  } catch (err) {
+    console.error('[scrape-get]', err)
+    res.status(500).json({ error: String(err && err.message || err) })
+  }
+})
 
 app.post('/scrape', async (req, res) => {
   if (APIKEY && req.headers['x-api-key'] !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
