@@ -24,8 +24,9 @@
 }
 
 .dark {
-  /* Dark Theme (Noturno) */
-  --background: #020617;
+  /* Dark Theme (Noturno) — paleta NEUTRA (não azul-slate). Os cards são #13181a;
+     o fundo/inputs/superfícies acompanham em tons neutros pra não puxar pro navy. */
+  --background: #0b0f10;
   --foreground: #f8fafc;
   --card: #13181a;
   --card-foreground: #f8fafc;
@@ -33,16 +34,16 @@
   --popover-foreground: #f8fafc;
   --primary: #00aeef;
   --primary-foreground: #ffffff;
-  --secondary: #1e293b;
+  --secondary: #1e2427;
   --secondary-foreground: #f8fafc;
-  --muted: #1e293b;
+  --muted: #1e2427;
   --muted-foreground: #6b7980;
-  --accent: #1e293b;
+  --accent: #1e2427;
   --accent-foreground: #f8fafc;
   --destructive: #ef4444;
   --destructive-foreground: #f8fafc;
   --border: rgba(255, 255, 255, 0.05);
-  --input: #1e293b;
+  --input: #0e1315;
   --ring: #00aeef;
 }
 

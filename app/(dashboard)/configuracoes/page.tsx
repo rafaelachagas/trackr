@@ -96,7 +96,7 @@ export default function ConfiguracoesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-            Integrações e Setup
+            Configurações
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Critérios de decisão do painel. As fontes de dados (Meta e Hotmart) ficam em <span className="text-foreground font-medium">Fontes de dados</span>.
@@ -108,7 +108,7 @@ export default function ConfiguracoesPage() {
           className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-2.5 rounded-lg text-sm font-semibold transition shadow-lg shadow-primary/20 disabled:opacity-50 whitespace-nowrap"
         >
           <Save className="w-4 h-4" />
-          {saving ? 'Salvando...' : 'Salvar Setup'}
+          {saving ? 'Salvando...' : 'Salvar'}
         </button>
       </div>
 

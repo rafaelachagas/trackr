@@ -206,11 +206,11 @@ export default function Sidebar() {
             >
               {configActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
               <Settings className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!configActive ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: configActive ? '#00aeef' : '#71777a' }} />
-              <span className={labelClass} style={{ color: configActive ? '#00aeef' : '' }}>Integrações e Setup</span>
+              <span className={labelClass} style={{ color: configActive ? '#00aeef' : '' }}>Configurações</span>
             </Link>
             {collapsed && (
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                Integrações e Setup
+                Configurações
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
               </div>
             )}

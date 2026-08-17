@@ -185,7 +185,7 @@ export default function MobileNav() {
                 style={pathname === '/configuracoes' ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
               >
                 <Settings className="w-5 h-5 flex-shrink-0" style={{ color: pathname === '/configuracoes' ? '#00aeef' : '#71777a' }} />
-                Integrações e Setup
+                Configurações
               </Link>
             </div>
           </nav>
