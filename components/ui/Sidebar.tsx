@@ -21,6 +21,8 @@ import {
   DollarSign,
   ChevronLeft,
   ChevronRight,
+  Wrench,
+  Binoculars,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
@@ -41,12 +43,19 @@ const dataSources = [
   { href: '/data-sources/ad-accounts', label: 'Contas de anúncios', icon: CreditCard },
 ]
 
+const ferramentas = [
+  { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars, beta: true },
+  { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
+]
+
 export default function Sidebar() {
   const pathname = usePathname()
   const { sincronizarTudo, isRefreshing: sincronizando } = useDashboard()
   const [collapsed, setCollapsed] = useState(false)
   const [dataSourcesOpen, setDataSourcesOpen] = useState(pathname.startsWith('/data-sources'))
   const dataSourcesActive = pathname.startsWith('/data-sources')
+  const [ferramentasOpen, setFerramentasOpen] = useState(pathname.startsWith('/ferramentas'))
+  const ferramentasActive = pathname.startsWith('/ferramentas')
 
   const labelClass = `overflow-hidden whitespace-nowrap transition-all duration-300 ${
     collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[200px] opacity-100 ml-3'
@@ -148,6 +157,40 @@ export default function Sidebar() {
                     <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : '#71777a' }}>
                       <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-white' : ''}`} style={{ color: active ? '#00aeef' : '#71777a' }} />
                       {label}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Ferramentas */}
+          <div className="relative group/item">
+            <button
+              onClick={() => { if (collapsed) { setCollapsed(false); setFerramentasOpen(true) } else { setFerramentasOpen(v => !v) } }}
+              className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
+              style={ferramentasActive || ferramentasOpen ? { backgroundColor: '#5dd3ff14' } : {}}
+            >
+              {(ferramentasActive || ferramentasOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
+              <Wrench className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(ferramentasActive || ferramentasOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : '#71777a' }} />
+              <span className={`${labelClass} flex-1 text-left`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : '' }}>Ferramentas</span>
+              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${ferramentasOpen ? 'rotate-180' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : '#71777a' }} />
+            </button>
+            {collapsed && (
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+                Ferramentas
+                <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
+              </div>
+            )}
+            <div className={`overflow-hidden transition-all duration-300 ${ferramentasOpen && !collapsed ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'}`}>
+              <div className="ml-3 border-l border-white/5 pl-3 py-1 space-y-1">
+                {ferramentas.map(({ href, label, icon: Icon, beta }) => {
+                  const active = pathname === href
+                  return (
+                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : '#71777a' }}>
+                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-white' : ''}`} style={{ color: active ? '#00aeef' : '#71777a' }} />
+                      <span className="flex-1">{label}</span>
+                      {beta && <span className="text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-primary/15 text-primary">Beta</span>}
                     </Link>
                   )
                 })}

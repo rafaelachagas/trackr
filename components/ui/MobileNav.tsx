@@ -7,6 +7,7 @@ import {
   LayoutDashboard, TrendingUp, Settings, Zap, RefreshCw, LogOut,
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
+  Wrench, Binoculars,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -26,6 +27,11 @@ const navigation = [
 const dataSources = [
   { href: '/data-sources/sales', label: 'Vendas', icon: DollarSign },
   { href: '/data-sources/ad-accounts', label: 'Contas de anúncios', icon: CreditCard },
+]
+
+const ferramentas = [
+  { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars },
+  { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp },
 ]
 
 export default function MobileNav() {
@@ -142,6 +148,30 @@ export default function MobileNav() {
                   >
                     <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : '#71777a' }} />
                     {label}
+                  </Link>
+                )
+              })}
+            </div>
+
+            {/* Ferramentas */}
+            <div className="pt-2 mt-2 border-t border-white/5">
+              <div className="flex items-center gap-2 px-4 pt-2 pb-1">
+                <Wrench className="w-4 h-4" style={{ color: '#71777a' }} />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Ferramentas</span>
+              </div>
+              {ferramentas.map(({ href, label, icon: Icon }) => {
+                const active = pathname === href
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setOpen(false)}
+                    className={`${itemClass(active)} ml-2`}
+                    style={active ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : '#71777a' }} />
+                    <span className="flex-1">{label}</span>
+                    <span className="text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-primary/15 text-primary">Beta</span>
                   </Link>
                 )
               })}
