@@ -232,18 +232,18 @@ export default function ContasAnunciosPage() {
   const contasAdicionadas = contasFiltradas.filter(c => selecionadas.includes(c.id.replace('act_', '')))
 
   return (
-    <div className="max-w-4xl mx-auto text-slate-200 pb-12">
+    <div className="max-w-4xl mx-auto text-foreground pb-12 px-4 sm:px-6 lg:px-8">
 
       {/* Cabeçalho */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Contas de Anúncios</h1>
-          <p className="text-slate-400 text-sm mt-1">Gerencie suas contas de publicidade</p>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Contas de Anúncios</h1>
+          <p className="text-muted-foreground text-sm mt-1">Gerencie suas contas de publicidade</p>
         </div>
         <button
           onClick={carregar}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700 bg-slate-800/50 text-sm text-slate-300 hover:text-white hover:bg-slate-700 transition"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition self-start"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Atualizar
@@ -251,40 +251,40 @@ export default function ContasAnunciosPage() {
       </div>
 
       {/* Tabs de plataforma */}
-      <div className="flex gap-2 mb-6 bg-slate-800/40 border border-slate-700/50 rounded-xl p-1">
-        <button className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-slate-700 text-white shadow transition">
+      <div className="flex gap-2 mb-6 bg-card border border-border rounded-xl p-1">
+        <button className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-primary text-white shadow transition">
           Meta Ads
         </button>
-        <button disabled className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-slate-600 cursor-not-allowed">
+        <button disabled className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
           Google Ads
         </button>
       </div>
 
       {/* Card Meta Ads */}
-      <div className="bg-[#0f1623] border border-slate-800 rounded-2xl overflow-hidden mb-4">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-800">
+      <div className="bg-card border border-border rounded-2xl overflow-hidden mb-4">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-              <svg className="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center">
+              <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
               </svg>
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">Meta Ads</p>
-              <p className="text-xs text-slate-500">Conecte e gerencie contas</p>
+              <p className="text-sm font-semibold text-foreground">Meta Ads</p>
+              <p className="text-xs text-muted-foreground">Conecte e gerencie contas</p>
             </div>
           </div>
 
           {metaAccessToken ? (
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-full px-3 py-1.5">
+              <div className="flex items-center gap-2 bg-background border border-border rounded-full px-3 py-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
-                <span className="text-xs font-semibold text-slate-200">{metaUserName || 'Conectado'}</span>
+                <span className="text-xs font-semibold text-foreground">{metaUserName || 'Conectado'}</span>
               </div>
               <button
                 onClick={conectarMeta}
                 disabled={metaConectando}
-                className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-full transition"
+                className="text-xs font-semibold text-muted-foreground hover:text-foreground border border-border hover:border-primary px-3 py-1.5 rounded-full transition"
               >
                 {metaConectando ? '...' : 'TROCAR'}
               </button>
@@ -310,20 +310,20 @@ export default function ContasAnunciosPage() {
         </div>
 
         {/* Token manual (alternativa ao OAuth / usar token vitalício System User) */}
-        <div className="px-6 py-3 border-b border-slate-800">
-          <button onClick={() => setManualOpen(v => !v)} className="text-xs font-semibold text-slate-400 hover:text-slate-200 transition">
+        <div className="px-6 py-3 border-b border-border">
+          <button onClick={() => setManualOpen(v => !v)} className="text-xs font-semibold text-muted-foreground hover:text-foreground transition">
             {manualOpen ? '▾' : '▸'} Usar token manual {metaAccessToken ? '(trocar)' : '(alternativa ao Facebook)'}
           </button>
           {manualOpen && (
             <div className="mt-3 space-y-2">
-              <p className="text-[11px] text-slate-500">Cole aqui o token da Meta (System User vitalício, ou o token estendido do Graph Explorer). Ele valida, salva e lista suas contas.</p>
+              <p className="text-[11px] text-muted-foreground">Cole aqui o token da Meta (System User vitalício, ou o token estendido do Graph Explorer). Ele valida, salva e lista suas contas.</p>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="password"
                   value={tokenManual}
                   onChange={(e) => setTokenManual(e.target.value)}
                   placeholder="Cole o token aqui"
-                  className="flex-1 px-3 py-2 rounded-lg text-sm bg-slate-800 border border-slate-700 text-slate-200 outline-none focus:border-slate-500"
+                  className="flex-1 px-3 py-2 rounded-lg text-sm bg-background border border-border text-foreground outline-none focus:border-primary"
                 />
                 <button
                   onClick={conectarComToken}
@@ -343,7 +343,7 @@ export default function ContasAnunciosPage() {
             <button
               onClick={conectarMeta}
               disabled={metaConectando}
-              className="w-full py-3 rounded-xl border border-dashed border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500 text-sm transition"
+              className="w-full py-3 rounded-xl border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary text-sm transition"
             >
               + Adicionar conta de anúncios
             </button>
@@ -355,15 +355,12 @@ export default function ContasAnunciosPage() {
                   {adAccountIds.map(id => {
                     const conta = metaContas.find(c => c.id.replace('act_', '') === id)
                     return (
-                      <div key={id} className="relative flex items-center justify-between p-3 bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-hidden">
-                        {/* corner accents */}
-                        <span className="pointer-events-none absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-primary/60 rounded-tl-xl" />
-                        <span className="pointer-events-none absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-primary/60 rounded-br-xl" />
+                      <div key={id} className="flex items-center justify-between p-3 bg-background border border-border rounded-xl overflow-hidden">
                         <div className="flex items-center gap-2.5">
                           <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
                           <div>
-                            {conta?.name && <p className="text-sm font-medium text-slate-200">{conta.name}</p>}
-                            <p className="text-xs text-slate-500" translate="no">{id}{conta?.currency ? ` · ${conta.currency}` : ''}</p>
+                            {conta?.name && <p className="text-sm font-medium text-foreground">{conta.name}</p>}
+                            <p className="text-xs text-muted-foreground" translate="no">{id}{conta?.currency ? ` · ${conta.currency}` : ''}</p>
                           </div>
                         </div>
                         <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full font-semibold">Ativa</span>
@@ -376,7 +373,7 @@ export default function ContasAnunciosPage() {
               {/* Botão selecionar contas */}
               <button
                 onClick={abrirModal}
-                className="w-full py-3 rounded-xl border border-dashed border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500 text-sm font-medium transition flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary text-sm font-medium transition flex items-center justify-center gap-2"
               >
                 <ChevronDown className="w-4 h-4" />
                 {adAccountIds.length > 0 ? 'Selecionar ou atualizar contas' : 'Selecionar conta de anúncios'}
@@ -388,26 +385,26 @@ export default function ContasAnunciosPage() {
 
       {/* Imposto sobre gastos em anúncios */}
       {metaAccessToken && (
-        <div className="bg-[#0f1623] border border-slate-800 rounded-2xl overflow-hidden mb-4">
-          <div className="px-6 py-4 border-b border-slate-800">
-            <p className="text-sm font-semibold text-white">Imposto</p>
-            <p className="text-xs text-slate-500 mt-0.5">Configure o imposto dos seus gastos com anúncios</p>
+        <div className="bg-card border border-border rounded-2xl overflow-hidden mb-4">
+          <div className="px-6 py-4 border-b border-border">
+            <p className="text-sm font-semibold text-foreground">Imposto</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Configure o imposto dos seus gastos com anúncios</p>
           </div>
           <div className="px-6 py-5">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Imposto sobre gastos em anúncios (Meta)</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Imposto sobre gastos em anúncios (Meta)</p>
             <div className="flex items-end gap-3 flex-wrap">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Alíquota (%)</label>
-                <div className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 w-36 focus-within:border-primary transition">
+                <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Alíquota (%)</label>
+                <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2 w-36 focus-within:border-primary transition">
                   <input
                     type="text"
                     inputMode="decimal"
                     value={impostoPct}
                     onChange={e => setImpostoPct(e.target.value)}
                     placeholder="13,83"
-                    className="bg-transparent text-sm text-white flex-1 min-w-0 outline-none"
+                    className="bg-transparent text-sm text-foreground flex-1 min-w-0 outline-none"
                   />
-                  <span className="text-xs text-slate-500">%</span>
+                  <span className="text-xs text-muted-foreground">%</span>
                 </div>
               </div>
               <button
@@ -419,9 +416,9 @@ export default function ContasAnunciosPage() {
                 {salvandoImposto ? 'Aplicando...' : 'Salvar e aplicar'}
               </button>
             </div>
-            <p className="text-[11px] text-slate-500 mt-3">
-              Aplicado <span className="text-slate-300 font-medium">apenas às contas em BRL</span> — a conta em dólar (BMUS) fica de fora.
-              O imposto <span className="text-slate-300 font-medium">não é somado ao gasto</span>: ele é calculado e salvo por dia, e aparece no card
+            <p className="text-[11px] text-muted-foreground mt-3">
+              Aplicado <span className="text-foreground font-medium">apenas às contas em BRL</span> — a conta em dólar (BMUS) fica de fora.
+              O imposto <span className="text-foreground font-medium">não é somado ao gasto</span>: ele é calculado e salvo por dia, e aparece no card
               &quot;Imposto total&quot; da Visão Geral respeitando o filtro de período. Ao salvar, os últimos 90 dias são recalculados.
             </p>
           </div>
@@ -435,27 +432,27 @@ export default function ContasAnunciosPage() {
           onClick={() => setModalAberto(false)}
         >
           <div
-            className="bg-[#0f1623] border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]"
+            className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]"
             onClick={e => e.stopPropagation()}
           >
             {/* Header modal */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
-              <h2 className="text-sm font-bold text-white">Selecionar contas de anúncio</h2>
-              <button onClick={() => setModalAberto(false)} className="text-slate-500 hover:text-white transition">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="text-sm font-bold text-foreground">Selecionar contas de anúncio</h2>
+              <button onClick={() => setModalAberto(false)} className="text-muted-foreground hover:text-foreground transition">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Busca */}
-            <div className="px-5 py-3 border-b border-slate-800">
-              <div className="flex items-center gap-2.5 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
-                <Search className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            <div className="px-5 py-3 border-b border-border">
+              <div className="flex items-center gap-2.5 bg-background border border-border rounded-lg px-3 py-2 focus-within:border-primary transition">
+                <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <input
                   type="text"
                   value={busca}
                   onChange={e => setBusca(e.target.value)}
                   placeholder="Buscar por nome ou ID"
-                  className="bg-transparent text-sm text-slate-200 placeholder-slate-500 flex-1 outline-none"
+                  className="bg-transparent text-sm text-foreground placeholder-muted-foreground flex-1 outline-none"
                   autoFocus
                 />
               </div>
@@ -464,17 +461,17 @@ export default function ContasAnunciosPage() {
             {/* Lista */}
             <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1">
               {carregandoContas && (
-                <div className="flex items-center justify-center py-8 gap-2 text-sm text-slate-500">
+                <div className="flex items-center justify-center py-8 gap-2 text-sm text-muted-foreground">
                   <RefreshCw className="w-4 h-4 animate-spin" /> Buscando contas...
                 </div>
               )}
               {!carregandoContas && metaContas.length === 0 && (
-                <p className="text-center text-sm text-slate-500 py-6">Nenhuma conta encontrada.<br />Reconecte sua conta do Facebook.</p>
+                <p className="text-center text-sm text-muted-foreground py-6">Nenhuma conta encontrada.<br />Reconecte sua conta do Facebook.</p>
               )}
 
               {contasAdicionadas.length > 0 && (
                 <>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pb-1">Já adicionadas</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pb-1">Já adicionadas</p>
                   {contasAdicionadas.map(c => {
                     const id = c.id.replace('act_', '')
                     return (
@@ -493,7 +490,7 @@ export default function ContasAnunciosPage() {
 
               {contasNovas.length > 0 && (
                 <>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pb-1">Novas contas</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pb-1">Novas contas</p>
                   {contasNovas.map(c => {
                     const id = c.id.replace('act_', '')
                     return (
@@ -511,12 +508,12 @@ export default function ContasAnunciosPage() {
             </div>
 
             {/* Footer modal */}
-            <div className="px-5 py-4 border-t border-slate-800 flex items-center justify-between gap-3">
-              <span className="text-xs text-slate-500">{selecionadas.length} selecionada(s)</span>
+            <div className="px-5 py-4 border-t border-border flex items-center justify-between gap-3">
+              <span className="text-xs text-muted-foreground">{selecionadas.length} selecionada(s)</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setModalAberto(false)}
-                  className="px-4 py-2 text-sm text-slate-400 hover:text-white transition"
+                  className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition"
                 >
                   Cancelar
                 </button>
@@ -535,18 +532,18 @@ export default function ContasAnunciosPage() {
 
       {/* Gasto Mensal */}
       {gastosMensais.length > 0 && (
-        <div className="bg-[#0f1623] border border-slate-800 rounded-2xl overflow-hidden mt-4">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden mt-4">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
             <div className="flex items-center gap-2.5">
-              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
-              <span className="text-sm font-semibold text-white">Gasto Mensal</span>
+              <span className="text-sm font-semibold text-foreground">Gasto Mensal</span>
             </div>
             <button
               onClick={sincronizarHistorico}
               disabled={sincronizandoHistorico}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border hover:border-primary px-3 py-1.5 rounded-lg transition disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${sincronizandoHistorico ? 'animate-spin' : ''}`} />
               {sincronizandoHistorico ? 'Sincronizando...' : 'Sincronizar 90 dias'}
@@ -556,34 +553,34 @@ export default function ContasAnunciosPage() {
             {/* Totais */}
             <div className="grid grid-cols-3 gap-4 mb-6">
               <div className="text-center">
-                <p className="text-2xl font-black text-white">
+                <p className="text-2xl font-black text-foreground">
                   {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0))}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">Total {gastosMensais.length} {gastosMensais.length === 1 ? 'mês' : 'meses'}</p>
+                <p className="text-xs text-muted-foreground mt-1">Total {gastosMensais.length} {gastosMensais.length === 1 ? 'mês' : 'meses'}</p>
               </div>
-              <div className="text-center border-x border-slate-800">
+              <div className="text-center border-x border-border">
                 <p className="text-2xl font-black text-primary">
                   {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0) / gastosMensais.length)}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">Média mensal</p>
+                <p className="text-xs text-muted-foreground mt-1">Média mensal</p>
               </div>
               <div className="text-center">
-                <p className="text-lg font-bold text-slate-400">Sem limites</p>
-                <p className="text-xs text-slate-600 mt-1">no seu plano</p>
+                <p className="text-lg font-bold text-muted-foreground">Sem limites</p>
+                <p className="text-xs text-muted-foreground mt-1">no seu plano</p>
               </div>
             </div>
             {/* Barras por mês */}
-            <p className="text-xs text-slate-500 font-medium mb-3">Gasto por mês</p>
+            <p className="text-xs text-muted-foreground font-medium mb-3">Gasto por mês</p>
             <div className="space-y-3">
               {(() => {
                 const maxVal = Math.max(...gastosMensais.map(g => g.total))
                 return gastosMensais.map(g => (
                   <div key={g.mes}>
                     <div className="flex items-center justify-between text-xs mb-1.5">
-                      <span className="text-slate-400">{formatMes(g.mes)}</span>
-                      <span className="text-slate-300 font-semibold">{formatBRL(g.total)}</span>
+                      <span className="text-muted-foreground">{formatMes(g.mes)}</span>
+                      <span className="text-foreground font-semibold">{formatBRL(g.total)}</span>
                     </div>
-                    <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <div className="h-2 rounded-full bg-background overflow-hidden">
                       <div
                         className="h-full rounded-full bg-primary transition-all"
                         style={{ width: `${maxVal > 0 ? (g.total / maxVal) * 100 : 0}%` }}
@@ -619,10 +616,10 @@ function ContaItem({ conta, selecionada, onToggle, label }: {
 }) {
   const id = conta.id.replace('act_', '')
   return (
-    <div className="flex items-center justify-between px-3 py-3 rounded-xl border border-slate-700/60 bg-slate-800/30 hover:bg-slate-800/60 transition">
+    <div className="flex items-center justify-between px-3 py-3 rounded-xl border border-border bg-background hover:bg-accent transition">
       <div>
-        <p className="text-sm font-semibold text-slate-200">{conta.name}</p>
-        <p className="text-xs text-slate-500" translate="no">{id}</p>
+        <p className="text-sm font-semibold text-foreground">{conta.name}</p>
+        <p className="text-xs text-muted-foreground" translate="no">{id}</p>
       </div>
       <button
         onClick={onToggle}
