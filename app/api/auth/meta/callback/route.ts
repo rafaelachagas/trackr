@@ -55,23 +55,32 @@ export async function GET(request: NextRequest) {
     const accounts: { id: string; name: string; account_status: number }[] = accountsJson.data ?? []
     const userName: string = userJson.name ?? ''
 
-    // Salva token e nome do usuário
-    await Promise.all([
-      supabaseAdmin.from('configuracoes').upsert(
-        { chave: 'meta_access_token', valor: accessToken, updated_at: new Date().toISOString() },
-        { onConflict: 'chave' }
-      ),
-      supabaseAdmin.from('configuracoes').upsert(
-        { chave: 'meta_user_name', valor: userName, updated_at: new Date().toISOString() },
-        { onConflict: 'chave' }
-      ),
-    ])
+    // configuracoes.org_id é NOT NULL — sem ele o upsert falha CALADO (retorna
+    // error, não lança) e o token nunca persistia. Resolve a org (single-tenant).
+    const { data: org } = await supabaseAdmin
+      .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
+    const orgId = org?.id
+    const now = new Date().toISOString()
+
+    // Salva token e nome do usuário (com org_id!). Checa o erro pra não mentir sucesso.
+    const { error: erroSalvar } = await supabaseAdmin.from('configuracoes').upsert(
+      [
+        { chave: 'meta_access_token', valor: accessToken, org_id: orgId, updated_at: now },
+        { chave: 'meta_user_name', valor: userName, org_id: orgId, updated_at: now },
+      ],
+      { onConflict: 'chave' }
+    )
+    if (erroSalvar) {
+      return htmlResponse(
+        `window.opener?.postMessage({type:'meta_auth_error',error:${JSON.stringify('Falha ao salvar o token: ' + erroSalvar.message)}},'*');window.close()`
+      )
+    }
 
     // Se só tem uma conta, salva automaticamente
     if (accounts.length === 1) {
       const accountId = accounts[0].id.replace('act_', '')
       await supabaseAdmin.from('configuracoes').upsert(
-        { chave: 'meta_ad_account_id', valor: accountId, updated_at: new Date().toISOString() },
+        { chave: 'meta_ad_account_id', valor: accountId, org_id: orgId, updated_at: now },
         { onConflict: 'chave' }
       )
     }
