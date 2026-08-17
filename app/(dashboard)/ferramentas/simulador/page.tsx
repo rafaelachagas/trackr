@@ -30,7 +30,7 @@ function defCrm(i: number): CrmCenario {
 }
 
 const brl = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(isFinite(v) ? v : 0)
-const cardStyle: React.CSSProperties = { backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.05)' }
+const cardClass = 'bg-card border border-border'
 const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0' }
 
 /* ————————————— Cálculos ————————————— */
@@ -137,7 +137,7 @@ export default function SimuladorPage() {
   const melhor = totais.length ? totais.indexOf(Math.max(...totais)) : -1
 
   return (
-    <div className="pb-20 max-w-[1200px] mx-auto w-full text-foreground space-y-6">
+    <div className="pb-20 max-w-[1200px] mx-auto w-full text-foreground space-y-6 px-4 sm:px-6 lg:px-8">
       {/* Cabeçalho */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
@@ -163,7 +163,7 @@ export default function SimuladorPage() {
       <p className="text-xs text-muted-foreground">Simulação atual: <b className="text-foreground">{simNome || 'nova (não salva)'}</b></p>
 
       {/* Simulações salvas */}
-      <div className="rounded-2xl p-5" style={cardStyle}>
+      <div className={`rounded-2xl p-5 ${cardClass}`}>
         <div className="flex items-center gap-2 mb-3">
           <FolderOpen className="w-4 h-4 text-muted-foreground" />
           <h2 className="text-sm font-bold">Simulações salvas</h2>
@@ -214,7 +214,7 @@ export default function SimuladorPage() {
       {/* Modal salvar */}
       {modalSalvar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={() => setModalSalvar(false)}>
-          <div className="w-full max-w-[440px] rounded-2xl p-6" style={cardStyle} onClick={(e) => e.stopPropagation()}>
+          <div className={`w-full max-w-[440px] rounded-2xl p-6 ${cardClass}`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-2"><Save className="w-4 h-4 text-primary" /><h3 className="text-base font-bold">Salvar simulação</h3></div>
               <button onClick={() => setModalSalvar(false)} className="p-1 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>

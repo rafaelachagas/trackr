@@ -57,20 +57,20 @@ export default function CadastroPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
-        <div className="w-full max-w-sm z-10">
-          <div className="bg-[#0b1222]/80 backdrop-blur-xl border border-slate-800/50 rounded-[32px] p-8 shadow-2xl shadow-black/50 text-center">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] max-w-full bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="w-full max-w-md mx-auto z-10">
+          <div className="bg-card/80 backdrop-blur-xl border border-border rounded-[32px] p-6 sm:p-8 shadow-2xl shadow-black/50 text-center">
             <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 className="w-8 h-8 text-emerald-400" />
             </div>
-            <h2 className="text-xl font-black text-white mb-2">Conta criada!</h2>
-            <p className="text-sm text-slate-400 mb-6">
-              Enviamos um link de confirmação para <span className="text-white font-semibold">{email}</span>. Acesse seu e-mail para ativar a conta.
+            <h2 className="text-xl font-black text-foreground mb-2">Conta criada!</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              Enviamos um link de confirmação para <span className="text-foreground font-semibold">{email}</span>. Acesse seu e-mail para ativar a conta.
             </p>
             <Link
               href="/login"
-              className="inline-block w-full bg-[#00aeef] hover:bg-[#0094cc] text-black font-black uppercase tracking-tighter py-3.5 rounded-xl transition-all"
+              className="inline-block w-full bg-primary hover:bg-primary/90 text-black font-black uppercase tracking-tighter py-3.5 rounded-xl transition-all"
             >
               Ir para o Login
             </Link>
@@ -81,88 +81,88 @@ export default function CadastroPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] max-w-full bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
 
-      <div className="w-full max-w-sm z-10">
-        <div className="bg-[#0b1222]/80 backdrop-blur-xl border border-slate-800/50 rounded-[32px] p-8 shadow-2xl shadow-black/50">
+      <div className="w-full max-w-md mx-auto z-10">
+        <div className="bg-card/80 backdrop-blur-xl border border-border rounded-[32px] p-6 sm:p-8 shadow-2xl shadow-black/50">
 
           <div className="flex flex-col items-center text-center mb-8">
-            <div className="w-16 h-16 rounded-3xl bg-[#0b1222] border border-[#1e293b] flex items-center justify-center shadow-lg shadow-black/50 mb-4 relative overflow-hidden">
-              <div className="absolute inset-0 bg-[#00aeef]/10" />
-              <Zap className="w-8 h-8 text-[#00aeef] relative z-10" strokeWidth={2.5} />
+            <div className="w-16 h-16 rounded-3xl bg-background border border-border flex items-center justify-center shadow-lg shadow-black/50 mb-4 relative overflow-hidden">
+              <div className="absolute inset-0 bg-primary/10" />
+              <Zap className="w-8 h-8 text-primary relative z-10" strokeWidth={2.5} />
             </div>
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white">TRACKR</h1>
-            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-2">
+            <h1 className="text-3xl font-black italic uppercase tracking-tighter text-foreground">TRACKR</h1>
+            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-2">
               Criar nova conta
             </p>
           </div>
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">
                 Nome
               </label>
               <div className="relative group">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-[#00aeef] transition-colors" />
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-primary transition-colors" />
                 <input
                   type="text"
                   placeholder="seu nome"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   required
-                  className="w-full bg-[#f1f5f9] border-none rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#00aeef]/50 transition-all outline-none"
+                  className="w-full bg-[#f1f5f9] border-none rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-primary/50 transition-all outline-none"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">
                 E-mail
               </label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-[#00aeef] transition-colors" />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-primary transition-colors" />
                 <input
                   type="email"
                   placeholder="insira seu e-mail"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
-                  className="w-full bg-[#f1f5f9] border-none rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#00aeef]/50 transition-all outline-none"
+                  className="w-full bg-[#f1f5f9] border-none rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-primary/50 transition-all outline-none"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">
                 Senha
               </label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-[#00aeef] transition-colors" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-primary transition-colors" />
                 <input
                   type="password"
                   placeholder="mínimo 8 caracteres"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
-                  className="w-full bg-[#f1f5f9] border-none rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#00aeef]/50 transition-all outline-none"
+                  className="w-full bg-[#f1f5f9] border-none rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-primary/50 transition-all outline-none"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">
                 Confirmar Senha
               </label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-[#00aeef] transition-colors" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-primary transition-colors" />
                 <input
                   type="password"
                   placeholder="repita a senha"
                   value={confirm}
                   onChange={e => setConfirm(e.target.value)}
                   required
-                  className="w-full bg-[#f1f5f9] border-none rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-[#00aeef]/50 transition-all outline-none"
+                  className="w-full bg-[#f1f5f9] border-none rounded-xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-primary/50 transition-all outline-none"
                 />
               </div>
             </div>
@@ -177,16 +177,16 @@ export default function CadastroPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#00aeef] hover:bg-[#0094cc] disabled:opacity-60 text-black font-black uppercase tracking-tighter py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_25px_rgba(0,174,239,0.3)] hover:shadow-[0_0_35px_rgba(0,174,239,0.4)] active:scale-[0.98]"
+              className="w-full bg-primary hover:bg-primary/90 disabled:opacity-60 text-black font-black uppercase tracking-tighter py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30 active:scale-[0.98]"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Criar Conta'}
             </button>
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-[10px] text-slate-500">
+            <p className="text-[10px] text-muted-foreground">
               Já tem uma conta?{' '}
-              <Link href="/login" className="text-[#00aeef] hover:underline font-semibold">
+              <Link href="/login" className="text-primary hover:underline font-semibold">
                 Fazer login
               </Link>
             </p>

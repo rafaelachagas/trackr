@@ -277,7 +277,7 @@ export default function LancamentoPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Lançamento Manual</h1>
           <p className="text-sm text-muted-foreground mt-1">Registre vendas e gastos por criativo</p>
@@ -295,7 +295,7 @@ export default function LancamentoPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div onClick={() => setTab('vendas')} className={`bg-card border rounded-2xl p-5 cursor-pointer transition-all ${tab === 'vendas' ? 'border-primary/50 shadow-lg shadow-primary/10' : 'border-border hover:border-border/80'}`}>
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Vendas Manuais</p>
@@ -363,7 +363,7 @@ export default function LancamentoPage() {
                   </div>
 
                   {isOpen && (
-                    <div className="border-t border-border/30">
+                    <div className="border-t border-border/30 overflow-x-auto">
                       {tab === 'vendas' ? (
                         <table className="w-full text-sm">
                           <thead>

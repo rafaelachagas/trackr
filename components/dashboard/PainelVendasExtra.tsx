@@ -53,7 +53,7 @@ function VendasPorProduto({ data, isPrivate }: { data: VendasBreakdown | null; i
                   </div>
                 </div>
                 <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#00aeef' }} />
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--primary)' }} />
                 </div>
               </div>
             )

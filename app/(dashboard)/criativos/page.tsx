@@ -135,14 +135,14 @@ export default function CriativosPage() {
   const modalAberto = modalNovo || !!editando
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5 max-w-5xl px-4 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Criativos</h1>
           <p className="text-sm text-muted-foreground mt-1">Cadastro central de criativos e campanhas</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => setModalNomenclatura(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-muted/40 text-foreground border border-border hover:bg-muted/60 transition-all">
             <Tag className="w-4 h-4" />
             Gerar Nomenclatura
@@ -188,7 +188,8 @@ export default function CriativosPage() {
             {lista.length === 0 && <p className="text-xs text-muted-foreground/60 mt-1">Clique em "Novo Criativo" para começar</p>}
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/10">
                 <th className="text-left px-6 py-3 font-semibold">Criativo</th>
@@ -239,6 +240,7 @@ export default function CriativosPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

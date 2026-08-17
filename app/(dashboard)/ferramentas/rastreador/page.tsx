@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react'
 import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download, Copy, PlayCircle } from 'lucide-react'
 import type { CriativoRastreado } from '@/lib/rastreador'
 
-const cardStyle: React.CSSProperties = { backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.05)' }
+const cardClass = 'bg-card border border-border'
 const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0' }
 
 const FREQ = ['3 dias', '5 dias', '7 dias', '14 dias']
@@ -51,7 +51,7 @@ export default function RastreadorPage() {
   }, [res, tipo, ordem])
 
   return (
-    <div className="pb-20 max-w-[1200px] mx-auto w-full text-foreground space-y-6">
+    <div className="pb-20 max-w-[1200px] mx-auto w-full text-foreground space-y-6 px-4 sm:px-6 lg:px-8">
       {/* Cabeçalho */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -67,7 +67,7 @@ export default function RastreadorPage() {
       </div>
 
       {/* Busca por link */}
-      <div className="rounded-2xl p-5" style={cardStyle}>
+      <div className={`rounded-2xl p-5 ${cardClass}`}>
         <div className="flex items-center gap-2 mb-3">
           <Link2 className="w-4 h-4 text-muted-foreground" />
           <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Busca de concorrente</span>
@@ -141,7 +141,7 @@ export default function RastreadorPage() {
 
       {/* Estado vazio inicial */}
       {!res && !loading && (
-        <div className="rounded-2xl p-12 flex flex-col items-center justify-center text-center" style={cardStyle}>
+        <div className={`rounded-2xl p-12 flex flex-col items-center justify-center text-center ${cardClass}`}>
           <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3" style={{ backgroundColor: '#1a2022' }}>
             <Binoculars className="w-6 h-6 text-muted-foreground" />
           </div>
@@ -155,7 +155,7 @@ export default function RastreadorPage() {
 
 function CardCriativo({ c }: { c: CriativoRastreado }) {
   return (
-    <div className="rounded-2xl overflow-hidden flex flex-col" style={cardStyle}>
+    <div className={`rounded-2xl overflow-hidden flex flex-col ${cardClass}`}>
       {/* Mídia */}
       <div className="relative aspect-square bg-black/40 flex items-center justify-center overflow-hidden">
         {c.image_url

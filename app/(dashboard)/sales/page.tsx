@@ -90,7 +90,7 @@ export default function VendasPage() {
       </div>
 
       {/* Métricas rápidas */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-card border border-border rounded-xl p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total de Vendas</p>
           <p className={`text-2xl font-bold text-foreground ${blur}`}>{total}</p>

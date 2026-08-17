@@ -92,10 +92,10 @@ export default function GraficoDiario({ dados }: Props) {
               type="monotone"
               dataKey="roas"
               name="ROAS"
-              stroke="#00aeef"
+              stroke="var(--primary)"
               strokeWidth={3}
-              dot={{ r: 4, fill: 'var(--card)', stroke: '#00aeef', strokeWidth: 2 }}
-              activeDot={{ r: 6, fill: '#00aeef', stroke: '#fff' }}
+              dot={{ r: 4, fill: 'var(--card)', stroke: 'var(--primary)', strokeWidth: 2 }}
+              activeDot={{ r: 6, fill: 'var(--primary)', stroke: '#fff' }}
             />
             <ReferenceLine
               yAxisId="roas"

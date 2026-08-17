@@ -47,7 +47,7 @@ const MESSAGES: Record<Status, { icon: React.ReactNode; title: string; body: str
     color: 'emerald',
   },
   pending: {
-    icon: <Users className="w-8 h-8 text-[#00aeef]" />,
+    icon: <Users className="w-8 h-8 text-primary" />,
     title: 'Você foi convidado',
     body: '',
     color: 'blue',
@@ -85,33 +85,33 @@ export default function ConviteClient({ status: initialStatus, token, orgName, r
   const msg = MESSAGES[status]
 
   return (
-    <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] max-w-full bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
 
-      <div className="w-full max-w-sm z-10">
-        <div className="bg-[#0b1222]/80 backdrop-blur-xl border border-slate-800/50 rounded-[32px] p-8 shadow-2xl shadow-black/50">
+      <div className="w-full max-w-md mx-auto z-10">
+        <div className="bg-card/80 backdrop-blur-xl border border-border rounded-[32px] p-6 sm:p-8 shadow-2xl shadow-black/50">
 
           <div className="flex flex-col items-center text-center mb-8">
-            <div className="w-16 h-16 rounded-3xl bg-[#0b1222] border border-[#1e293b] flex items-center justify-center shadow-lg shadow-black/50 mb-4 relative overflow-hidden">
-              <div className="absolute inset-0 bg-[#00aeef]/10" />
-              <Zap className="w-8 h-8 text-[#00aeef] relative z-10" strokeWidth={2.5} />
+            <div className="w-16 h-16 rounded-3xl bg-background border border-border flex items-center justify-center shadow-lg shadow-black/50 mb-4 relative overflow-hidden">
+              <div className="absolute inset-0 bg-primary/10" />
+              <Zap className="w-8 h-8 text-primary relative z-10" strokeWidth={2.5} />
             </div>
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white">TRACKR</h1>
+            <h1 className="text-3xl font-black italic uppercase tracking-tighter text-foreground">TRACKR</h1>
           </div>
 
           <div className="flex flex-col items-center text-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-center">
+            <div className="w-14 h-14 rounded-2xl bg-accent border border-border flex items-center justify-center">
               {msg.icon}
             </div>
 
             <div>
-              <h2 className="text-xl font-black text-white mb-2">{msg.title}</h2>
+              <h2 className="text-xl font-black text-foreground mb-2">{msg.title}</h2>
 
               {status === 'pending' ? (
                 <div className="space-y-3">
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-muted-foreground">
                     Você foi convidado para entrar na organização{' '}
-                    <span className="text-white font-bold">{orgName}</span>
+                    <span className="text-foreground font-bold">{orgName}</span>
                     {' '}como{' '}
                     <span className="inline-flex items-center gap-1 font-bold" style={{ color: role === 'admin' ? '#f59e0b' : '#00aeef' }}>
                       {role === 'admin' ? <Crown className="w-3 h-3" /> : <User className="w-3 h-3" />}
@@ -121,16 +121,16 @@ export default function ConviteClient({ status: initialStatus, token, orgName, r
 
                   {requiresLogin ? (
                     <div className="space-y-2 pt-2">
-                      <p className="text-xs text-slate-500">Faça login ou crie uma conta para aceitar.</p>
+                      <p className="text-xs text-muted-foreground">Faça login ou crie uma conta para aceitar.</p>
                       <Link
                         href={`/login?redirect=/convite/${token}`}
-                        className="block w-full bg-[#00aeef] hover:bg-[#0094cc] text-black font-black uppercase tracking-tighter py-3.5 rounded-xl transition-all text-center"
+                        className="block w-full bg-primary hover:bg-primary/90 text-black font-black uppercase tracking-tighter py-3.5 rounded-xl transition-all text-center"
                       >
                         Entrar com conta existente
                       </Link>
                       <Link
                         href={`/cadastro?redirect=/convite/${token}`}
-                        className="block w-full text-center text-xs text-slate-400 hover:text-white transition py-2"
+                        className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition py-2"
                       >
                         Criar nova conta →
                       </Link>
@@ -143,7 +143,7 @@ export default function ConviteClient({ status: initialStatus, token, orgName, r
                       <button
                         onClick={acceptInvite}
                         disabled={loading}
-                        className="w-full bg-[#00aeef] hover:bg-[#0094cc] disabled:opacity-60 text-black font-black uppercase tracking-tighter py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_25px_rgba(0,174,239,0.3)] active:scale-[0.98]"
+                        className="w-full bg-primary hover:bg-primary/90 disabled:opacity-60 text-black font-black uppercase tracking-tighter py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/20 active:scale-[0.98]"
                       >
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aceitar Convite'}
                       </button>
@@ -151,18 +151,18 @@ export default function ConviteClient({ status: initialStatus, token, orgName, r
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-slate-400">{msg.body}</p>
+                <p className="text-sm text-muted-foreground">{msg.body}</p>
               )}
             </div>
 
             {(status === 'invalid' || status === 'used' || status === 'expired' || status === 'already_member') && (
-              <Link href="/overview" className="text-xs text-slate-500 hover:text-[#00aeef] transition font-semibold">
+              <Link href="/overview" className="text-xs text-muted-foreground hover:text-primary transition font-semibold">
                 Ir para o Dashboard →
               </Link>
             )}
 
             {status === 'accepted' && (
-              <p className="text-xs text-slate-500">Redirecionando para o dashboard...</p>
+              <p className="text-xs text-muted-foreground">Redirecionando para o dashboard...</p>
             )}
           </div>
         </div>

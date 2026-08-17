@@ -19,8 +19,8 @@ const PRESETS = ['Hoje', 'Ontem', 'Últimos 7 dias', 'Últimos 30 dias', 'Este M
 const WEEK_DAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
 
 const dropdownBase: React.CSSProperties = {
-  backgroundColor: '#13181a',
-  border: '1px solid rgba(255,255,255,0.05)',
+  backgroundColor: 'var(--card)',
+  border: '1px solid var(--border)',
   borderRadius: '12px',
   boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
   position: 'absolute',
@@ -31,9 +31,9 @@ const dropdownBase: React.CSSProperties = {
 }
 
 const btnBase: React.CSSProperties = {
-  backgroundColor: '#0e1315',
-  border: '1px solid rgba(255,255,255,0.06)',
-  color: '#e2e8f0',
+  backgroundColor: 'var(--background)',
+  border: '1px solid var(--border)',
+  color: 'var(--foreground)',
   borderRadius: '8px',
 }
 
@@ -69,7 +69,7 @@ function FilterDropdown({ label, value, options, onChange, showInfo }: {
               {options.map(opt => (
                 <button key={opt} onClick={() => { onChange(opt); setOpen(false) }}
                   className="w-full text-left px-3 py-2 text-xs font-semibold rounded-lg transition-all hover:bg-white/5 whitespace-nowrap"
-                  style={{ color: value === opt ? '#00aeef' : '#e2e8f0' }}
+                  style={{ color: value === opt ? 'var(--primary)' : 'var(--foreground)' }}
                 >{opt}</button>
               ))}
             </div>
@@ -156,8 +156,8 @@ export default function FiltrosDashboard() {
           onMouseEnter={() => setHoverDate(day)} onMouseLeave={() => setHoverDate(null)}
           className="w-9 h-9 text-xs font-semibold rounded-full flex items-center justify-center transition-all"
           style={{
-            color: !isSameMonth(day, calendarMonth) ? 'rgba(255,255,255,0.2)' : isStart || isEnd ? '#fff' : isSameDay(day, new Date()) ? '#00aeef' : '#e2e8f0',
-            backgroundColor: isStart || isEnd ? '#00aeef' : inRange ? 'rgba(0,174,239,0.12)' : 'transparent',
+            color: !isSameMonth(day, calendarMonth) ? 'rgba(255,255,255,0.2)' : isStart || isEnd ? '#fff' : isSameDay(day, new Date()) ? 'var(--primary)' : 'var(--foreground)',
+            backgroundColor: isStart || isEnd ? 'var(--primary)' : inRange ? 'color-mix(in srgb, var(--primary) 12%, transparent)' : 'transparent',
           }}
         >{format(day, 'd')}</button>
       )
@@ -220,7 +220,7 @@ export default function FiltrosDashboard() {
                   {PERIODS.map(p => (
                     <button key={p} onClick={() => selectPeriod(p)}
                       className="w-full text-left px-3 py-2 text-xs font-semibold rounded-lg transition-all hover:bg-white/5"
-                      style={{ color: period === p ? '#00aeef' : '#e2e8f0' }}
+                      style={{ color: period === p ? 'var(--primary)' : 'var(--foreground)' }}
                     >{p}</button>
                   ))}
                 </div>
@@ -235,7 +235,7 @@ export default function FiltrosDashboard() {
                     {PRESETS.map(p => (
                       <button key={p} onClick={() => applyPreset(p)}
                         className="text-[10px] font-bold px-2 py-2 rounded-lg transition-all hover:bg-white/5 text-center leading-tight"
-                        style={{ color: '#94a3b8', border: '1px solid rgba(255,255,255,0.05)' }}
+                        style={{ color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}
                       >{p}</button>
                     ))}
                   </div>

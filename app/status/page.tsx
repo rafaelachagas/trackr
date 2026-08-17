@@ -34,7 +34,7 @@ function RoasIndicator({ valor, label }: { valor: number | null; label: string }
   const positivo = valor !== null && valor >= 1
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</span>
+      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${valor === null ? 'border-slate-700 bg-slate-800' : positivo ? 'border-emerald-500/50 bg-emerald-500/20' : 'border-red-500/50 bg-red-500/20'}`}>
         {valor === null ? <Minus className="w-3.5 h-3.5 text-slate-500" /> : positivo ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
       </div>
@@ -74,28 +74,28 @@ export default function StatusPage() {
   const reduzindo = comDados.filter(c => c.acao === '-20% ou pausar' || c.acao === 'Pausar')
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="border-b border-white/5 px-6 py-5">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+      <div className="border-b border-white/5 px-4 sm:px-6 py-5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center">
               <Zap className="w-4 h-4 text-primary" strokeWidth={2.5} />
             </div>
             <div>
               <span className="text-base font-black uppercase tracking-tighter">TRACKR</span>
-              <span className="text-xs text-slate-500 ml-2">· Status dos Criativos</span>
+              <span className="text-xs text-muted-foreground ml-2">· Status dos Criativos</span>
             </div>
           </div>
           {atualizado && (
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-muted-foreground shrink-0">
               Atualizado às {atualizado.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-10 space-y-12">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-12">
         {loading ? (
           <div className="flex items-center justify-center py-32">
             <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -103,7 +103,7 @@ export default function StatusPage() {
         ) : (
           <>
             {/* Resumo */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-center">
                 <p className="text-3xl font-black text-emerald-400">{escalando.length}</p>
                 <p className="text-xs font-semibold text-emerald-400/70 uppercase tracking-widest mt-1">Escalando</p>
@@ -125,7 +125,7 @@ export default function StatusPage() {
                 {FASES_INFO.map(f => (
                   <div key={f.fase} className={`rounded-2xl border p-4 space-y-2 ${f.cor}`}>
                     <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${f.badge}`}>{f.fase}</span>
-                    <p className="text-xs font-semibold text-white mt-2">{f.label}</p>
+                    <p className="text-xs font-semibold text-foreground mt-2">{f.label}</p>
                     <p className="text-xs text-slate-400 leading-relaxed">{f.descricao}</p>
                   </div>
                 ))}
@@ -141,7 +141,7 @@ export default function StatusPage() {
                 <div key={fase} className="space-y-4">
                   <div className="flex items-center gap-3 border-b border-white/5 pb-3">
                     <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full border ${info.badge}`}>{fase}</span>
-                    <span className="text-xs text-slate-500">{grupo.length} criativo{grupo.length !== 1 ? 's' : ''}</span>
+                    <span className="text-xs text-muted-foreground">{grupo.length} criativo{grupo.length !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="space-y-2">
                     {grupo.map(c => (

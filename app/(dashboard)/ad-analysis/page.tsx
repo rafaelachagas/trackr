@@ -520,10 +520,10 @@ export default function AdAnalysisPage() {
   const fmtDate = (d: string) => format(parseISO(d), 'dd/MM/yy')
 
   return (
-    <div className="pb-12 space-y-6 max-w-[1440px] mx-auto w-full">
+    <div className="pb-12 space-y-6 max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-8">
       {expanded && <DetailModal metric={expanded} onClose={() => setExpanded(null)} />}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Análise de Criativos</h1>
         <div className="flex items-center gap-3">
           <div ref={dateRef} className="relative">
@@ -560,9 +560,9 @@ export default function AdAnalysisPage() {
         </div>
       )}
 
-      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="rounded-2xl overflow-hidden bg-card border border-border">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-5 py-3 flex-wrap gap-2" style={{ borderBottom: '1px solid rgba(85,182,247,0.08)' }}>
+        <div className="flex items-center justify-between px-5 py-3 flex-wrap gap-2 border-b border-border">
           <div className="flex items-center gap-1 flex-wrap">
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mr-3">Análise de Criativos</p>
             {([

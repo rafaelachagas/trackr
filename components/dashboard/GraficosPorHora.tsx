@@ -14,7 +14,7 @@ import type { HoraPonto } from '@/app/api/dashboard/por-hora/route'
 type Fonte = 'geral' | 'frio' | 'organico'
 type Valor = 'liquido' | 'bruto'
 
-const COR = { investimento: '#f59e0b', faturamento: '#00aeef', lucro: '#10b981', prejuizo: '#f43f5e' }
+const COR = { investimento: '#f59e0b', faturamento: 'var(--primary)', lucro: '#10b981', prejuizo: '#f43f5e' }
 
 const FONTE_OPTS: { v: Fonte; label: string }[] = [
   { v: 'geral', label: 'Geral' },
@@ -61,10 +61,9 @@ function Seletor<T extends string>({ value, onChange, opts }: { value: T; onChan
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
-      className="text-xs font-semibold rounded-lg px-3 py-1.5 cursor-pointer outline-none"
-      style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0' }}
+      className="text-xs font-semibold rounded-lg px-3 py-1.5 cursor-pointer outline-none bg-background border border-border text-foreground focus:border-primary transition-colors"
     >
-      {opts.map((o) => <option key={o.v} value={o.v} style={{ backgroundColor: '#1a2022' }}>{o.label}</option>)}
+      {opts.map((o) => <option key={o.v} value={o.v} className="bg-background">{o.label}</option>)}
     </select>
   )
 }

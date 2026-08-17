@@ -98,7 +98,7 @@ export default function WhatsappPage() {
   }
 
   return (
-    <div className="pb-16 space-y-6 max-w-[1000px] mx-auto w-full text-foreground">
+    <div className="pb-16 space-y-6 max-w-[1000px] mx-auto w-full px-4 sm:px-6 text-foreground">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <MessageCircle className="w-5 h-5 text-primary" />
