@@ -2,7 +2,6 @@
 
 import {
   ComposedChart,
-  Bar,
   Line,
   XAxis,
   YAxis,
@@ -83,19 +82,28 @@ export default function GraficoDiario({ dados }: Props) {
               axisLine={false}
               tickLine={false}
             />
-            <Tooltip content={<TooltipCustom />} cursor={{ fill: 'var(--muted)', opacity: 0.1 }} />
+            <Tooltip content={<TooltipCustom />} cursor={{ stroke: 'var(--border)', strokeWidth: 1 }} />
             <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em' }} />
-            <Bar yAxisId="moeda" dataKey="receita" name="Receita" fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.8} maxBarSize={48} />
-            <Bar yAxisId="moeda" dataKey="gasto" name="Gasto" fill="#f43f5e" radius={[4, 4, 0, 0]} opacity={0.8} maxBarSize={48} />
             <Line
-              yAxisId="roas"
-              type="monotone"
-              dataKey="roas"
-              name="ROAS"
-              stroke="var(--primary)"
-              strokeWidth={3}
-              dot={{ r: 4, fill: 'var(--card)', stroke: 'var(--primary)', strokeWidth: 2 }}
-              activeDot={{ r: 6, fill: 'var(--primary)', stroke: '#fff' }}
+              yAxisId="moeda" type="monotone" dataKey="receita" name="Receita"
+              stroke="#10b981" strokeWidth={2.5}
+              dot={{ r: 3, fill: '#10b981', strokeWidth: 0 }}
+              activeDot={{ r: 6, stroke: 'var(--card)', strokeWidth: 2 }}
+              connectNulls
+            />
+            <Line
+              yAxisId="moeda" type="monotone" dataKey="gasto" name="Gasto"
+              stroke="#f43f5e" strokeWidth={2.5}
+              dot={{ r: 3, fill: '#f43f5e', strokeWidth: 0 }}
+              activeDot={{ r: 6, stroke: 'var(--card)', strokeWidth: 2 }}
+              connectNulls
+            />
+            <Line
+              yAxisId="roas" type="monotone" dataKey="roas" name="ROAS"
+              stroke="var(--primary)" strokeWidth={2.5}
+              dot={{ r: 3, fill: 'var(--primary)', strokeWidth: 0 }}
+              activeDot={{ r: 6, stroke: 'var(--card)', strokeWidth: 2 }}
+              connectNulls
             />
             <ReferenceLine
               yAxisId="roas"
