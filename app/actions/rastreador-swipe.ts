@@ -16,6 +16,9 @@ export interface SwipeItem {
   dias_no_ar: number
   status: string
   snapshot_url: string | null
+  image_url: string | null
+  video_url: string | null
+  media_type: string | null
   transcricao: string | null
 }
 
@@ -26,12 +29,13 @@ export async function buscarSwipe(filtros: {
   nicho?: string | null
   oferta?: string | null
   angulo?: string | null
+  bibliotecaId?: string | null
   limite?: number
 }) {
   try {
-    const limite = Math.min(200, filtros.limite ?? 60)
+    const limite = Math.min(300, filtros.limite ?? 80)
 
-    // Bibliotecas (pra nome/nicho/oferta e filtro por nicho/oferta).
+    // Bibliotecas (pra nome/nicho/oferta e filtro por nicho/oferta/pessoa).
     const { data: bibs } = await supabaseAdmin
       .from('rastreador_bibliotecas')
       .select('id, page_id, page_name, nome_custom, nicho, oferta')
@@ -39,6 +43,8 @@ export async function buscarSwipe(filtros: {
     for (const b of bibs ?? []) meta.set(b.id, b)
 
     let bibIds = [...meta.keys()]
+    // Filtro por pessoa (biblioteca) tem prioridade.
+    if (filtros.bibliotecaId) bibIds = bibIds.filter((id) => id === filtros.bibliotecaId)
     const nicho = filtros.nicho?.trim().toLowerCase()
     const oferta = filtros.oferta?.trim().toLowerCase()
     if (nicho) bibIds = bibIds.filter((id) => (meta.get(id)?.nicho || '').toLowerCase().includes(nicho))
@@ -48,7 +54,7 @@ export async function buscarSwipe(filtros: {
     // Criativos do histórico dessas bibliotecas.
     let q = supabaseAdmin
       .from('rastreador_criativos_hist')
-      .select('ad_archive_id, biblioteca_id, headline, body, angulo, angulo_resumo, classificacao, dias_no_ar, status, snapshot_url')
+      .select('ad_archive_id, biblioteca_id, headline, body, angulo, angulo_resumo, classificacao, dias_no_ar, status, snapshot_url, image_url, video_url, media_type')
       .in('biblioteca_id', bibIds)
       .order('dias_no_ar', { ascending: false })
       .limit(limite * 3)
@@ -79,7 +85,7 @@ export async function buscarSwipe(filtros: {
       if (faltantes.length) {
         const { data: extra } = await supabaseAdmin
           .from('rastreador_criativos_hist')
-          .select('ad_archive_id, biblioteca_id, headline, body, angulo, angulo_resumo, classificacao, dias_no_ar, status, snapshot_url')
+          .select('ad_archive_id, biblioteca_id, headline, body, angulo, angulo_resumo, classificacao, dias_no_ar, status, snapshot_url, image_url, video_url, media_type')
           .in('ad_archive_id', faltantes).in('biblioteca_id', bibIds)
         for (const r of extra ?? []) {
           lista.push(r)
@@ -101,6 +107,7 @@ export async function buscarSwipe(filtros: {
         angulo: r.angulo, angulo_resumo: r.angulo_resumo,
         classificacao: r.classificacao, dias_no_ar: r.dias_no_ar ?? 0, status: r.status,
         snapshot_url: r.snapshot_url,
+        image_url: r.image_url ?? null, video_url: r.video_url ?? null, media_type: r.media_type ?? null,
         transcricao: trans[r.ad_archive_id] ?? null,
       }
     })

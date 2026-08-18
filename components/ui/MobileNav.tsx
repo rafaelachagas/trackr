@@ -31,7 +31,6 @@ const dataSources = [
 
 const ferramentas = [
   { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars },
-  { href: '/ferramentas/inteligencia', label: 'Inteligência', icon: Brain },
   { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp },
 ]
 

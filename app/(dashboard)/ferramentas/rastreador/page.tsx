@@ -6,7 +6,12 @@ import { extrairPageId, type CriativoRastreado } from '@/lib/rastreador'
 import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, getTranscricoes, salvarTranscricao, salvarSnapshot, listarSnapshots, atualizarBiblioteca, listarNovidades, marcarNovidadesVistas, type BibliotecaRastreada, type SnapshotRastreador, type NovidadeRastreador } from '@/app/actions/rastreador'
 import { baixarTxt, baixarDocx } from '@/lib/exportDoc'
 import InteligenciaBib from '@/components/rastreador/InteligenciaBib'
-import { Gauge } from 'lucide-react'
+import SwipeFile from '@/components/inteligencia/SwipeFile'
+import GeradorCopy from '@/components/inteligencia/GeradorCopy'
+import Radar from '@/components/inteligencia/Radar'
+import CentralAlertas from '@/components/inteligencia/CentralAlertas'
+import ConfigIA from '@/components/inteligencia/ConfigIA'
+import { Gauge, FolderSearch, Wand2, Radar as RadarIcon, Bell as BellIcon, Sparkles } from 'lucide-react'
 
 // Nome de exibição: renomeado pelo usuário > nome da página > ID.
 function nomeBiblioteca(b: BibliotecaRastreada): string {
@@ -35,7 +40,7 @@ const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1
 
 type Ordem = 'antigos' | 'copias' | 'recentes'
 type Tipo = 'todos' | 'video' | 'image'
-type Aba = 'buscar' | 'bibliotecas'
+type Aba = 'buscar' | 'bibliotecas' | 'swipe' | 'copy' | 'radar' | 'alertas' | 'ia'
 
 interface Resultado { stats?: { encontrados: number; duplicacoes: number; idade_media_dias: number | null }; criativos?: CriativoRastreado[]; error?: string }
 
@@ -180,14 +185,28 @@ export default function RastreadorPage() {
       )}
 
       {/* Abas */}
-      <div className="flex items-center gap-1.5 border-b border-border">
-        {([['buscar', 'Buscar concorrente'], ['bibliotecas', `Bibliotecas rastreadas${bibliotecas.length ? ` (${bibliotecas.length})` : ''}`]] as [Aba, string][]).map(([k, label]) => (
+      <div className="flex items-center gap-1.5 border-b border-border overflow-x-auto">
+        {([
+          ['buscar', 'Buscar concorrente', null],
+          ['bibliotecas', `Bibliotecas${bibliotecas.length ? ` (${bibliotecas.length})` : ''}`, null],
+          ['swipe', 'Swipe file', FolderSearch],
+          ['copy', 'Gerador de Copy', Wand2],
+          ['radar', 'Radar', RadarIcon],
+          ['alertas', 'Alertas', BellIcon],
+          ['ia', 'IA / Modelo', Sparkles],
+        ] as [Aba, string, React.ComponentType<any> | null][]).map(([k, label, Icon]) => (
           <button key={k} onClick={() => { setAba(k); setBibAberta(null) }}
-            className={`px-3.5 py-2.5 text-sm font-semibold border-b-2 -mb-px transition ${aba === k ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
-            {label}
+            className={`px-3.5 py-2.5 text-sm font-semibold border-b-2 -mb-px transition flex items-center gap-1.5 whitespace-nowrap ${aba === k ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+            {Icon && <Icon className="w-4 h-4" />}{label}
           </button>
         ))}
       </div>
+
+      {aba === 'swipe' && <SwipeFile />}
+      {aba === 'copy' && <GeradorCopy />}
+      {aba === 'radar' && <Radar />}
+      {aba === 'alertas' && <CentralAlertas />}
+      {aba === 'ia' && <ConfigIA />}
 
       {aba === 'buscar' && (
         <>
