@@ -43,6 +43,9 @@ export async function GET(request: NextRequest) {
   const agora = toZonedTime(new Date(), TZ)
   const dInicio = sp.get('d_inicio') ?? format(subDays(agora, 6), 'yyyy-MM-dd')
   const dFim = sp.get('d_fim') ?? format(agora, 'yyyy-MM-dd')
+  // A VTurb exige datetime com hora/min/seg (yyyy-MM-dd HH:mm:ss), não só a data.
+  const dtInicio = `${dInicio} 00:00:00`
+  const dtFim = `${dFim} 23:59:59`
 
   // Chave VTurb + VSL
   const [{ data: cfg }, { data: vsl }] = await Promise.all([
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
 
   // 1) Curva de retenção primeiro — além da curva, ela dá a DURAÇÃO do vídeo
   // (maior "timed"), que o /sessions/stats exige (e faltava → dava 400).
-  const reten = await vturbPost(token, '/times/user_engagement', { player_id: playerId, start_date: dInicio, end_date: dFim, video_duration: dur })
+  const reten = await vturbPost(token, '/times/user_engagement', { player_id: playerId, start_date: dtInicio, end_date: dtFim, video_duration: dur })
 
   const grouped: any[] = reten.data?.grouped_timed ?? reten.data?.groupedTimed ?? reten.data?.retention ?? (Array.isArray(reten.data) ? reten.data : [])
   const curva = (Array.isArray(grouped) ? grouped : []).map((g: any) => ({
@@ -74,7 +77,7 @@ export async function GET(request: NextRequest) {
   const durFinal = dur ?? (duracaoEstimada || undefined)
 
   // 2) Métricas agregadas, agora com a duração resolvida.
-  const stats = await vturbPost(token, '/sessions/stats', { player_id: playerId, start_date: dInicio, end_date: dFim, video_duration: durFinal })
+  const stats = await vturbPost(token, '/sessions/stats', { player_id: playerId, start_date: dtInicio, end_date: dtFim, video_duration: durFinal })
 
   const s = stats.data ?? {}
   const viewsUnicas = pick(s, ['unique_views', 'views_unique', 'uniqueViews', 'unique_view', 'views'])

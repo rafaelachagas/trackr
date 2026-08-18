@@ -8,7 +8,7 @@ import type { RelatorioConcorrente, CriativoReport } from '@/lib/reportConcorren
 // A UI baixa o report.html a partir daqui (lib/reportConcorrente.renderRelatorioHTML).
 export async function gerarRelatorioConcorrente(bibliotecaId: string, limite = 8): Promise<{ success: boolean; error?: string; data: RelatorioConcorrente | null }> {
   try {
-    if (!llmDisponivel()) return { success: false, error: 'IA não configurada (falta ANTHROPIC_API_KEY).', data: null }
+    if (!(await llmDisponivel())) return { success: false, error: 'IA não configurada — escolha um modelo e cole a chave em Inteligência → IA.', data: null }
 
     const { data: bib } = await supabaseAdmin
       .from('rastreador_bibliotecas').select('page_id, page_name, nome_custom, nicho, oferta').eq('id', bibliotecaId).maybeSingle()

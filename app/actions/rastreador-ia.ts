@@ -1,7 +1,7 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
-import { chamarLLM, extrairJSON, hashTexto, llmDisponivel, LLM_MODELO } from '@/lib/llm'
+import { chamarLLM, extrairJSON, hashTexto, llmDisponivel, modeloSelecionado } from '@/lib/llm'
 import { ANGULOS } from '@/lib/rastreador-intel'
 
 async function resolveOrgId(): Promise<string | null> {
@@ -20,7 +20,7 @@ const IDS_ANGULO: string[] = ANGULOS.map((a) => a.id).filter((a) => a !== 'indef
 // -------------------------------------------------------------------
 export async function clusterizarBiblioteca(bibliotecaId: string) {
   try {
-    if (!llmDisponivel()) return { success: false, error: 'IA não configurada (falta ANTHROPIC_API_KEY).', classificados: 0 }
+    if (!(await llmDisponivel())) return { success: false, error: 'IA não configurada — escolha um modelo e cole a chave em Inteligência → IA.', classificados: 0 }
 
     // Criativos do histórico.
     const { data: hist } = await supabaseAdmin
@@ -99,7 +99,7 @@ export async function gerarVariacoesCopy(params: {
   quantidade?: number
 }) {
   try {
-    if (!llmDisponivel()) return { success: false, error: 'IA não configurada (falta ANTHROPIC_API_KEY).', data: null }
+    if (!(await llmDisponivel())) return { success: false, error: 'IA não configurada — escolha um modelo e cole a chave em Inteligência → IA.', data: null }
     const fonte = (params.fonteTexto || '').trim()
     if (fonte.length < 20) return { success: false, error: 'Texto-fonte muito curto pra gerar variações.', data: null }
 
@@ -132,6 +132,7 @@ ${fonte.slice(0, 4000)}
     // Persiste o histórico da geração.
     const orgId = await resolveOrgId()
     if (orgId) {
+      const modelo = await modeloSelecionado()
       await supabaseAdmin.from('rastreador_copy_ger').insert({
         org_id: orgId,
         biblioteca_id: params.bibliotecaId ?? null,
@@ -139,7 +140,7 @@ ${fonte.slice(0, 4000)}
         fonte_texto: fonte.slice(0, 6000),
         nicho: params.nicho ?? null, oferta: params.oferta ?? null,
         instrucoes: params.instrucoes ?? null,
-        resultado: variacoes, modelo: LLM_MODELO,
+        resultado: variacoes, modelo,
       }).select('id').maybeSingle()
     }
 

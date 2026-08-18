@@ -1,19 +1,21 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Brain, FolderSearch, Wand2, Radar as RadarIcon, Bell } from 'lucide-react'
+import { Brain, FolderSearch, Wand2, Radar as RadarIcon, Bell, Sparkles } from 'lucide-react'
 import SwipeFile from '@/components/inteligencia/SwipeFile'
 import GeradorCopy from '@/components/inteligencia/GeradorCopy'
 import Radar from '@/components/inteligencia/Radar'
 import CentralAlertas from '@/components/inteligencia/CentralAlertas'
+import ConfigIA from '@/components/inteligencia/ConfigIA'
 
-type Aba = 'swipe' | 'copy' | 'radar' | 'alertas'
+type Aba = 'swipe' | 'copy' | 'radar' | 'alertas' | 'ia'
 
 const ABAS: { id: Aba; label: string; icon: React.ComponentType<any> }[] = [
   { id: 'swipe', label: 'Swipe file', icon: FolderSearch },
   { id: 'copy', label: 'Gerador de Copy', icon: Wand2 },
   { id: 'radar', label: 'Radar de concorrentes', icon: RadarIcon },
   { id: 'alertas', label: 'Alertas', icon: Bell },
+  { id: 'ia', label: 'IA / Modelo', icon: Sparkles },
 ]
 
 export default function InteligenciaPage() {
@@ -47,6 +49,7 @@ export default function InteligenciaPage() {
       {aba === 'copy' && <GeradorCopy />}
       {aba === 'radar' && <Radar />}
       {aba === 'alertas' && <CentralAlertas />}
+      {aba === 'ia' && <ConfigIA />}
     </div>
   )
 }
