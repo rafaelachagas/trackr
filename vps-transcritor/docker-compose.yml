@@ -1,0 +1,17 @@
+services:
+  transcritor:
+    build: .
+    ports:
+      - "8082:8082"
+    environment:
+      # Defina a MESMA chave que você colocar na Vercel (TRANSCRITOR_APIKEY).
+      - TRANSCRITOR_APIKEY=${TRANSCRITOR_APIKEY:-troque-esta-chave}
+      - WHISPER_MODEL=${WHISPER_MODEL:-small}
+      - WHISPER_COMPUTE=int8
+    volumes:
+      # Cache do modelo baixado (não re-baixa a cada restart).
+      - whisper-cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+volumes:
+  whisper-cache:

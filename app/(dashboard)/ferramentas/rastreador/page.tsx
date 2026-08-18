@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useMemo, useState, useEffect } from 'react'
-import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download, Copy, PlayCircle, Bookmark, Trash2, RotateCw } from 'lucide-react'
+import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download, Copy, PlayCircle, Bookmark, Trash2, RotateCw, FileText, Loader2 } from 'lucide-react'
 import { extrairPageId, type CriativoRastreado } from '@/lib/rastreador'
 import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, type BibliotecaRastreada } from '@/app/actions/rastreador'
 
@@ -223,6 +223,28 @@ export default function RastreadorPage() {
 }
 
 function CardCriativo({ c }: { c: CriativoRastreado }) {
+  const [transcrevendo, setTranscrevendo] = useState(false)
+  const [transcricao, setTranscricao] = useState<string | null>(null)
+  const [erroT, setErroT] = useState<string | null>(null)
+
+  async function transcrever() {
+    if (!c.video_url) return
+    setTranscrevendo(true); setErroT(null)
+    try {
+      const r = await fetch('/api/rastreador/transcrever', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_url: c.video_url }),
+      })
+      const j = await r.json()
+      if (j.error) setErroT(j.error)
+      else setTranscricao(j.texto || '(sem fala detectada)')
+    } catch {
+      setErroT('Falha ao transcrever.')
+    } finally {
+      setTranscrevendo(false)
+    }
+  }
+
   return (
     <div className={`rounded-2xl overflow-hidden flex flex-col ${cardClass}`}>
       {/* Mídia */}
@@ -252,7 +274,21 @@ function CardCriativo({ c }: { c: CriativoRastreado }) {
           {c.snapshot_url && <A href={c.snapshot_url}><ExternalLink className="w-3.5 h-3.5" /> Ver na Meta</A>}
           {c.link_url && <A href={c.link_url}>Página</A>}
           {c.video_url && <A href={c.video_url}><Download className="w-3.5 h-3.5" /> Vídeo</A>}
+          {c.video_url && (
+            <button onClick={transcrever} disabled={transcrevendo}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50">
+              {transcrevendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+              {transcrevendo ? 'Transcrevendo...' : 'Transcrever'}
+            </button>
+          )}
         </div>
+
+        {erroT && <p className="mt-2 text-[11px] text-rose-300/90">{erroT}</p>}
+        {transcricao && (
+          <div className="mt-2 rounded-lg bg-background border border-border p-2.5 max-h-40 overflow-y-auto">
+            <p className="text-[11px] text-foreground/90 leading-relaxed whitespace-pre-wrap">{transcricao}</p>
+          </div>
+        )}
       </div>
     </div>
   )
