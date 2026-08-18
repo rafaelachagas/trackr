@@ -60,6 +60,65 @@ export async function definirAgendamento(id: string, freqDias: number | null) {
   }
 }
 
+// Snapshot: fotografa o estado atual de uma biblioteca (nº de criativos, etc.)
+// pra montar o "movimento" ao longo do tempo. Chamado nos pulls manuais de uma
+// biblioteca já salva (o cron salva os automáticos). Se a página não estiver
+// salva, não faz nada (retorna naoSalva).
+export async function salvarSnapshot(
+  pageId: string,
+  stats: { encontrados?: number; duplicacoes?: number; idade_media_dias?: number | null } | null | undefined,
+  criativos: any[]
+) {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    const { data: bib } = await supabaseAdmin
+      .from('rastreador_bibliotecas')
+      .select('id')
+      .eq('org_id', orgId).eq('page_id', pageId)
+      .maybeSingle()
+    if (!bib) return { success: true, naoSalva: true }
+
+    const { error } = await supabaseAdmin.from('rastreador_snapshots').insert({
+      biblioteca_id: bib.id,
+      total: stats?.encontrados ?? criativos.length,
+      duplicacoes: stats?.duplicacoes ?? 0,
+      idade_media: stats?.idade_media_dias ?? null,
+      criativos: criativos ?? [],
+    })
+    if (error) throw error
+    await supabaseAdmin.from('rastreador_bibliotecas')
+      .update({ ultima_puxada: new Date().toISOString() }).eq('id', bib.id)
+    return { success: true }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+}
+
+export interface SnapshotRastreador {
+  id: string
+  puxado_em: string
+  total: number
+  duplicacoes: number
+  idade_media: number | null
+  criativos: any[]
+}
+
+export async function listarSnapshots(bibliotecaId: string) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('rastreador_snapshots')
+      .select('id, puxado_em, total, duplicacoes, idade_media, criativos')
+      .eq('biblioteca_id', bibliotecaId)
+      .order('puxado_em', { ascending: false })
+      .limit(60)
+    if (error) throw error
+    return { success: true, data: (data ?? []) as SnapshotRastreador[] }
+  } catch (e: any) {
+    return { success: false, error: e.message, data: [] as SnapshotRastreador[] }
+  }
+}
+
 export async function removerBiblioteca(id: string) {
   try {
     const { error } = await supabaseAdmin.from('rastreador_bibliotecas').delete().eq('id', id)
