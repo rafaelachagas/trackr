@@ -3,16 +3,17 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { useDashboard } from '@/context/DashboardContext'
 
-const CORES = ['#6366f1', '#22d3ee']
+const CORES = ['#6366f1', '#22d3ee', '#64748b']
 
 export default function GraficoTipoVendas() {
   const { metrics, isPrivate } = useDashboard()
-  const { frontCount, upsellCount } = metrics
-  const total = frontCount + upsellCount
+  const { frontCount, upsellCount, outroCount } = metrics
+  const total = frontCount + upsellCount + outroCount
 
   const dados = [
     { name: 'Front', value: frontCount },
     { name: 'Upsell', value: upsellCount },
+    ...(outroCount > 0 ? [{ name: 'Outros', value: outroCount }] : []),
   ]
 
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0

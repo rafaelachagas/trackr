@@ -32,6 +32,7 @@ interface DashboardMetrics {
   salesCount: number;
   frontCount: number;
   upsellCount: number;
+  outroCount: number;
   imposto: number;
   reembolso: number;
   reembolsoCount: number;
@@ -79,6 +80,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     salesCount: 0,
     frontCount: 0,
     upsellCount: 0,
+    outroCount: 0,
     imposto: 0,
     reembolso: 0,
     reembolsoCount: 0,
@@ -167,7 +169,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         const vendas = result.vendas ?? []
         const frontCount = vendas.filter((v: any) => v.tipo === 'front').length
         const upsellCount = vendas.filter((v: any) => v.tipo === 'upsell').length
-        setMetrics({ ...result.metrics, frontCount, upsellCount });
+        const outroCount = vendas.filter((v: any) => v.tipo === 'outro').length
+        setMetrics({ ...result.metrics, frontCount, upsellCount, outroCount });
       }
 
       // Process chart data (simple example grouping by day)

@@ -9,7 +9,12 @@ const uberMove = localFont({
     { path: "./fonts/UberMoveTextLight.otf", weight: "300", style: "normal" },
     { path: "./fonts/UberMoveTextRegular.otf", weight: "400", style: "normal" },
     { path: "./fonts/UberMoveTextMedium.otf", weight: "500", style: "normal" },
+    { path: "./fonts/UberMoveTextMedium.otf", weight: "600", style: "normal" },
     { path: "./fonts/UberMoveTextBold.otf", weight: "700", style: "normal" },
+    // UberMove só vai até Bold (700). Mapeamos 800/900 pro Bold REAL pra evitar o
+    // "falso-negrito" sintético do navegador nos títulos com font-black.
+    { path: "./fonts/UberMoveTextBold.otf", weight: "800", style: "normal" },
+    { path: "./fonts/UberMoveTextBold.otf", weight: "900", style: "normal" },
   ],
   variable: "--font-app",
   display: "swap",

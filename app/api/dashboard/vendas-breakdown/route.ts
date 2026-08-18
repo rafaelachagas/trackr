@@ -17,7 +17,7 @@ export interface PagamentoBreak { metodo: string; front: number; upsell: number;
 export interface CriativoBreak { criativo: string; front: number; upsell: number; reembolsoCount: number; reembolsoValor: number }
 export interface VendasBreakdown {
   porProduto: ProdutoBreak[]
-  tipo: { front: number; upsell: number; conversaoUpsellPct: number }
+  tipo: { front: number; upsell: number; outro: number; conversaoUpsellPct: number }
   porPagamento: PagamentoBreak[]
   pagamentoDisponivel: boolean
   porCriativo: CriativoBreak[]
@@ -108,27 +108,30 @@ export async function GET(request: NextRequest) {
     const pagMap = new Map<string, PagamentoBreak>()
     // Por criativo
     const criMap = new Map<string, CriativoBreak>()
-    let front = 0, upsell = 0
+    let front = 0, upsell = 0, outro = 0
 
     for (const v of aprovadas) {
       const tipo = classificarTipo(v.produto, mapeamentos)
-      if (tipo === 'upsell') upsell++; else front++
+      if (tipo === 'front') front++; else if (tipo === 'upsell') upsell++; else outro++
 
       const prod = v.produto ?? 'Desconhecido'
       const p = prodMap.get(prod) ?? { produto: prod, count: 0, receita: 0 }
       p.count++; p.receita += liq(v)
       prodMap.set(prod, p)
 
-      const metodo = (v.metodo_pagamento ?? '').trim() || 'Não informado'
-      const pg = pagMap.get(metodo) ?? { metodo, front: 0, upsell: 0, total: 0 }
-      if (tipo === 'upsell') pg.upsell++; else pg.front++
-      pg.total++
-      pagMap.set(metodo, pg)
+      // Funil de pagamento e por-criativo só olham front/upsell (outros ficam de fora).
+      if (tipo === 'front' || tipo === 'upsell') {
+        const metodo = (v.metodo_pagamento ?? '').trim() || 'Não informado'
+        const pg = pagMap.get(metodo) ?? { metodo, front: 0, upsell: 0, total: 0 }
+        if (tipo === 'upsell') pg.upsell++; else pg.front++
+        pg.total++
+        pagMap.set(metodo, pg)
 
-      if (v.criativo) {
-        const c = criMap.get(v.criativo) ?? { criativo: v.criativo, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
-        if (tipo === 'upsell') c.upsell++; else c.front++
-        criMap.set(v.criativo, c)
+        if (v.criativo) {
+          const c = criMap.get(v.criativo) ?? { criativo: v.criativo, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
+          if (tipo === 'upsell') c.upsell++; else c.front++
+          criMap.set(v.criativo, c)
+        }
       }
     }
 
@@ -141,7 +144,7 @@ export async function GET(request: NextRequest) {
 
     const out: VendasBreakdown = {
       porProduto: [...prodMap.values()].sort((a, b) => b.count - a.count),
-      tipo: { front, upsell, conversaoUpsellPct: front > 0 ? (upsell / front) * 100 : 0 },
+      tipo: { front, upsell, outro, conversaoUpsellPct: front > 0 ? (upsell / front) * 100 : 0 },
       porPagamento: [...pagMap.values()].sort((a, b) => b.total - a.total),
       pagamentoDisponivel,
       porCriativo: [...criMap.values()].sort((a, b) => b.front - a.front),
