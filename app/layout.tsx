@@ -4,7 +4,7 @@ import "./globals.css";
 
 // Uber Move (arquivos locais fornecidos pelo usuário em app/fonts). A licença dos
 // arquivos é responsabilidade do usuário.
-const inter = localFont({
+const uberMove = localFont({
   src: [
     { path: "./fonts/UberMoveTextLight.otf", weight: "300", style: "normal" },
     { path: "./fonts/UberMoveTextRegular.otf", weight: "400", style: "normal" },
@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className={`${inter.variable} min-h-full`}>{children}</body>
+      <body className={`${uberMove.variable} min-h-full`}>{children}</body>
     </html>
   );
 }

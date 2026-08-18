@@ -24,6 +24,7 @@ export interface HoraPonto {
   fatOrgLiq: number
   fatOrgBru: number
   investimento: number
+  imposto: number
 }
 
 // desde/ate são ISO (UTC) das bordas do dia em SP — senão a janela "hoje" usa
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
     const { data: configs } = await supabaseAdmin
       .from('configuracoes')
       .select('chave, valor')
-      .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id', 'usd_brl_rate', 'meta_imposto_pct'])
+      .in('chave', ['meta_access_token', 'meta_ad_account_ids', 'meta_ad_account_id', 'usd_brl_rate', 'meta_imposto_pct', 'meta_imposto_diario'])
     const configMap = Object.fromEntries(configs?.map((c) => [c.chave, c.valor]) ?? [])
 
     const accessToken = configMap['meta_access_token']
@@ -119,8 +120,22 @@ export async function GET(request: NextRequest) {
     const { desde, ate } = spRangeISO(dInicio, dFim)
     const [vendas, investimento] = await Promise.all([fetchAllVendas(desde, ate), investPromise])
 
+    // Imposto do período (mesma fonte do card "Imposto total": mapa diário salvo
+    // pelo /api/meta/sync). Distribuído por hora proporcional ao investimento, pra
+    // o Lucro por hora bater com o Lucro do card (= Fat − Investimento − Imposto).
+    let impostoTotal = 0
+    try {
+      const mapaImposto: Record<string, number> = JSON.parse(configMap['meta_imposto_diario'] || '{}')
+      for (const [dia, v] of Object.entries(mapaImposto)) {
+        if (dia >= dInicio && dia <= dFim) impostoTotal += Number(v) || 0
+      }
+    } catch {}
+    const totalInvest = investimento.reduce((a, b) => a + b, 0)
+
     const pontos: HoraPonto[] = Array.from({ length: 24 }, (_, hora) => ({
-      hora, fatFrioLiq: 0, fatFrioBru: 0, fatOrgLiq: 0, fatOrgBru: 0, investimento: investimento[hora] || 0,
+      hora, fatFrioLiq: 0, fatFrioBru: 0, fatOrgLiq: 0, fatOrgBru: 0,
+      investimento: investimento[hora] || 0,
+      imposto: totalInvest > 0 ? impostoTotal * ((investimento[hora] || 0) / totalInvest) : 0,
     }))
 
     for (const v of vendas) {

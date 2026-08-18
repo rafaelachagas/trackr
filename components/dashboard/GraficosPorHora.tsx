@@ -43,15 +43,17 @@ function derivarSerie(pontos: HoraPonto[], fonte: Fonte, valor: Valor): SeriePon
     const fatOrg = valor === 'liquido' ? p.fatOrgLiq : p.fatOrgBru
     let faturamento = 0
     let investimento = 0
-    if (fonte === 'geral') { faturamento = fatFrio + fatOrg; investimento = p.investimento }
-    else if (fonte === 'frio') { faturamento = fatFrio; investimento = p.investimento }
-    else { faturamento = fatOrg; investimento = 0 } // orgânico não tem investimento
+    let imposto = 0
+    if (fonte === 'geral') { faturamento = fatFrio + fatOrg; investimento = p.investimento; imposto = p.imposto }
+    else if (fonte === 'frio') { faturamento = fatFrio; investimento = p.investimento; imposto = p.imposto }
+    else { faturamento = fatOrg; investimento = 0; imposto = 0 } // orgânico não tem investimento/imposto
     return {
       hora: p.hora,
       label: `${String(p.hora).padStart(2, '0')}:00`,
       investimento,
       faturamento,
-      lucro: faturamento - investimento,
+      // Lucro = Faturamento − Investimento − Imposto do tráfego (bate com o card "Lucro").
+      lucro: faturamento - investimento - imposto,
     }
   })
 }
