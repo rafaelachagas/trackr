@@ -133,6 +133,7 @@ async function sincronizarMeta(request: NextRequest) {
           existente.valor_gasto += spendRaw * fator
           existente.impressions += parseInt(insight.impressions) || 0
           existente.clicks += parseInt(insight.clicks) || 0
+          existente.lp_views += extrairLpViews(insight)
         } else {
           mapaRegistros.set(chave, buildRegistro(insight, orgId, fator))
         }
@@ -152,9 +153,18 @@ async function sincronizarMeta(request: NextRequest) {
         .lte('data', dataFim)
         .not('ad_id', 'is', null)
 
-      const { error: erroUpsert } = await supabaseAdmin
+      let { error: erroUpsert } = await supabaseAdmin
         .from('gastos')
         .upsert(registros, { onConflict: 'data,ad_name' })
+
+      // Blindagem: se a coluna lp_views ainda não existe (SQL não rodado), repõe
+      // sem o campo pra não deixar o período apagado. Assim que a coluna existir,
+      // o lp_views passa a preencher sozinho no próximo sync.
+      if (erroUpsert && /lp_views/i.test(erroUpsert.message)) {
+        const semLp = registros.map(({ lp_views, ...r }) => r)
+        const retry = await supabaseAdmin.from('gastos').upsert(semLp, { onConflict: 'data,ad_name' })
+        erroUpsert = retry.error
+      }
 
       if (erroUpsert) {
         console.error('[Meta] Erro ao salvar gastos:', erroUpsert)
@@ -214,6 +224,13 @@ async function sincronizarMeta(request: NextRequest) {
   }
 }
 
+// Extrai as Landing Page Views das ações da Meta (denominador do play rate real).
+// O câmbio NÃO se aplica aqui — é contagem de gente, não dinheiro.
+function extrairLpViews(insight: MetaAdInsight): number {
+  const a = insight.actions?.find((x) => x.action_type === 'landing_page_view')
+  return a ? parseInt(a.value) || 0 : 0
+}
+
 function buildRegistro(insight: MetaAdInsight, orgId: string, fator = 1) {
   return {
     org_id: orgId,
@@ -229,6 +246,7 @@ function buildRegistro(insight: MetaAdInsight, orgId: string, fator = 1) {
     impressions: parseInt(insight.impressions) || 0,
     clicks: parseInt(insight.clicks) || 0,
     cpc: insight.cpc ? parseFloat(insight.cpc) * fator : null,
+    lp_views: extrairLpViews(insight),
   }
 }
 
@@ -257,6 +275,7 @@ async function buscarInsightsMeta({
       'impressions',
       'clicks',
       'cpc',
+      'actions',
       'date_start',
       'date_stop',
     ].join(',')

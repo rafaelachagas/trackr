@@ -227,6 +227,8 @@ export interface MetaAdInsight {
   cpc?: string
   date_start: string
   date_stop: string
+  // Ações da Meta (inclui landing_page_view — LP views reais pra o play rate real).
+  actions?: { action_type: string; value: string }[]
 }
 
 // ============================================================
