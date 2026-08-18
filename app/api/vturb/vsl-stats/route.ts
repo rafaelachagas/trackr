@@ -28,8 +28,11 @@ async function vturbPost(token: string, path: string, body: any) {
     body: JSON.stringify(body),
     cache: 'no-store',
   })
-  if (!r.ok) return { erro: `${path} respondeu ${r.status}`, data: null }
-  return { erro: null, data: await r.json().catch(() => null) }
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '')
+    return { erro: `${path} respondeu ${r.status}`, data: null, body: txt.slice(0, 600) }
+  }
+  return { erro: null, data: await r.json().catch(() => null), body: null }
 }
 
 export async function GET(request: NextRequest) {
@@ -54,29 +57,32 @@ export async function GET(request: NextRequest) {
   const dur = Number(vsl.video_duration) || undefined
   const campanhas: string[] = Array.isArray(vsl.campanhas) ? vsl.campanhas : []
 
-  // 1) Métricas agregadas + 2) curva de retenção (VTurb) — em paralelo.
-  const [stats, reten] = await Promise.all([
-    vturbPost(token, '/sessions/stats', { player_id: playerId, start_date: dInicio, end_date: dFim, video_duration: dur }),
-    vturbPost(token, '/times/user_engagement', { player_id: playerId, start_date: dInicio, end_date: dFim, video_duration: dur }),
-  ])
+  // 1) Curva de retenção primeiro — além da curva, ela dá a DURAÇÃO do vídeo
+  // (maior "timed"), que o /sessions/stats exige (e faltava → dava 400).
+  const reten = await vturbPost(token, '/times/user_engagement', { player_id: playerId, start_date: dInicio, end_date: dFim, video_duration: dur })
+
+  const grouped: any[] = reten.data?.grouped_timed ?? reten.data?.groupedTimed ?? reten.data?.retention ?? (Array.isArray(reten.data) ? reten.data : [])
+  const curva = (Array.isArray(grouped) ? grouped : []).map((g: any) => ({
+    t: Number(g?.timed ?? g?.time ?? g?.second ?? g?.t ?? 0),
+    users: Number(g?.total_users ?? g?.count ?? g?.users ?? g?.value ?? 0),
+  })).sort((a, b) => a.t - b.t)
+  const base = curva.length ? (curva[0].users || Math.max(...curva.map((c) => c.users), 1)) : 0
+  const retencao = curva.map((c) => ({ t: c.t, pct: base > 0 ? Math.min(100, (c.users / base) * 100) : 0 }))
+
+  // Duração: a do cadastro, ou a maior marca de tempo da curva.
+  const duracaoEstimada = curva.length ? Math.max(...curva.map((c) => c.t)) : undefined
+  const durFinal = dur ?? (duracaoEstimada || undefined)
+
+  // 2) Métricas agregadas, agora com a duração resolvida.
+  const stats = await vturbPost(token, '/sessions/stats', { player_id: playerId, start_date: dInicio, end_date: dFim, video_duration: durFinal })
 
   const s = stats.data ?? {}
-  const viewsUnicas = pick(s, ['unique_views', 'views_unique', 'uniqueViews', 'views'])
-  const playsUnicos = pick(s, ['unique_plays', 'plays_unique', 'uniquePlays', 'plays'])
+  const viewsUnicas = pick(s, ['unique_views', 'views_unique', 'uniqueViews', 'unique_view', 'views'])
+  const playsUnicos = pick(s, ['unique_plays', 'plays_unique', 'uniquePlays', 'unique_play', 'plays'])
   const playRateVturb = pick(s, ['play_rate', 'playRate']) || (viewsUnicas > 0 ? (playsUnicos / viewsUnicas) * 100 : 0)
   const engajamento = pick(s, ['engagement_rate', 'engagement', 'engagementRate'])
-  const conversoes = pick(s, ['conversions', 'conversions_count', 'conversionsCount'])
-  const receitaVturb = pick(s, ['revenue_brl', 'revenue.brl', 'revenueBRL', 'revenue'])
-
-  // Curva de retenção → [{ t, pct }] normalizada pelo 1º ponto.
-  const grouped: any[] = reten.data?.grouped_timed ?? reten.data?.groupedTimed ?? reten.data?.retention ?? []
-  let base = 0
-  const curva = (Array.isArray(grouped) ? grouped : []).map((g: any) => ({
-    t: Number(g?.time ?? g?.second ?? g?.t ?? 0),
-    users: Number(g?.count ?? g?.users ?? g?.value ?? 0),
-  }))
-  if (curva.length) base = curva[0].users || Math.max(...curva.map((c) => c.users), 1)
-  const retencao = curva.map((c) => ({ t: c.t, pct: base > 0 ? Math.min(100, (c.users / base) * 100) : 0 }))
+  const conversoes = pick(s, ['conversions', 'conversions_count', 'conversionsCount', 'total_conversions'])
+  const receitaVturb = pick(s, ['revenue_brl', 'revenue.brl', 'revenueBRL', 'revenue', 'total_revenue'])
 
   // 3) LP views + gasto da Meta (campanhas mapeadas; vazio = todas).
   let lpViews = 0, gasto = 0
@@ -115,6 +121,8 @@ export async function GET(request: NextRequest) {
     // Eco cru pra depurar/lapidar os nomes de campo sem adivinhar.
     _raw: {
       statsErro: stats.erro,
+      statsBody: stats.body,
+      durEnviada: durFinal,
       retenErro: reten.erro,
       statsKeys: s && typeof s === 'object' ? Object.keys(s) : null,
       statsRaw: stats.data,
