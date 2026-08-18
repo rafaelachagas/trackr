@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { Video, Check, Loader2, Trash2, PlugZap, ExternalLink, Info, AlertCircle } from 'lucide-react'
 import { getVturbStatus, salvarVturbKey, removerVturbKey } from '@/app/actions/vturb'
+import VslManager from '@/components/vturb/VslManager'
 
 export default function VturbPage() {
   const [conectado, setConectado] = useState(false)
@@ -137,6 +138,9 @@ export default function VturbPage() {
           )}
         </div>
       </div>
+
+      {/* Gerenciador de VSLs + visualizador com Play Rate Real */}
+      {conectado && <VslManager />}
 
       {/* Nota sobre limites */}
       <div className="bg-card border border-border rounded-2xl px-4 sm:px-6 py-5 space-y-2">
