@@ -25,3 +25,14 @@ create table if not exists rastreador_snapshots (
 );
 
 create index if not exists idx_rastreador_snap_bib on rastreador_snapshots (biblioteca_id, puxado_em desc);
+
+-- Transcrições dos criativos (cache: transcreveu uma vez, fica salvo).
+create table if not exists rastreador_transcricoes (
+  id             uuid primary key default gen_random_uuid(),
+  org_id         uuid not null,
+  ad_archive_id  text not null,
+  video_url      text,
+  texto          text,
+  created_at     timestamptz not null default now(),
+  unique (org_id, ad_archive_id)
+);

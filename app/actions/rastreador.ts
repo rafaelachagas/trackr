@@ -69,3 +69,34 @@ export async function removerBiblioteca(id: string) {
     return { success: false, error: e.message }
   }
 }
+
+// Transcrições — cache por anúncio (ad_archive_id).
+export async function salvarTranscricao(adArchiveId: string, videoUrl: string | null, texto: string) {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    const { error } = await supabaseAdmin
+      .from('rastreador_transcricoes')
+      .upsert({ org_id: orgId, ad_archive_id: adArchiveId, video_url: videoUrl, texto }, { onConflict: 'org_id,ad_archive_id' })
+    if (error) throw error
+    return { success: true }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+}
+
+export async function getTranscricoes(adIds: string[]) {
+  try {
+    if (!adIds.length) return { success: true, data: {} as Record<string, string> }
+    const { data, error } = await supabaseAdmin
+      .from('rastreador_transcricoes')
+      .select('ad_archive_id, texto')
+      .in('ad_archive_id', adIds)
+    if (error) throw error
+    const map: Record<string, string> = {}
+    for (const r of data ?? []) if (r.ad_archive_id && r.texto) map[r.ad_archive_id] = r.texto
+    return { success: true, data: map }
+  } catch (e: any) {
+    return { success: false, error: e.message, data: {} as Record<string, string> }
+  }
+}

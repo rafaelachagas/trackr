@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download, Copy, PlayCircle, Bookmark, Trash2, RotateCw, FileText, Loader2 } from 'lucide-react'
 import { extrairPageId, type CriativoRastreado } from '@/lib/rastreador'
-import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, type BibliotecaRastreada } from '@/app/actions/rastreador'
+import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, getTranscricoes, salvarTranscricao, type BibliotecaRastreada } from '@/app/actions/rastreador'
 
 const FREQ_NUM: Record<string, number> = { '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 
@@ -25,6 +25,7 @@ export default function RastreadorPage() {
   const [tipo, setTipo] = useState<Tipo>('todos')
   const [bibliotecas, setBibliotecas] = useState<BibliotecaRastreada[]>([])
   const [salvando, setSalvando] = useState(false)
+  const [cacheTranscricoes, setCacheTranscricoes] = useState<Record<string, string>>({})
 
   useEffect(() => { carregarBibs() }, [])
   async function carregarBibs() {
@@ -44,6 +45,12 @@ export default function RastreadorPage() {
       })
       const j = await r.json()
       setRes(j)
+      // Puxa transcrições já salvas dos anúncios retornados (pré-preenche os cards).
+      const ids = (j?.criativos ?? []).map((c: CriativoRastreado) => c.ad_archive_id).filter(Boolean) as string[]
+      if (ids.length) {
+        const t = await getTranscricoes(ids)
+        if (t.success) setCacheTranscricoes(t.data)
+      }
     } catch {
       setRes({ error: 'Falha ao chamar o scraper.' })
     } finally {
@@ -203,7 +210,7 @@ export default function RastreadorPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {criativos.map((c) => <CardCriativo key={c.ad_archive_id} c={c} />)}
+            {criativos.map((c) => <CardCriativo key={c.ad_archive_id} c={c} inicial={c.ad_archive_id ? cacheTranscricoes[c.ad_archive_id] : undefined} />)}
           </div>
         </>
       )}
@@ -222,10 +229,12 @@ export default function RastreadorPage() {
   )
 }
 
-function CardCriativo({ c }: { c: CriativoRastreado }) {
+function CardCriativo({ c, inicial }: { c: CriativoRastreado; inicial?: string }) {
   const [transcrevendo, setTranscrevendo] = useState(false)
-  const [transcricao, setTranscricao] = useState<string | null>(null)
+  const [transcricao, setTranscricao] = useState<string | null>(inicial ?? null)
   const [erroT, setErroT] = useState<string | null>(null)
+
+  useEffect(() => { if (inicial) setTranscricao(inicial) }, [inicial])
 
   async function transcrever() {
     if (!c.video_url) return
@@ -237,7 +246,12 @@ function CardCriativo({ c }: { c: CriativoRastreado }) {
       })
       const j = await r.json()
       if (j.error) setErroT(j.error)
-      else setTranscricao(j.texto || '(sem fala detectada)')
+      else {
+        const texto = j.texto || '(sem fala detectada)'
+        setTranscricao(texto)
+        // Salva no cache (pré-salvo) pra não re-transcrever o mesmo anúncio.
+        if (c.ad_archive_id) salvarTranscricao(c.ad_archive_id, c.video_url, texto)
+      }
     } catch {
       setErroT('Falha ao transcrever.')
     } finally {
