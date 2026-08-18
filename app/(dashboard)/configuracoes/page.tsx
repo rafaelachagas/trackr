@@ -1,9 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Save, Settings2, Sliders } from 'lucide-react'
+import { Save, Settings2, Sliders, ShoppingBag, Plus, Trash2, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AcaoOtimizacao } from '@/types'
+import { getProdutos, addProduto, deleteProduto } from '@/app/actions/produtos'
+
+interface Produto { id: string; nome_produto: string; tipo: 'front' | 'upsell'; ativo: boolean }
 
 type RegraFramework = {
   p7: boolean
@@ -37,10 +40,37 @@ export default function ConfiguracoesPage() {
   const [saving, setSaving] = useState(false)
   const [roasMinimo, setRoasMinimo] = useState('2.0')
   const [regras, setRegras] = useState<RegraFramework[]>(REGRAS_PADRAO)
+  const [produtos, setProdutos] = useState<Produto[]>([])
+  const [novoNome, setNovoNome] = useState('')
+  const [novoTipo, setNovoTipo] = useState<'front' | 'upsell'>('front')
+  const [prodSaving, setProdSaving] = useState(false)
 
   useEffect(() => {
     carregarConfiguracoes()
+    carregarProdutos()
   }, [])
+
+  async function carregarProdutos() {
+    const r = await getProdutos()
+    if (r.success) setProdutos((r.data as Produto[]) || [])
+  }
+
+  async function handleAddProduto(e: React.FormEvent) {
+    e.preventDefault()
+    if (!novoNome) return
+    setProdSaving(true)
+    const r = await addProduto(novoNome, novoTipo)
+    if (r.success) { setNovoNome(''); carregarProdutos() }
+    else alert('Erro ao adicionar: ' + r.error)
+    setProdSaving(false)
+  }
+
+  async function handleDeleteProduto(id: string) {
+    if (!confirm('Excluir este produto?')) return
+    const r = await deleteProduto(id)
+    if (r.success) carregarProdutos()
+    else alert('Erro ao excluir: ' + r.error)
+  }
 
   async function carregarConfiguracoes() {
     setLoading(true)
@@ -136,6 +166,67 @@ export default function ConfiguracoesPage() {
             />
             <p className="text-[10px] text-muted-foreground mt-1">ROAS abaixo deste valor é considerado negativo nas análises do framework. A cotação do dólar e a classificação front/upsell são automáticas.</p>
           </div>
+        </div>
+
+        {/* PRODUTOS (front/upsell) */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center border border-primary/30">
+              <ShoppingBag className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Produtos (front / upsell)</h2>
+              <p className="text-xs text-muted-foreground">A classificação é automática; cadastre aqui só pra forçar/corrigir um produto</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleAddProduto} className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 mb-5">
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Nome do produto</label>
+              <input
+                type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)}
+                placeholder="Ex: Plataforma de Marcas"
+                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary transition"
+              />
+            </div>
+            <div className="sm:w-44">
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Tipo</label>
+              <select
+                value={novoTipo} onChange={e => setNovoTipo(e.target.value as 'front' | 'upsell')}
+                className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary transition cursor-pointer"
+              >
+                <option value="front" className="bg-card text-foreground">Front</option>
+                <option value="upsell" className="bg-card text-foreground">Upsell</option>
+              </select>
+            </div>
+            <button
+              type="submit" disabled={prodSaving || !novoNome}
+              className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-2.5 rounded-lg text-sm font-semibold transition disabled:opacity-50 whitespace-nowrap"
+            >
+              {prodSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Adicionar
+            </button>
+          </form>
+
+          {produtos.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nenhum produto cadastrado — o painel classifica sozinho pelo nome.</p>
+          ) : (
+            <div className="space-y-2">
+              {produtos.map((p) => (
+                <div key={p.id} className="flex items-center justify-between bg-background border border-border rounded-xl px-4 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-foreground">{p.nome_produto}</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${p.tipo === 'front' ? 'bg-blue-500/15 text-blue-400 border-blue-500/25' : 'bg-purple-500/15 text-purple-400 border-purple-500/25'}`}>
+                      {p.tipo}
+                    </span>
+                  </div>
+                  <button onClick={() => handleDeleteProduto(p.id)} className="p-2 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* FRAMEWORK DE DECISÃO */}

@@ -30,7 +30,6 @@ import { useDashboard } from '@/context/DashboardContext'
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/sales', label: 'Vendas', icon: ShoppingCart },
-  { href: '/produtos', label: 'Produtos', icon: ShoppingBag },
   { href: '/criativos', label: 'Criativos', icon: Film },
   { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
