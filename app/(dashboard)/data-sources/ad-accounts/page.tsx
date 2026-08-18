@@ -262,9 +262,9 @@ export default function ContasAnunciosPage() {
 
       {/* Card Meta Ads */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden mb-4">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-6 py-5 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center shrink-0">
               <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
               </svg>
@@ -276,10 +276,10 @@ export default function ContasAnunciosPage() {
           </div>
 
           {metaAccessToken ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-2 bg-background border border-border rounded-full px-3 py-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
-                <span className="text-xs font-semibold text-foreground">{metaUserName || 'Conectado'}</span>
+                <span className="text-xs font-semibold text-foreground truncate max-w-[120px]">{metaUserName || 'Conectado'}</span>
               </div>
               <button
                 onClick={conectarMeta}
@@ -533,9 +533,9 @@ export default function ContasAnunciosPage() {
       {/* Gasto Mensal */}
       {gastosMensais.length > 0 && (
         <div className="bg-card border border-border rounded-2xl overflow-hidden mt-4">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-6 py-4 border-b border-border">
             <div className="flex items-center gap-2.5">
-              <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-4 h-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
               <span className="text-sm font-semibold text-foreground">Gasto Mensal</span>
@@ -549,24 +549,24 @@ export default function ContasAnunciosPage() {
               {sincronizandoHistorico ? 'Sincronizando...' : 'Sincronizar 90 dias'}
             </button>
           </div>
-          <div className="px-6 py-5">
+          <div className="px-4 sm:px-6 py-5">
             {/* Totais */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="text-center">
-                <p className="text-2xl font-black text-foreground">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
+              <div className="text-center min-w-0">
+                <p className="text-[15px] sm:text-2xl font-black text-foreground leading-tight tabular-nums break-words">
                   {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0))}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">Total {gastosMensais.length} {gastosMensais.length === 1 ? 'mês' : 'meses'}</p>
+                <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">Total {gastosMensais.length} {gastosMensais.length === 1 ? 'mês' : 'meses'}</p>
               </div>
-              <div className="text-center border-x border-border">
-                <p className="text-2xl font-black text-primary">
+              <div className="text-center min-w-0 border-x border-border px-1">
+                <p className="text-[15px] sm:text-2xl font-black text-primary leading-tight tabular-nums break-words">
                   {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0) / gastosMensais.length)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">Média mensal</p>
+                <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">Média mensal</p>
               </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-muted-foreground">Sem limites</p>
-                <p className="text-xs text-muted-foreground mt-1">no seu plano</p>
+              <div className="text-center min-w-0">
+                <p className="text-[15px] sm:text-lg font-bold text-muted-foreground leading-tight">Sem limites</p>
+                <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">no seu plano</p>
               </div>
             </div>
             {/* Barras por mês */}

@@ -14,6 +14,10 @@ create table if not exists rastreador_bibliotecas (
   unique (org_id, page_id)
 );
 
+-- Nome customizado (renomear) + foto de perfil escolhida pelo usuário.
+alter table rastreador_bibliotecas add column if not exists nome_custom text;
+alter table rastreador_bibliotecas add column if not exists foto_url text;
+
 create table if not exists rastreador_snapshots (
   id            uuid primary key default gen_random_uuid(),
   biblioteca_id uuid not null references rastreador_bibliotecas(id) on delete cascade,
@@ -25,6 +29,20 @@ create table if not exists rastreador_snapshots (
 );
 
 create index if not exists idx_rastreador_snap_bib on rastreador_snapshots (biblioteca_id, puxado_em desc);
+
+-- Novidades: registro de "Fulano subiu N anúncios novos" pra notificar no painel.
+create table if not exists rastreador_novidades (
+  id            uuid primary key default gen_random_uuid(),
+  org_id        uuid not null,
+  biblioteca_id uuid not null references rastreador_bibliotecas(id) on delete cascade,
+  page_name     text not null,
+  qtd_novos     int not null default 0,
+  novos_ids     jsonb,
+  visto         boolean not null default false,
+  criado_em     timestamptz not null default now()
+);
+
+create index if not exists idx_rastreador_novid on rastreador_novidades (org_id, criado_em desc);
 
 -- Transcrições dos criativos (cache: transcreveu uma vez, fica salvo).
 create table if not exists rastreador_transcricoes (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { RASTREADOR_URL, RASTREADOR_APIKEY } from '@/lib/rastreador'
+import { registrarNovidade } from '@/app/actions/rastreador'
 
 // Re-puxa automaticamente as bibliotecas agendadas e salva um snapshot pra
 // acompanhar a evolução ao longo do tempo. Roda via cron (vercel.json).
@@ -47,6 +48,11 @@ export async function GET(request: NextRequest) {
       const j = await r.json().catch(() => null)
       if (!j || j.error) { resultados.push({ page_id: b.page_id, ok: false, erro: j?.error ?? 'sem resposta' }); continue }
 
+      // Snapshot anterior (base pra detectar anúncios novos).
+      const { data: anterior } = await supabaseAdmin
+        .from('rastreador_snapshots').select('criativos')
+        .eq('biblioteca_id', b.id).order('puxado_em', { ascending: false }).limit(1).maybeSingle()
+
       await supabaseAdmin.from('rastreador_snapshots').insert({
         biblioteca_id: b.id,
         total: j.stats?.encontrados ?? (j.criativos?.length ?? 0),
@@ -54,6 +60,10 @@ export async function GET(request: NextRequest) {
         idade_media: j.stats?.idade_media_dias ?? null,
         criativos: j.criativos ?? [],
       })
+
+      const nomeDisplay = (b.nome_custom?.trim() || b.page_name?.trim() || j.criativos?.[0]?.page_name || `Página ${b.page_id}`)
+      await registrarNovidade(b.org_id, b.id, nomeDisplay, anterior?.criativos ?? null, j.criativos ?? [])
+
       await supabaseAdmin.from('rastreador_bibliotecas')
         .update({ ultima_puxada: new Date().toISOString(), page_name: j.criativos?.[0]?.page_name ?? b.page_name })
         .eq('id', b.id)

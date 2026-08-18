@@ -14,6 +14,19 @@ import type { HoraPonto } from '@/app/api/dashboard/por-hora/route'
 type Fonte = 'geral' | 'frio' | 'organico'
 type Valor = 'liquido' | 'bruto'
 
+// Detecta viewport estreito pra afinar os gráficos no mobile (menos rótulos, sem labels).
+function useIsMobile(bp = 640) {
+  const [m, setM] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${bp - 1}px)`)
+    const on = () => setM(mq.matches)
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [bp])
+  return m
+}
+
 const COR = { investimento: '#f59e0b', faturamento: 'var(--primary)', lucro: '#10b981', prejuizo: '#f43f5e' }
 
 const FONTE_OPTS: { v: Fonte; label: string }[] = [
@@ -92,12 +105,12 @@ function CardChart({ title, tooltip, seletores, children, isPrivate }: {
 }) {
   const [showTip, setShowTip] = useState(false)
   return (
-    <div className="bg-card border-border rounded-2xl border p-6 shadow-sm relative overflow-hidden">
-      <div className="flex items-start justify-between gap-3 mb-6 relative z-10">
+    <div className="bg-card border-border rounded-2xl border p-4 sm:p-6 shadow-sm relative overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5 sm:mb-6 relative z-10">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-bold text-foreground">{title}</h3>
           <div className="relative" onMouseEnter={() => setShowTip(true)} onMouseLeave={() => setShowTip(false)}>
-            <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+            <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help shrink-0" />
             {showTip && (
               <div className="absolute left-1/2 -translate-x-1/2 top-6 z-30 w-64 text-[11px] font-medium bg-popover border border-border rounded-lg shadow-2xl px-3 py-2 text-popover-foreground">
                 {tooltip}
@@ -105,9 +118,9 @@ function CardChart({ title, tooltip, seletores, children, isPrivate }: {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">{seletores}</div>
+        <div className="flex items-center gap-2 shrink-0">{seletores}</div>
       </div>
-      <div className={`w-full h-[340px] transition-all duration-500 ${isPrivate ? 'blur-xl opacity-20 pointer-events-none select-none' : ''}`}>
+      <div className={`w-full h-[300px] sm:h-[340px] transition-all duration-500 ${isPrivate ? 'blur-xl opacity-20 pointer-events-none select-none' : ''}`}>
         {children}
       </div>
       {isPrivate && (
@@ -125,6 +138,7 @@ function CardChart({ title, tooltip, seletores, children, isPrivate }: {
 function GraficoAcumulado({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[]; isPrivate: boolean; corteHora: number | null }) {
   const [fonte, setFonte] = useState<Fonte>('geral')
   const [valor, setValor] = useState<Valor>('liquido')
+  const isMobile = useIsMobile()
 
   const dados = useMemo(() => {
     const s = derivarSerie(pontos, fonte, valor)
@@ -147,8 +161,8 @@ function GraficoAcumulado({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={dados} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="0" stroke="var(--border)" strokeOpacity={0.5} vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} interval={0} minTickGap={0} padding={{ left: 8, right: 8 }} />
-          <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} width={52} />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} interval={isMobile ? 3 : 1} minTickGap={8} padding={{ left: 8, right: 8 }} />
+          <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} width={isMobile ? 40 : 52} />
           <Tooltip content={<TooltipMoeda />} cursor={{ stroke: 'var(--muted-foreground)', strokeOpacity: 0.2 }} />
           <Legend wrapperStyle={{ paddingTop: '12px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.08em' }} />
           <Line type="monotone" dataKey="faturamento" name="Faturamento" stroke={COR.faturamento} strokeWidth={2.5} dot={{ r: 3, fill: COR.faturamento, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: 'var(--card)' }} connectNulls={false} />
@@ -163,6 +177,7 @@ function GraficoAcumulado({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[
 function GraficoLucroPorHorario({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[]; isPrivate: boolean; corteHora: number | null }) {
   const [fonte, setFonte] = useState<Fonte>('geral')
   const [valor, setValor] = useState<Valor>('liquido')
+  const isMobile = useIsMobile()
 
   const dados = useMemo(() => derivarSerie(pontos, fonte, valor).map((p) => ({
     label: p.label,
@@ -179,8 +194,8 @@ function GraficoLucroPorHorario({ pontos, isPrivate, corteHora }: { pontos: Hora
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={dados} margin={{ top: 24, right: 12, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} interval={0} minTickGap={0} />
-          <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} interval={isMobile ? 3 : 1} minTickGap={8} />
+          <YAxis tickFormatter={fmtK} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontWeight: 'bold' }} axisLine={false} tickLine={false} width={isMobile ? 40 : 60} />
           <Tooltip content={<TooltipMoeda />} cursor={{ fill: 'var(--muted)', opacity: 0.08 }} />
           <Legend content={() => (
             <div className="flex justify-center gap-4 pt-3 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
@@ -190,7 +205,8 @@ function GraficoLucroPorHorario({ pontos, isPrivate, corteHora }: { pontos: Hora
           )} />
           <Bar dataKey="lucro" name="Lucro" radius={[3, 3, 0, 0]}>
             {dados.map((d, i) => <Cell key={i} fill={(d.lucro ?? 0) >= 0 ? COR.faturamento : COR.prejuizo} />)}
-            <LabelList dataKey="lucro" position="top" formatter={(v: any) => (v == null ? '' : fmtCurto(Number(v)))} style={{ fontSize: 8, fill: 'var(--muted-foreground)', fontWeight: 700 }} />
+            {/* No mobile os rótulos de valor se sobrepõem — só no desktop. */}
+            {!isMobile && <LabelList dataKey="lucro" position="top" formatter={(v: any) => (v == null ? '' : fmtCurto(Number(v)))} style={{ fontSize: 8, fill: 'var(--muted-foreground)', fontWeight: 700 }} />}
           </Bar>
         </ComposedChart>
       </ResponsiveContainer>

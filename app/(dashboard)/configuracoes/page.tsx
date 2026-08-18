@@ -249,23 +249,23 @@ export default function ConfiguracoesPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[520px]">
+          <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full text-sm min-w-[300px] sm:min-w-[520px]">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-4">ROAS 7 dias</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-4">ROAS 3 dias</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-4">ROAS 1 dia</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3">Ação</th>
+                  <th className="text-left text-[11px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-2 sm:pr-4"><span className="sm:hidden">7d</span><span className="hidden sm:inline">ROAS 7 dias</span></th>
+                  <th className="text-left text-[11px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-2 sm:pr-4"><span className="sm:hidden">3d</span><span className="hidden sm:inline">ROAS 3 dias</span></th>
+                  <th className="text-left text-[11px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3 pr-2 sm:pr-4"><span className="sm:hidden">1d</span><span className="hidden sm:inline">ROAS 1 dia</span></th>
+                  <th className="text-left text-[11px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider pb-3">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {regras.map((regra, i) => (
                   <tr key={i} className="group hover:bg-accent/30 transition-colors">
                     {([regra.p7, regra.p3, regra.p1]).map((positivo, j) => (
-                      <td key={j} className="py-3 pr-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${positivo ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25' : 'bg-red-500/15 text-red-400 border border-red-500/25'}`}>
-                          {positivo ? '✓ Positivo' : '✗ Negativo'}
+                      <td key={j} className="py-3 pr-2 sm:pr-4">
+                        <span className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md text-xs font-semibold ${positivo ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25' : 'bg-red-500/15 text-red-400 border border-red-500/25'}`}>
+                          {positivo ? '✓' : '✗'}<span className="hidden sm:inline">{positivo ? ' Positivo' : ' Negativo'}</span>
                         </span>
                       </td>
                     ))}
