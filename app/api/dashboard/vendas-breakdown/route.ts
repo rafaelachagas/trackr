@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { toZonedTime } from 'date-fns-tz'
 import { subDays, format } from 'date-fns'
 import { spRangeISO } from '@/lib/utils'
+import { classificarTipo } from '@/lib/classificar'
 
 const TIMEZONE = 'America/Sao_Paulo'
 
@@ -83,6 +84,9 @@ export async function GET(request: NextRequest) {
         .range(from, to)
     )
 
+    const { data: mapeamentos } = await supabaseAdmin
+      .from('produtos_mapeamento').select('nome_produto, tipo').eq('ativo', true)
+
     // Líquido com imputação: linhas sem valor_liquido (não reconciliadas via
     // /sales/commissions) não somam o BRUTO (inflava os reembolsos antigos ~5×);
     // usam a razão líquido/bruto observada no próprio conjunto. Ver dashboard.ts.
@@ -107,7 +111,7 @@ export async function GET(request: NextRequest) {
     let front = 0, upsell = 0
 
     for (const v of aprovadas) {
-      const tipo = v.tipo === 'upsell' ? 'upsell' : 'front'
+      const tipo = classificarTipo(v.produto, mapeamentos)
       if (tipo === 'upsell') upsell++; else front++
 
       const prod = v.produto ?? 'Desconhecido'

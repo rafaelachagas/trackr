@@ -3,6 +3,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { toZonedTime } from 'date-fns-tz'
 import { format } from 'date-fns'
+import { classificarTipo } from '@/lib/classificar'
 
 
 export async function getDashboardData(product: string, startDate: string, endDate: string) {
@@ -103,11 +104,6 @@ export async function getDashboardData(product: string, startDate: string, endDa
       }
     } catch {}
 
-    // Mapa produto -> tipo para classificar vendas sem tipo definido
-    const produtoTipoMap = new Map<string, string>()
-    for (const p of (produtosRes.data ?? [])) {
-      produtoTipoMap.set(p.nome_produto, p.tipo)
-    }
     // Soma o LÍQUIDO (comissão do produtor = "Receita Líquida" da Hotmart). Nem toda
     // venda foi reconciliada via /sales/commissions, então parte fica com valor_liquido
     // NULO. O fallback antigo somava o valor BRUTO nessas — o que inflava (nos reembolsos
@@ -140,10 +136,12 @@ export async function getDashboardData(product: string, startDate: string, endDa
     const baseVendasPagas = totalRevenue + reembolsoValor
     const taxaReembolso = baseVendasPagas > 0 ? (reembolsoValor / baseVendasPagas) * 100 : 0
 
-    // Resolve tipo via mapeamento quando o campo está nulo
+    // Reclassifica front/upsell na leitura (não confia no tipo gravado, que no
+    // histórico jogava todo produto não-mapeado em "front"). Front só o que começa
+    // com um produto front cadastrado; o resto é upsell. Ver [[classificar]].
     const vendasComTipo = vendas.map((v: any) => ({
       ...v,
-      tipo: v.tipo ?? produtoTipoMap.get(v.produto) ?? 'front',
+      tipo: classificarTipo(v.produto, produtosRes.data ?? []),
     }))
 
     return {

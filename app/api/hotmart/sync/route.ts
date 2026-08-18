@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extrairCriativo, normalizarPagamento } from '@/lib/utils'
+import { classificarTipo } from '@/lib/classificar'
 
 export const maxDuration = 60
 
@@ -149,18 +150,7 @@ export async function POST() {
 
         const status = STATUS_MAP[purchase.status] ?? 'pending'
 
-        let tipo: 'front' | 'upsell' = 'front'
-        if (mapeamentos && mapeamentos.length > 0) {
-          const mapeamento = mapeamentos.find((m: any) =>
-            product?.name?.toLowerCase().includes(m.nome_produto.toLowerCase())
-          )
-          if (mapeamento) tipo = mapeamento.tipo
-        } else {
-          const palavrasUpsell = ['upsell', 'order bump', 'bump', 'plataforma de marcas', 'plataforma']
-          if (palavrasUpsell.some((p) => product?.name?.toLowerCase().includes(p))) {
-            tipo = 'upsell'
-          }
-        }
+        const tipo = classificarTipo(product?.name, mapeamentos)
 
         const sck = purchase.tracking?.source_sck ?? null
         const criativo = extrairCriativo(sck)
