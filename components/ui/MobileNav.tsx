@@ -7,7 +7,7 @@ import {
   LayoutDashboard, TrendingUp, Settings, Zap, RefreshCw, LogOut,
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
-  Wrench, Binoculars, Video,
+  Wrench, Binoculars, Video, MonitorPlay,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -20,6 +20,7 @@ const navigation = [
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
   { href: '/ad-analysis', label: 'Analisar Criativos', icon: Film },
+  { href: '/vsls', label: 'Análise de VSL', icon: MonitorPlay },
 ]
 
 const dataSources = [

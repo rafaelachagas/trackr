@@ -285,6 +285,14 @@ function Viewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () => void }) {
             <Card label="Gasto (Meta)" valor={fmtBRL(mt?.gasto)} />
             <Card label="Engajamento" valor={fmtPct(vt?.engajamento)} />
           </div>
+
+          {/* Debug: aparece enquanto a VTurb vem zerada, pra lapidar os campos. */}
+          {(vt?.playsUnicos ?? 0) === 0 && (vt?.viewsUnicas ?? 0) === 0 && (
+            <details className="bg-background border border-amber-500/25 rounded-xl p-4 text-[12px]">
+              <summary className="cursor-pointer font-semibold text-amber-300">⚠ VTurb veio zerado — abrir debug (me mande um print disto)</summary>
+              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-muted-foreground">{JSON.stringify({ vturb: dados?.vturb, _raw: dados?._raw }, null, 2)}</pre>
+            </details>
+          )}
         </>
       )}
     </div>

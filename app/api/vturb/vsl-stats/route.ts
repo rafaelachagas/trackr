@@ -113,6 +113,12 @@ export async function GET(request: NextRequest) {
     real: { playRateReal, custoPorPlay, custoPorLp, roas, cpa },
     retencao,
     // Eco cru pra depurar/lapidar os nomes de campo sem adivinhar.
-    _raw: { statsErro: stats.erro, retenErro: reten.erro, statsKeys: s && typeof s === 'object' ? Object.keys(s) : null },
+    _raw: {
+      statsErro: stats.erro,
+      retenErro: reten.erro,
+      statsKeys: s && typeof s === 'object' ? Object.keys(s) : null,
+      statsRaw: stats.data,
+      retenSample: Array.isArray(grouped) ? grouped.slice(0, 2) : reten.data,
+    },
   })
 }

@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from 'react'
 import { Video, Check, Loader2, Trash2, PlugZap, ExternalLink, Info, AlertCircle } from 'lucide-react'
+import Link from 'next/link'
 import { getVturbStatus, salvarVturbKey, removerVturbKey } from '@/app/actions/vturb'
-import VslManager from '@/components/vturb/VslManager'
 
 export default function VturbPage() {
   const [conectado, setConectado] = useState(false)
@@ -139,8 +139,20 @@ export default function VturbPage() {
         </div>
       </div>
 
-      {/* Gerenciador de VSLs + visualizador com Play Rate Real */}
-      {conectado && <VslManager />}
+      {/* Atalho pra análise de VSL (fica no menu principal) */}
+      {conectado && (
+        <Link href="/vsls" className="block bg-card border border-primary/30 rounded-2xl px-4 sm:px-6 py-4 hover:bg-primary/5 transition">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center shrink-0">
+              <Video className="w-4 h-4 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">Análise de VSL →</p>
+              <p className="text-xs text-muted-foreground">Cadastre seus VSLs e veja o Play Rate real, retenção e ROAS. Fica no menu principal.</p>
+            </div>
+          </div>
+        </Link>
+      )}
 
       {/* Nota sobre limites */}
       <div className="bg-card border border-border rounded-2xl px-4 sm:px-6 py-5 space-y-2">

@@ -24,6 +24,7 @@ import {
   Wrench,
   Binoculars,
   Video,
+  MonitorPlay,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
@@ -35,6 +36,7 @@ const navigation = [
   { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
+  { href: '/vsls', label: 'Análise de VSL', icon: MonitorPlay },
 ]
 
 const dataSources = [
