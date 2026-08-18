@@ -3,6 +3,8 @@
     { "path": "/api/hotmart/reconciliar-sck", "schedule": "0 * * * *" },
     { "path": "/api/meta/refresh-token", "schedule": "0 5 * * *" },
     { "path": "/api/meta/sync?dias=90", "schedule": "0 6 * * *" },
-    { "path": "/api/rastreador/cron", "schedule": "0 7 * * *" }
+    { "path": "/api/rastreador/cron", "schedule": "0 7 * * *" },
+    { "path": "/api/alertas/cron", "schedule": "0 8 * * *" },
+    { "path": "/api/rastreador/radar", "schedule": "0 9 * * *" }
   ]
 }

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, TrendingUp, Settings, Zap, RefreshCw, LogOut,
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
-  Wrench, Binoculars, Video, MonitorPlay,
+  Wrench, Binoculars, Video, MonitorPlay, Brain,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -31,6 +31,7 @@ const dataSources = [
 
 const ferramentas = [
   { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars },
+  { href: '/ferramentas/inteligencia', label: 'Inteligência', icon: Brain },
   { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp },
 ]
 

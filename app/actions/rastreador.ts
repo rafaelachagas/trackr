@@ -1,6 +1,7 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { foldHistoricoAoVivo } from '@/app/actions/rastreador-intel'
 
 async function resolveOrgId(): Promise<string | null> {
   const { data } = await supabaseAdmin
@@ -14,6 +15,9 @@ export interface BibliotecaRastreada {
   page_name: string | null
   nome_custom: string | null
   foto_url: string | null
+  nicho: string | null
+  oferta: string | null
+  landing_url: string | null
   link: string | null
   freq_dias: number | null
   ativo: boolean
@@ -21,11 +25,17 @@ export interface BibliotecaRastreada {
   created_at: string
 }
 
-export async function atualizarBiblioteca(id: string, campos: { nome_custom?: string | null; foto_url?: string | null }) {
+export async function atualizarBiblioteca(
+  id: string,
+  campos: { nome_custom?: string | null; foto_url?: string | null; nicho?: string | null; oferta?: string | null; landing_url?: string | null }
+) {
   try {
     const patch: Record<string, any> = {}
     if ('nome_custom' in campos) patch.nome_custom = campos.nome_custom?.toString().trim() || null
     if ('foto_url' in campos) patch.foto_url = campos.foto_url?.toString().trim() || null
+    if ('nicho' in campos) patch.nicho = campos.nicho?.toString().trim() || null
+    if ('oferta' in campos) patch.oferta = campos.oferta?.toString().trim() || null
+    if ('landing_url' in campos) patch.landing_url = campos.landing_url?.toString().trim() || null
     const { error } = await supabaseAdmin.from('rastreador_bibliotecas').update(patch).eq('id', id)
     if (error) throw error
     return { success: true }
@@ -119,6 +129,10 @@ export async function salvarSnapshot(
     const patch: Record<string, any> = { ultima_puxada: new Date().toISOString() }
     if (!bib.page_name && nomeDoScrape) patch.page_name = nomeDoScrape
     await supabaseAdmin.from('rastreador_bibliotecas').update(patch).eq('id', bib.id)
+
+    // Mantém o histórico por criativo (dias no ar, variações, removidos).
+    // Não deixa um erro aqui derrubar o salvamento do snapshot.
+    try { await foldHistoricoAoVivo(bib.id, criativos ?? []) } catch { /* silencioso */ }
     return { success: true }
   } catch (e: any) {
     return { success: false, error: e.message }

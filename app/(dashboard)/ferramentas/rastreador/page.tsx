@@ -5,6 +5,8 @@ import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download,
 import { extrairPageId, type CriativoRastreado } from '@/lib/rastreador'
 import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, getTranscricoes, salvarTranscricao, salvarSnapshot, listarSnapshots, atualizarBiblioteca, listarNovidades, marcarNovidadesVistas, type BibliotecaRastreada, type SnapshotRastreador, type NovidadeRastreador } from '@/app/actions/rastreador'
 import { baixarTxt, baixarDocx } from '@/lib/exportDoc'
+import InteligenciaBib from '@/components/rastreador/InteligenciaBib'
+import { Gauge } from 'lucide-react'
 
 // Nome de exibição: renomeado pelo usuário > nome da página > ID.
 function nomeBiblioteca(b: BibliotecaRastreada): string {
@@ -308,6 +310,9 @@ function ModalEditarBib({ bib, imagens, onFechar, onSalvo }: {
 }) {
   const [nome, setNome] = useState(bib.nome_custom ?? bib.page_name ?? '')
   const [foto, setFoto] = useState(bib.foto_url ?? '')
+  const [nicho, setNicho] = useState(bib.nicho ?? '')
+  const [oferta, setOferta] = useState(bib.oferta ?? '')
+  const [landing, setLanding] = useState(bib.landing_url ?? '')
   const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
@@ -318,9 +323,9 @@ function ModalEditarBib({ bib, imagens, onFechar, onSalvo }: {
 
   async function salvar() {
     setSalvando(true)
-    const r = await atualizarBiblioteca(bib.id, { nome_custom: nome, foto_url: foto })
+    const r = await atualizarBiblioteca(bib.id, { nome_custom: nome, foto_url: foto, nicho, oferta, landing_url: landing })
     setSalvando(false)
-    if (r.success) onSalvo({ ...bib, nome_custom: nome.trim() || null, foto_url: foto.trim() || null })
+    if (r.success) onSalvo({ ...bib, nome_custom: nome.trim() || null, foto_url: foto.trim() || null, nicho: nicho.trim() || null, oferta: oferta.trim() || null, landing_url: landing.trim() || null })
     else alert('Erro ao salvar: ' + r.error)
   }
 
@@ -356,6 +361,26 @@ function ModalEditarBib({ bib, imagens, onFechar, onSalvo }: {
             <input value={foto} onChange={(e) => setFoto(e.target.value)} placeholder="https://..."
               className="w-full px-3 py-2.5 rounded-lg text-sm font-mono" style={inputStyle} />
             {foto && <button onClick={() => setFoto('')} className="text-[11px] text-muted-foreground hover:text-rose-400 mt-1.5">Remover foto</button>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Nicho</label>
+              <input value={nicho} onChange={(e) => setNicho(e.target.value)} placeholder="ex: renda extra"
+                className="w-full px-3 py-2.5 rounded-lg text-sm" style={inputStyle} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Oferta</label>
+              <input value={oferta} onChange={(e) => setOferta(e.target.value)} placeholder="ex: curso de cortes"
+                className="w-full px-3 py-2.5 rounded-lg text-sm" style={inputStyle} />
+            </div>
+          </div>
+          <p className="text-[10px] text-muted-foreground/70 -mt-2">Nicho e oferta alimentam o swipe file (busca) e o radar de concorrentes.</p>
+
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Página de vendas (URL) — pra versionar oferta/preço</label>
+            <input value={landing} onChange={(e) => setLanding(e.target.value)} placeholder="https://pagina-do-concorrente.com/oferta"
+              className="w-full px-3 py-2.5 rounded-lg text-sm font-mono" style={inputStyle} />
           </div>
 
           {imagens.length > 0 && (
@@ -467,6 +492,7 @@ function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, on
 }) {
   const [snaps, setSnaps] = useState<SnapshotRastreador[] | null>(null)
   const [cache, setCache] = useState<Record<string, string>>({})
+  const [subaba, setSubaba] = useState<'movimento' | 'inteligencia'>('movimento')
 
   useEffect(() => {
     (async () => {
@@ -523,6 +549,19 @@ function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, on
         </button>
       </div>
 
+      {/* Sub-abas: movimento (linha do tempo) x inteligência */}
+      <div className="flex items-center gap-1.5 border-b border-border">
+        {([['movimento', 'Movimento'], ['inteligencia', 'Inteligência']] as ['movimento' | 'inteligencia', string][]).map(([k, label]) => (
+          <button key={k} onClick={() => setSubaba(k)}
+            className={`px-3.5 py-2 text-sm font-semibold border-b-2 -mb-px transition flex items-center gap-1.5 ${subaba === k ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+            {k === 'inteligencia' && <Gauge className="w-3.5 h-3.5" />}{label}
+          </button>
+        ))}
+      </div>
+
+      {subaba === 'inteligencia' && <InteligenciaBib bibId={bib.id} landingUrl={bib.landing_url} />}
+
+      {subaba === 'movimento' && (<>
       {snaps === null && <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> Carregando movimento...</div>}
 
       {snaps && snaps.length === 0 && (
@@ -577,6 +616,7 @@ function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, on
           )}
         </>
       )}
+      </>)}
     </div>
   )
 }
