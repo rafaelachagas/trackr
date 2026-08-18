@@ -1,10 +1,19 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-// Manrope: alternativa gratuita (Google Fonts) próxima da Uber Move usada pela Utmify.
-// Uber Move é proprietária da Uber, não licenciável. Teste — reverter é só voltar pra Inter.
-const inter = Manrope({ subsets: ["latin"], variable: "--font-app" });
+// Uber Move (arquivos locais fornecidos pelo usuário em app/fonts). A licença dos
+// arquivos é responsabilidade do usuário.
+const inter = localFont({
+  src: [
+    { path: "./fonts/UberMoveTextLight.otf", weight: "300", style: "normal" },
+    { path: "./fonts/UberMoveTextRegular.otf", weight: "400", style: "normal" },
+    { path: "./fonts/UberMoveTextMedium.otf", weight: "500", style: "normal" },
+    { path: "./fonts/UberMoveTextBold.otf", weight: "700", style: "normal" },
+  ],
+  variable: "--font-app",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "The Track",
@@ -18,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className={`${inter.className} min-h-full`}>{children}</body>
+      <body className={`${inter.variable} min-h-full`}>{children}</body>
     </html>
   );
 }
