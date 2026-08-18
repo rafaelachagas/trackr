@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Wrench,
   Binoculars,
+  Video,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
@@ -39,6 +40,7 @@ const navigation = [
 const dataSources = [
   { href: '/data-sources/sales', label: 'Vendas', icon: DollarSign },
   { href: '/data-sources/ad-accounts', label: 'Contas de anúncios', icon: CreditCard },
+  { href: '/data-sources/vturb', label: 'VTurb', icon: Video },
 ]
 
 const ferramentas = [

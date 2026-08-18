@@ -7,7 +7,7 @@ import {
   LayoutDashboard, TrendingUp, Settings, Zap, RefreshCw, LogOut,
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
-  Wrench, Binoculars,
+  Wrench, Binoculars, Video,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -25,6 +25,7 @@ const navigation = [
 const dataSources = [
   { href: '/data-sources/sales', label: 'Vendas', icon: DollarSign },
   { href: '/data-sources/ad-accounts', label: 'Contas de anúncios', icon: CreditCard },
+  { href: '/data-sources/vturb', label: 'VTurb', icon: Video },
 ]
 
 const ferramentas = [
