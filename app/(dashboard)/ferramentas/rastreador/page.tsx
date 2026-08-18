@@ -1,8 +1,11 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
-import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download, Copy, PlayCircle } from 'lucide-react'
-import type { CriativoRastreado } from '@/lib/rastreador'
+import React, { useMemo, useState, useEffect } from 'react'
+import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download, Copy, PlayCircle, Bookmark, Trash2, RotateCw } from 'lucide-react'
+import { extrairPageId, type CriativoRastreado } from '@/lib/rastreador'
+import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, type BibliotecaRastreada } from '@/app/actions/rastreador'
+
+const FREQ_NUM: Record<string, number> = { '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 
 const cardClass = 'bg-card border border-border'
 const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0' }
@@ -20,14 +23,24 @@ export default function RastreadorPage() {
   const [res, setRes] = useState<Resultado | null>(null)
   const [ordem, setOrdem] = useState<Ordem>('antigos')
   const [tipo, setTipo] = useState<Tipo>('todos')
+  const [bibliotecas, setBibliotecas] = useState<BibliotecaRastreada[]>([])
+  const [salvando, setSalvando] = useState(false)
 
-  async function puxar() {
-    if (!link.trim()) return
+  useEffect(() => { carregarBibs() }, [])
+  async function carregarBibs() {
+    const r = await listarBibliotecas()
+    if (r.success) setBibliotecas(r.data)
+  }
+
+  async function puxar(alvo?: string) {
+    const url = (alvo ?? link).trim()
+    if (!url) return
+    if (alvo) setLink(alvo)
     setLoading(true); setRes(null)
     try {
       const r = await fetch('/api/rastreador/scrape', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: link.trim() }),
+        body: JSON.stringify({ url }),
       })
       const j = await r.json()
       setRes(j)
@@ -36,6 +49,24 @@ export default function RastreadorPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Salva/atualiza a biblioteca atual. freqDias null = só acompanha; número = agenda auto-pull.
+  async function salvar(freqDias: number | null) {
+    const pageId = extrairPageId(link)
+    if (!pageId) { alert('Cole um link válido da Biblioteca de Anúncios (ou o ID da página) antes de salvar.'); return }
+    setSalvando(true)
+    const pageName = res?.criativos?.[0]?.page_name ?? null
+    const r = await salvarBiblioteca(pageId, pageName, link.trim() || null, freqDias)
+    if (r.success) carregarBibs()
+    else alert('Erro ao salvar: ' + r.error)
+    setSalvando(false)
+  }
+
+  async function removerBib(id: string) {
+    if (!confirm('Parar de acompanhar esta biblioteca?')) return
+    const r = await removerBiblioteca(id)
+    if (r.success) carregarBibs()
   }
 
   const criativos = useMemo(() => {
@@ -76,19 +107,18 @@ export default function RastreadorPage() {
         <div className="flex flex-col sm:flex-row gap-2">
           <input value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') puxar() }}
             placeholder="https://www.facebook.com/ads/library/?...view_all_page_id=..." className="flex-1 px-3 py-2.5 rounded-lg text-sm font-mono" style={inputStyle} />
-          <button onClick={puxar} disabled={loading || !link.trim()}
+          <button onClick={() => puxar()} disabled={loading || !link.trim()}
             className="px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 bg-primary text-white hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
             <Search className="w-4 h-4" /> {loading ? 'Puxando...' : 'Puxar criativos'}
           </button>
         </div>
         <p className="text-[11px] text-muted-foreground mt-1.5">Cole o link da página do concorrente na biblioteca da Meta (ou só o ID da página).</p>
 
-        {/* Agendamento (shell — entra na próxima) */}
+        {/* Salvar + Agendamento */}
         <div className="mt-5 pt-4 border-t border-white/5">
           <div className="flex items-center gap-2 mb-2">
             <CalendarClock className="w-4 h-4 text-muted-foreground" />
-            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Puxar automaticamente a cada</span>
-            <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-white/5 text-muted-foreground ml-1">em breve</span>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Acompanhar / puxar automaticamente a cada</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {FREQ.map((f) => (
@@ -97,12 +127,51 @@ export default function RastreadorPage() {
                 {f}
               </button>
             ))}
-            <button disabled className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 opacity-40 cursor-not-allowed border border-emerald-500/30 text-emerald-300">
-              <CalendarClock className="w-4 h-4" /> Agendar
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={() => salvar(null)} disabled={salvando || !link.trim()}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-white/10 text-muted-foreground hover:bg-white/5 disabled:opacity-40">
+                <Bookmark className="w-4 h-4" /> Só salvar
+              </button>
+              <button onClick={() => salvar(FREQ_NUM[freq] ?? 3)} disabled={salvando || !link.trim()}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40">
+                <CalendarClock className="w-4 h-4" /> Agendar ({freq})
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Bibliotecas acompanhadas */}
+      {bibliotecas.length > 0 && (
+        <div className={`rounded-2xl p-5 ${cardClass}`}>
+          <div className="flex items-center gap-2 mb-3">
+            <Bookmark className="w-4 h-4 text-muted-foreground" />
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Bibliotecas acompanhadas</span>
+          </div>
+          <div className="space-y-2">
+            {bibliotecas.map((b) => (
+              <div key={b.id} className="flex items-center gap-3 flex-wrap bg-background border border-border rounded-xl px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground truncate">{b.page_name || `Página ${b.page_id}`}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {b.freq_dias ? `Auto a cada ${b.freq_dias}d` : 'Sem agendamento'}
+                    {b.ultima_puxada ? ` · última: ${new Date(b.ultima_puxada).toLocaleDateString('pt-BR')}` : ' · nunca puxada'}
+                  </p>
+                </div>
+                {b.freq_dias && (
+                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">{b.freq_dias}d</span>
+                )}
+                <button onClick={() => puxar(b.link || b.page_id)} className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition" title="Puxar agora">
+                  <RotateCw className="w-4 h-4" />
+                </button>
+                <button onClick={() => removerBib(b.id)} className="p-2 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition" title="Parar de acompanhar">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Erro */}
       {res?.error && (
