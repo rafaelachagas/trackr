@@ -3,30 +3,48 @@
 import { supabaseAdmin } from '@/lib/supabase'
 
 // Busca upsells sem criativo e tenta vincular ao front do mesmo email (janela 48h)
+// Só reprocessa upsells RECENTES (30 dias) — sem isso a lista de órfãos só
+// cresce (chegou a 5.877 em todo o histórico) e o loop sequencial de N+1
+// queries fazia a página Sales levar minutos pra carregar. Upsell antigo que
+// nunca achou o front não vai achar depois — não adianta reprocessar pra sempre.
 export async function reprocessarUpsellsSemCriativo() {
-  // Busca upsells sem criativo OU sem fase (para completar atribuição parcial)
+  const desde = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
   const { data: upsells } = await supabaseAdmin
     .from('vendas')
     .select('id, buyer_email, data')
     .eq('tipo', 'upsell')
     .not('buyer_email', 'is', null)
     .or('criativo.is.null,fase.is.null')
+    .gte('data', desde)
+    .limit(500)
 
   if (!upsells || upsells.length === 0) return
 
+  // Busca os fronts candidatos de TODOS os e-mails de uma vez (1 query em vez
+  // de N) e casa em memória pela janela de 48h — mesmo resultado, sem N+1.
+  const emails = [...new Set(upsells.map((u) => u.buyer_email).filter(Boolean))]
+  const janelaMin = new Date(Math.min(...upsells.map((u) => new Date(u.data).getTime())) - 48 * 60 * 60 * 1000).toISOString()
+  const { data: fronts } = await supabaseAdmin
+    .from('vendas')
+    .select('id, buyer_email, criativo, fase, campanha, sck, vsl, data')
+    .eq('tipo', 'front')
+    .in('buyer_email', emails)
+    .gte('data', janelaMin)
+    .order('data', { ascending: false })
+
+  const frontsPorEmail = new Map<string, typeof fronts>()
+  for (const f of fronts ?? []) {
+    if (!frontsPorEmail.has(f.buyer_email!)) frontsPorEmail.set(f.buyer_email!, [])
+    frontsPorEmail.get(f.buyer_email!)!.push(f)
+  }
+
   for (const upsell of upsells) {
-    const janela = new Date(new Date(upsell.data).getTime() - 48 * 60 * 60 * 1000).toISOString()
-
-    const { data: front } = await supabaseAdmin
-      .from('vendas')
-      .select('id, criativo, fase, campanha, sck, vsl')
-      .eq('buyer_email', upsell.buyer_email)
-      .eq('tipo', 'front')
-      .gte('data', janela)
-      .order('data', { ascending: false })
-      .limit(1)
-      .single()
-
+    if (!upsell.buyer_email) continue
+    const janela = new Date(upsell.data).getTime() - 48 * 60 * 60 * 1000
+    const front = (frontsPorEmail.get(upsell.buyer_email) ?? []).find(
+      (f) => new Date(f.data).getTime() >= janela && new Date(f.data).getTime() <= new Date(upsell.data).getTime()
+    )
     if (front?.criativo) {
       await supabaseAdmin
         .from('vendas')

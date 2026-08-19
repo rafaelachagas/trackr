@@ -62,8 +62,13 @@ export default function VendasPage() {
     }
   }
 
+  // Reprocessa upsells órfãos só UMA VEZ ao entrar na página — não a cada
+  // troca de filtro/data (era o que deixava a Sales lenta: N+1 sem limite).
   useEffect(() => {
     reprocessarUpsellsSemCriativo()
+  }, [])
+
+  useEffect(() => {
     setPage(1)
     carregar(1)
   }, [product, statusFiltro, dateRange, lastUpdate])
