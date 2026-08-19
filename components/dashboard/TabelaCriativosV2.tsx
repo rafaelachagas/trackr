@@ -86,6 +86,81 @@ function VendasModal({ adName, chave, onClose }: { adName: string; chave: string
   )
 }
 
+type DiaDetalhe = { data: string; gasto: number; receita: number; roas: number | null }
+
+// Quebra dia a dia do gasto/receita — abre ao clicar num ROAS (7d/3d/1d).
+function DiarioModal({ adName, chave, janela, onClose }: { adName: string; chave: string; janela: 7 | 3 | 1; onClose: () => void }) {
+  const [dias, setDias] = useState<DiaDetalhe[]>([])
+  const [total, setTotal] = useState<{ gasto: number; receita: number; roas: number | null } | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/performance-v2/diario?chave=${encodeURIComponent(chave)}&janela=${janela}`)
+      .then(r => r.json())
+      .then(j => { setDias(j.dias ?? []); setTotal(j.total ?? null) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [chave, janela])
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-foreground truncate" title={adName}>{adName}</p>
+            <p className="text-xs text-muted-foreground">ROAS {janela}d — dia a dia · {loading ? 'carregando...' : `${dias.length} dias`}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground shrink-0"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="overflow-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-16"><div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b border-border sticky top-0">
+                <tr>
+                  <th className="text-left px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Data</th>
+                  <th className="text-right px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Gasto</th>
+                  <th className="text-right px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Receita</th>
+                  <th className="text-right px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">ROAS</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {dias.map((d) => (
+                  <tr key={d.data} className="hover:bg-muted/30">
+                    <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">{new Date(d.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
+                    <td className="px-4 py-2 text-right text-rose-400">{formatarMoeda(d.gasto)}</td>
+                    <td className="px-4 py-2 text-right text-emerald-400">{formatarMoeda(d.receita)}</td>
+                    <td className="px-4 py-2 text-right"><BadgeRoas valor={d.roas} /></td>
+                  </tr>
+                ))}
+              </tbody>
+              {total && (
+                <tfoot className="border-t-2 border-border bg-muted/30">
+                  <tr>
+                    <td className="px-4 py-2.5 font-bold text-foreground text-xs uppercase tracking-wide">Total acumulado</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-rose-400">{formatarMoeda(total.gasto)}</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-emerald-400">{formatarMoeda(total.receita)}</td>
+                    <td className="px-4 py-2.5 text-right"><BadgeRoas valor={total.roas} /></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const ACOES = [
   { value: '', label: 'Todas as ações' },
   { value: '+20% orçamento', label: '▲ +20% orçamento' },
@@ -107,6 +182,7 @@ export default function TabelaCriativosV2() {
   const [filtradoAtivos, setFiltradoAtivos] = useState(true)
   const [filtroAcao, setFiltroAcao] = useState('')
   const [detalhe, setDetalhe] = useState<{ ad_name: string; chave: string } | null>(null)
+  const [detalheDiario, setDetalheDiario] = useState<{ ad_name: string; chave: string; janela: 7 | 3 | 1 } | null>(null)
 
   // Sempre em FORMATO FRAMEWORK: 7 dias fechados terminando ontem (hoje fora).
   // Ignora o filtro de período do topo de propósito — a decisão é sobre dias
@@ -128,6 +204,7 @@ export default function TabelaCriativosV2() {
   return (
     <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden text-foreground">
       {detalhe && <VendasModal adName={detalhe.ad_name} chave={detalhe.chave} onClose={() => setDetalhe(null)} />}
+      {detalheDiario && <DiarioModal adName={detalheDiario.ad_name} chave={detalheDiario.chave} janela={detalheDiario.janela} onClose={() => setDetalheDiario(null)} />}
       <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-sm font-semibold text-foreground">Performance por Criativo</h3>
@@ -213,9 +290,19 @@ export default function TabelaCriativosV2() {
                   <td className={`px-4 py-3 text-right font-medium ${row.lucro_7d >= 0 ? 'text-foreground' : 'text-rose-400'} ${isPrivate ? 'blur-sm select-none' : ''}`}>
                     {isPrivate ? 'R$ ••••' : formatarMoeda(row.lucro_7d)}
                   </td>
-                  <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_7d} />}</td>
-                  <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_3d} />}</td>
-                  <td className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? <span className="text-xs">•.••</span> : <BadgeRoas valor={row.roas_1d} />}</td>
+                  {([[7, row.roas_7d], [3, row.roas_3d], [1, row.roas_1d]] as [7 | 3 | 1, number | null][]).map(([janela, valor]) => (
+                    <td key={janela} className={`px-4 py-3 text-center ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                      {isPrivate ? <span className="text-xs">•.••</span> : (
+                        <button
+                          onClick={e => { e.stopPropagation(); setDetalheDiario({ ad_name: row.ad_name, chave: row.chave, janela }) }}
+                          className="hover:underline decoration-dotted underline-offset-2 cursor-pointer"
+                          title={`Ver ${janela}d dia a dia (prova real)`}
+                        >
+                          <BadgeRoas valor={valor} />
+                        </button>
+                      )}
+                    </td>
+                  ))}
                   <td className={`px-4 py-3 text-center border-l border-border ${isPrivate ? 'blur-sm select-none' : ''}`}>
                     {isPrivate ? <span className="text-xs">•.••</span> : (
                       <div className="leading-tight" title={`Hoje: ${formatarMoeda(row.gasto_hoje)} gasto · ${formatarMoeda(row.receita_hoje)} líquido`}>
