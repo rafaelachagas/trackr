@@ -729,6 +729,7 @@ function ModalTranscricao({ modal, onFechar, onSalvar }: {
   const [salvando, setSalvando] = useState(false)
   const [salvo, setSalvo] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const [gerar, setGerar] = useState(false)
   const nomeBase = `transcricao-${c.page_name || c.ad_archive_id || 'anuncio'}`
 
   async function copiar() {
@@ -773,6 +774,21 @@ function ModalTranscricao({ modal, onFechar, onSalvar }: {
           <textarea value={texto} onChange={(e) => setTexto(e.target.value)}
             className="w-full h-64 px-3 py-2.5 rounded-lg text-sm leading-relaxed resize-y" style={inputStyle} />
           <p className="text-[11px] text-muted-foreground mt-1.5">{texto.trim().split(/\s+/).filter(Boolean).length} palavras</p>
+
+          {/* Gerador de copy acoplado — usa a transcrição como referência de estrutura/ângulo. */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <button onClick={() => setGerar((v) => !v)}
+              className="w-full flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold transition"
+              style={{ backgroundColor: gerar ? 'rgba(59,130,246,0.06)' : '#1a2022', border: '1px solid rgba(59,130,246,0.25)', color: '#7cc4ff' }}>
+              <Wand2 className="w-4 h-4" />
+              {gerar ? 'Fechar gerador de copy' : 'Gerar variações de copy a partir desta transcrição (IA)'}
+            </button>
+            {gerar && (
+              <div className="mt-4">
+                <GeradorCopy fonteInicial={texto} />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Ações */}
