@@ -4,6 +4,10 @@ import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 
 const TIMEZONE = 'America/Sao_Paulo'
+// Mesma regra do /api/performance-v2: conta reclamada/refunded/chargeback (o
+// criativo vendeu; o que aconteceu depois é sinal de qualidade, não desconta
+// do ROAS de escala). Só cancelled/expired ficam fora.
+const STATUS_RECEITA = ['approved', 'reclamada', 'refunded', 'chargeback']
 
 // Mesma normalização do /api/performance-v2 (código | fase | flags bmsub/bmus/v2).
 const faseToken = (t: string | null): string | null => {
@@ -32,13 +36,13 @@ export async function GET(req: NextRequest) {
     const d7 = format(subDays(agora, 7), 'yyyy-MM-dd')
     const diaSP = (iso: string) => format(toZonedTime(new Date(iso), TIMEZONE), 'yyyy-MM-dd')
 
-    type V = { sck: string | null; valor: number; valor_liquido: number | null; data: string; produto: string | null; tipo: string | null; buyer_email: string | null; transaction_id: string; atribuicao_manual: boolean | null }
+    type V = { sck: string | null; valor: number; valor_liquido: number | null; data: string; produto: string | null; tipo: string | null; buyer_email: string | null; transaction_id: string; atribuicao_manual: boolean | null; status: string }
     const todas: V[] = []
     for (let off = 0; ; off += 1000) {
       const { data, error } = await supabaseAdmin
         .from('vendas')
-        .select('sck, valor, valor_liquido, data, produto, tipo, buyer_email, transaction_id, atribuicao_manual')
-        .eq('status', 'approved')
+        .select('sck, valor, valor_liquido, data, produto, tipo, buyer_email, transaction_id, atribuicao_manual, status')
+        .in('status', STATUS_RECEITA)
         .not('transaction_id', 'like', 'manual_%')
         .eq('criativo', codigo)
         .gte('data', `${d7}T00:00:00`)
@@ -64,6 +68,7 @@ export async function GET(req: NextRequest) {
       // e-mail mascarado — o suficiente pra reconhecer sem expor o dado todo
       email: (v.buyer_email || '').replace(/^(.{2}).*(@.*)$/, '$1•••$2'),
       transaction_id: v.transaction_id,
+      status: v.status,
       atribuicao_manual: !!v.atribuicao_manual,
     }))
 

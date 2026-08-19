@@ -12,7 +12,14 @@ const COR_FASE: Record<string, string> = {
   FASE03: 'bg-amber-500/15 text-amber-400 border border-amber-500/25',
 }
 
-type VendaDetalhe = { data: string; produto: string | null; tipo: string | null; valor_liquido: number; email: string; transaction_id: string; atribuicao_manual: boolean }
+type VendaDetalhe = { data: string; produto: string | null; tipo: string | null; valor_liquido: number; email: string; transaction_id: string; atribuicao_manual: boolean; status: string }
+
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  approved: { label: 'Aprovado', className: 'bg-emerald-500/15 text-emerald-400' },
+  reclamada: { label: 'Reclamada', className: 'bg-orange-500/15 text-orange-400' },
+  refunded: { label: 'Reembolso', className: 'bg-amber-500/15 text-amber-400' },
+  chargeback: { label: 'Chargeback', className: 'bg-rose-500/15 text-rose-400' },
+}
 
 // Prova real da receita: lista as vendas que compõem o faturamento da campanha.
 function VendasModal({ adName, chave, onClose }: { adName: string; chave: string; onClose: () => void }) {
@@ -58,6 +65,7 @@ function VendasModal({ adName, chave, onClose }: { adName: string; chave: string
                   <th className="text-left px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Produto</th>
                   <th className="text-center px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Tipo</th>
                   <th className="text-left px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Comprador</th>
+                  <th className="text-center px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Status</th>
                   <th className="text-right px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Líquido</th>
                   <th className="text-left px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Transação</th>
                 </tr>
@@ -73,6 +81,9 @@ function VendasModal({ adName, chave, onClose }: { adName: string; chave: string
                       </span>
                     </td>
                     <td className="px-4 py-2 text-muted-foreground" translate="no">{v.email}</td>
+                    <td className="px-4 py-2 text-center">
+                      {(() => { const s = STATUS_BADGE[v.status] ?? { label: v.status, className: 'bg-zinc-500/15 text-zinc-400' }; return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.className}`}>{s.label}</span> })()}
+                    </td>
                     <td className="px-4 py-2 text-right text-emerald-400 font-medium">{formatarMoeda(v.valor_liquido)}</td>
                     <td className="px-4 py-2 text-muted-foreground font-mono text-xs" translate="no">{v.transaction_id}</td>
                   </tr>

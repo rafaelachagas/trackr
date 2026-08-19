@@ -4,6 +4,10 @@ import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 
 const TIMEZONE = 'America/Sao_Paulo'
+// Mesma regra do /api/performance-v2: conta reclamada/refunded/chargeback pelo
+// valor cheio (o criativo vendeu; reembolso é sinal de qualidade, não desconta
+// do ROAS de escala). Só cancelled/expired ficam fora.
+const STATUS_RECEITA = ['approved', 'reclamada', 'refunded', 'chargeback']
 
 // Mesma normalização do /api/performance-v2 (código | fase | flags bmsub/bmus/v2).
 const faseToken = (t: string | null): string | null => {
@@ -53,7 +57,7 @@ export async function GET(req: NextRequest) {
       fetchAll<G>((f, t) => supabaseAdmin.from('gastos').select('valor_gasto, data, campaign_name, ad_name, criativo')
         .not('ad_id', 'is', null).eq('criativo', codigo).gte('data', inicio).lte('data', ontem).range(f, t)),
       fetchAll<V>((f, t) => supabaseAdmin.from('vendas').select('sck, valor, valor_liquido, data, criativo')
-        .eq('status', 'approved').not('transaction_id', 'like', 'manual_%').eq('criativo', codigo)
+        .in('status', STATUS_RECEITA).not('transaction_id', 'like', 'manual_%').eq('criativo', codigo)
         .gte('data', `${inicio}T00:00:00`).lte('data', `${hoje}T23:59:59`).range(f, t)),
     ])
 

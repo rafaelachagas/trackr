@@ -23,6 +23,14 @@ import { AcaoOtimizacao } from '@/types'
 const TIMEZONE = 'America/Sao_Paulo'
 const ROAS_MINIMO_PADRAO = 1.0
 
+// Status que CONTAM como venda pra decisão de escala: o criativo vendeu, ponto.
+// 'reclamada'/'refunded'/'chargeback' mantêm o valor_liquido original (não
+// zeram) — o pedido só foi contestado/estornado DEPOIS da venda acontecer.
+// Ficam fora só 'cancelled'/'expired' (PIX/boleto gerado e nunca pago — nunca
+// foi dinheiro de verdade) e 'pending'. Reembolso vira sinal de qualidade
+// separado (taxa de reembolso por criativo), não desconta do ROAS de escala.
+const STATUS_RECEITA = ['approved', 'reclamada', 'refunded', 'chargeback']
+
 const META_API_VERSION = 'v25.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
 
@@ -221,7 +229,7 @@ export async function GET(request: Request) {
         supabaseAdmin
           .from('vendas')
           .select('criativo, sck, fase, campanha, valor, valor_liquido, data, tipo')
-          .eq('status', 'approved')
+          .in('status', STATUS_RECEITA)
           .not('transaction_id', 'like', 'manual_%')
           .not('criativo', 'is', null)
           .gte('data', `${d7}T00:00:00`)
