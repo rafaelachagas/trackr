@@ -116,8 +116,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 5. Extrair SCK e criativo (payload 2.0.0: purchase.tracking.source_sck)
-    const sck = purchase.tracking?.source_sck ?? purchase.sckPaymentLink ?? null
+    // 5. Extrair SCK e criativo (payload 2.0.0: purchase.tracking.source_sck).
+    // Eventos de ciclo de vida (PURCHASE_PROTEST/REFUNDED/CHARGEBACK) às vezes
+    // vêm SEM tracking no payload do webhook (só o evento de aprovação original
+    // traz). Como o upsert regrava a linha inteira, isso apagava um sck que já
+    // estava correto — a reconciliação nunca conserta pq só olha sck IS NULL,
+    // e o sck só ficou null POR CAUSA disso. Busca o que já está salvo e não
+    // deixa um evento sem tracking apagar um sck bom.
+    let sck = purchase.tracking?.source_sck ?? purchase.sckPaymentLink ?? null
+    if (!sck) {
+      const { data: existente } = await supabaseAdmin
+        .from('vendas').select('sck').eq('transaction_id', purchase.transaction).maybeSingle()
+      if (existente?.sck) sck = existente.sck
+    }
     const criativo = extrairCriativo(sck)
 
     // 6. Calcular valor (bruto) e valor líquido (comissão do produtor = "Receita
