@@ -94,8 +94,8 @@ function parseDataVenda(v: any): string | null {
   return null
 }
 
-// Valor em BRL: em BRL usa "Preço da Oferta"; em moeda estrangeira o valor em
-// reais está em "Preço Original" (coluna convertida do export da Hotmart).
+// Valor BRUTO em BRL (preço da oferta) — só usado como fallback quando a
+// planilha não traz a coluna de valor líquido (export antigo/incompleto).
 function valorBRL(row: Record<string, any>): number {
   const moeda = String(pegarCampo(row, ['Moeda', 'Currency']) ?? '').toUpperCase().trim()
   if (moeda && moeda !== 'BRL') {
@@ -103,6 +103,22 @@ function valorBRL(row: Record<string, any>): number {
     if (!isNaN(orig) && orig > 0) return orig
   }
   return precoNum(pegarCampo(row, ['Preço da Oferta', 'Preço', 'Preco', 'Valor', 'Valor da Oferta']))
+}
+
+// Valor LÍQUIDO em BRL — o que o produtor efetivamente recebe (Hotmart já
+// desconta a taxa da plataforma + comissão de coprodutor/afiliado). O export
+// da Hotmart traz a coluna "Você recebe" com esse valor; ANTES o import lia
+// "Preço da Oferta" (bruto) e gravava como se fosse líquido — inflava a
+// receita manual em ~10-15% (a taxa do Hotmart) em relação ao automático, que
+// usa a comissão real do produtor vinda da API. Cai pro bruto só se a
+// planilha não tiver a coluna líquida (export antigo).
+function valorLiquidoBRL(row: Record<string, any>): number {
+  const liquido = precoNum(pegarCampo(row, [
+    'Você recebe', 'Voce recebe', 'Você Recebe', 'Voce Recebe', 'Você recebe?', 'Voce recebe?',
+    'Valor Líquido', 'Valor Liquido', 'Valor líquido', 'Comissão', 'Comissao',
+  ]))
+  if (!isNaN(liquido) && liquido > 0) return liquido
+  return valorBRL(row)
 }
 
 const fmtDia = (dia: string) => { const [y, m, d] = dia.split('-'); return `${d}/${m}` }
@@ -326,7 +342,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
       for (const row of rows) {
         const produto = String(pegarCampo(row, ['Nome do Produto', 'Produto']) ?? '').trim()
         const origem = String(pegarCampo(row, ['Origem de Checkout', 'Origem', 'src', 'sck']) ?? '').trim()
-        const valor = valorBRL(row)
+        const valor = valorLiquidoBRL(row)
         const dia = parseDataVenda(pegarCampo(row, ['Data de Venda', 'Data da Venda', 'Data', 'Data da Transação']))
         const email = String(pegarCampo(row, ['Email', 'E-mail', 'E-Mail Comprador']) ?? '').trim().toLowerCase()
         if (isNaN(valor) || valor <= 0) continue
