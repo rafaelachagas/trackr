@@ -46,6 +46,27 @@ export async function POST(request: NextRequest) {
 
     const { purchase, product, buyer } = data
 
+    // [DEBUG TEMPORÁRIO] Guarda o `tracking` cru dos últimos webhooks pra
+    // diagnosticar por que o sck está vindo null. Não afeta o processamento.
+    try {
+      const snap = {
+        ts: new Date().toISOString(),
+        transaction: purchase?.transaction ?? null,
+        event,
+        tracking: purchase?.tracking ?? null,
+        trackingKeys: purchase?.tracking ? Object.keys(purchase.tracking) : null,
+        sckPaymentLink: (purchase as any)?.sckPaymentLink ?? null,
+      }
+      const { data: prev } = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', 'hotmart_webhook_debug').maybeSingle()
+      let arr: any[] = []
+      try { arr = prev?.valor ? JSON.parse(prev.valor) : [] } catch {}
+      arr.unshift(snap)
+      await supabaseAdmin.from('configuracoes').upsert(
+        { chave: 'hotmart_webhook_debug', valor: JSON.stringify(arr.slice(0, 8)), updated_at: new Date().toISOString() },
+        { onConflict: 'chave' }
+      )
+    } catch {}
+
     // 3. Mapear status
     const statusMap: Record<string, string> = {
       PURCHASE_COMPLETE: 'approved',
