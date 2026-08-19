@@ -80,12 +80,17 @@ export async function GET(request: NextRequest) {
   const stats = await vturbPost(token, '/sessions/stats', { player_id: playerId, start_date: dtInicio, end_date: dtFim, video_duration: durFinal })
 
   const s = stats.data ?? {}
-  const viewsUnicas = pick(s, ['unique_views', 'views_unique', 'uniqueViews', 'unique_view', 'views'])
-  const playsUnicos = pick(s, ['unique_plays', 'plays_unique', 'uniquePlays', 'unique_play', 'plays'])
+  // Nomes REAIS da VTurb (/sessions/stats):
+  // views = total_viewed_*, plays/started = total_started_*, receita = total_amount_brl (em centavos).
+  const viewsUnicas = pick(s, ['total_viewed_device_uniq', 'total_viewed_session_uniq', 'total_viewed'])
+  const playsUnicos = pick(s, ['total_started_device_uniq', 'total_started_session_uniq', 'total_started'])
   const playRateVturb = pick(s, ['play_rate', 'playRate']) || (viewsUnicas > 0 ? (playsUnicos / viewsUnicas) * 100 : 0)
   const engajamento = pick(s, ['engagement_rate', 'engagement', 'engagementRate'])
-  const conversoes = pick(s, ['conversions', 'conversions_count', 'conversionsCount', 'total_conversions'])
-  const receitaVturb = pick(s, ['revenue_brl', 'revenue.brl', 'revenueBRL', 'revenue', 'total_revenue'])
+  const conversoes = pick(s, ['total_conversions', 'conversions', 'conversions_count'])
+  // total_amount_brl vem em centavos (inteiro) → divide por 100. Fallback USD × ~5,2.
+  const receitaBrlCent = pick(s, ['total_amount_brl'])
+  const receitaUsdCent = pick(s, ['total_amount_usd'])
+  const receitaVturb = receitaBrlCent > 0 ? receitaBrlCent / 100 : (receitaUsdCent > 0 ? (receitaUsdCent / 100) * 5.2 : 0)
 
   // 3) LP views + gasto da Meta (campanhas mapeadas; vazio = todas).
   let lpViews = 0, gasto = 0
