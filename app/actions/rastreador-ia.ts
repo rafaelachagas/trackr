@@ -99,6 +99,7 @@ export async function gerarVariacoesCopy(params: {
   nicho?: string | null
   oferta?: string | null
   instrucoes?: string | null
+  skill?: string | null       // playbook/brand voice enviado por upload (.txt/.md)
   bibliotecaId?: string | null
   adArchiveId?: string | null
   quantidade?: number
@@ -112,9 +113,14 @@ export async function gerarVariacoesCopy(params: {
     const nicho = params.nicho?.trim() || 'não informado'
     const oferta = params.oferta?.trim() || 'não informada'
 
+    const skill = (params.skill || '').trim().slice(0, 8000)
+    const blocoSkill = skill
+      ? `\n\nSKILL / PLAYBOOK DO USUÁRIO (siga estas diretrizes de voz, estrutura e regras ACIMA das genéricas):\n"""\n${skill}\n"""`
+      : ''
+
     const system = `Você é um copywriter de resposta direta (VSL/anúncio) especialista em português do Brasil.
 Recebe a TRANSCRIÇÃO de um anúncio de CONCORRENTE apenas como referência de ESTRUTURA e ÂNGULO.
-REGRAS: (1) NÃO copie frases, ganchos ou expressões do concorrente — reescreva do zero. (2) Adapte ao NOSSO nicho e oferta. (3) Gere ${qtd} variações com ÂNGULOS diferentes entre si. (4) Cada variação com: angulo (um id entre ${IDS_ANGULO.join(', ')}), headline, abertura (gancho dos primeiros segundos), corpo (argumento), cta. (5) Português brasileiro, tom de resposta direta, sem promessas ilegais/saúde milagrosa.
+REGRAS: (1) NÃO copie frases, ganchos ou expressões do concorrente — reescreva do zero. (2) Adapte ao NOSSO nicho e oferta. (3) Gere ${qtd} variações com ÂNGULOS diferentes entre si. (4) Cada variação com: angulo (um id entre ${IDS_ANGULO.join(', ')}), headline, abertura (gancho dos primeiros segundos), corpo (argumento), cta. (5) Português brasileiro, tom de resposta direta, sem promessas ilegais/saúde milagrosa.${blocoSkill}
 Responda SÓ com JSON: {"variacoes":[{"angulo","headline","abertura","corpo","cta"}]}.`
 
     const prompt = `NOSSO NICHO: ${nicho}

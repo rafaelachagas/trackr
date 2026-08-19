@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
-import { Wand2, Loader2, Copy, Check, AlertCircle } from 'lucide-react'
+import React, { useRef, useState } from 'react'
+import { Wand2, Loader2, Copy, Check, AlertCircle, Upload, FileText, X } from 'lucide-react'
 import { gerarVariacoesCopy, type VariacaoCopy } from '@/app/actions/rastreador-ia'
 import { anguloMeta } from '@/lib/rastreador-intel'
 
@@ -17,10 +17,24 @@ export default function GeradorCopy({ fonteInicial, nichoInicial, ofertaInicial 
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [variacoes, setVariacoes] = useState<VariacaoCopy[] | null>(null)
+  const [skill, setSkill] = useState('')
+  const [skillNome, setSkillNome] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function onArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (f.size > 200_000) { setErro('Skill muito grande (máx ~200 KB de texto).'); return }
+    const txt = await f.text()
+    setSkill(txt.slice(0, 8000))
+    setSkillNome(f.name)
+    setErro(null)
+  }
+  function limparSkill() { setSkill(''); setSkillNome(''); if (fileRef.current) fileRef.current.value = '' }
 
   async function gerar() {
     setLoading(true); setErro(null); setVariacoes(null)
-    const r = await gerarVariacoesCopy({ fonteTexto: fonte, nicho, oferta, instrucoes, quantidade: qtd })
+    const r = await gerarVariacoesCopy({ fonteTexto: fonte, nicho, oferta, instrucoes, skill: skill || undefined, quantidade: qtd })
     setLoading(false)
     if (!r.success || !r.data) { setErro(r.error || 'Falha ao gerar.'); return }
     setVariacoes(r.data.variacoes)
@@ -49,6 +63,28 @@ export default function GeradorCopy({ fonteInicial, nichoInicial, ofertaInicial 
           <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Instruções extras (opcional)</label>
           <input value={instrucoes} onChange={(e) => setInstrucoes(e.target.value)} placeholder="ex: tom mais agressivo, foco em prova social, evitar promessa de dinheiro" className="w-full px-3 py-2.5 rounded-lg text-sm" style={inputStyle} />
         </div>
+
+        {/* Upload de skill/playbook — a IA segue estas diretrizes acima das genéricas. */}
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Skill / Playbook (opcional)</label>
+          {skillNome ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg" style={inputStyle}>
+              <FileText className="w-4 h-4 text-primary shrink-0" />
+              <span className="text-sm truncate flex-1">{skillNome}</span>
+              <span className="text-[11px] text-muted-foreground">{skill.length} caract.</span>
+              <button onClick={limparSkill} className="p-1 rounded text-muted-foreground hover:text-rose-400"><X className="w-4 h-4" /></button>
+            </div>
+          ) : (
+            <button onClick={() => fileRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold border border-dashed transition"
+              style={{ borderColor: 'rgba(59,130,246,0.35)', color: '#7cc4ff', backgroundColor: '#1a2022' }}>
+              <Upload className="w-4 h-4" /> Subir arquivo de skill (.txt ou .md)
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept=".txt,.md,text/plain,text/markdown" onChange={onArquivo} className="hidden" />
+          <p className="text-[11px] text-muted-foreground mt-1">Um arquivo de <b>texto (.txt ou .md)</b> com a sua voz de marca, estrutura preferida, regras e exemplos. A IA segue essas diretrizes <b>acima</b> das genéricas. Máx ~8.000 caracteres.</p>
+        </div>
+
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Variações:</span>
