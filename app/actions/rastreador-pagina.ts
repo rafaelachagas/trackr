@@ -30,6 +30,23 @@ function detectarPrecos(texto: string): string[] {
   return [...new Set(achados)].slice(0, 25)
 }
 
+// Detecta o "stack" da página (ferramentas) por assinatura nos scripts/HTML.
+const ASSINATURAS: { id: string; label: string; rx: RegExp }[] = [
+  { id: 'vturb', label: 'VTurb', rx: /vturb|converteai|scripts\.converteai|player\.vturb/i },
+  { id: 'hotmart', label: 'Hotmart', rx: /hotmart|hmg\.hotmart|checkout\.hotmart|pay\.hotmart/i },
+  { id: 'kiwify', label: 'Kiwify', rx: /kiwify/i },
+  { id: 'eduzz', label: 'Eduzz', rx: /eduzz|myeduzz/i },
+  { id: 'meta_pixel', label: 'Pixel Meta', rx: /fbevents\.js|connect\.facebook\.net\/[^"']*\/fbevents|\bfbq\(/i },
+  { id: 'google', label: 'Google/GTM', rx: /googletagmanager|gtag\/js|google-analytics/i },
+  { id: 'tiktok_pixel', label: 'Pixel TikTok', rx: /analytics\.tiktok\.com|ttq\.load/i },
+  { id: 'escassez', label: 'Escassez', rx: /provely|useproof|\bfomo\b|notifica[çc][aã]o de compra|scarcity/i },
+  { id: 'typebot', label: 'Typebot', rx: /typebot/i },
+  { id: 'manychat', label: 'ManyChat', rx: /manychat/i },
+]
+function detectarStack(html: string): { id: string; label: string }[] {
+  return ASSINATURAS.filter((a) => a.rx.test(html)).map(({ id, label }) => ({ id, label }))
+}
+
 function resumirMudanca(anterior: { texto: string | null; precos: string[] } | null, atualTexto: string, atualPrecos: string[]): string {
   if (!anterior) return 'Primeira captura da página.'
   const partes: string[] = []
@@ -74,7 +91,15 @@ export async function capturarPagina(bibliotecaId: string, urlOverride?: string)
 
     const { titulo, texto } = htmlParaTexto(html)
     const precos = detectarPrecos(texto)
+    const stack = detectarStack(html)
     const hash = hashTexto(texto)
+
+    // Injeta <base> pra imagens/CSS relativos resolverem quando reabrirmos o HTML salvo.
+    let htmlSalvar = html
+    if (!/<base\s/i.test(htmlSalvar)) {
+      htmlSalvar = htmlSalvar.replace(/<head([^>]*)>/i, `<head$1><base href="${url}">`)
+    }
+    htmlSalvar = htmlSalvar.slice(0, 900000) // ~900 KB de teto por versão
 
     // Última versão salva.
     const { data: ultima } = await supabaseAdmin
@@ -91,9 +116,10 @@ export async function capturarPagina(bibliotecaId: string, urlOverride?: string)
     const { error } = await supabaseAdmin.from('rastreador_paginas_hist').insert({
       org_id: orgId, biblioteca_id: bibliotecaId, url, titulo,
       conteudo_hash: hash, texto: texto.slice(0, 20000), precos, resumo_mudanca: resumo,
+      html: htmlSalvar, stack,
     })
     if (error) throw error
-    return { success: true, mudou: true, resumo, precos }
+    return { success: true, mudou: true, resumo, precos, stack }
   } catch (e: any) {
     return { success: false, error: e?.name === 'AbortError' ? 'A página demorou demais para responder.' : e.message }
   }
@@ -104,6 +130,7 @@ export interface VersaoPagina {
   url: string
   titulo: string | null
   precos: string[]
+  stack: { id: string; label: string }[] | null
   resumo_mudanca: string | null
   capturado_em: string
 }
@@ -112,7 +139,7 @@ export async function listarVersoesPagina(bibliotecaId: string) {
   try {
     const { data, error } = await supabaseAdmin
       .from('rastreador_paginas_hist')
-      .select('id, url, titulo, precos, resumo_mudanca, capturado_em')
+      .select('id, url, titulo, precos, stack, resumo_mudanca, capturado_em')
       .eq('biblioteca_id', bibliotecaId).order('capturado_em', { ascending: false }).limit(40)
     if (error) throw error
     return { success: true, data: (data ?? []) as VersaoPagina[] }

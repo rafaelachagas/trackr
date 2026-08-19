@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy } from 'lucide-react'
+import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink } from 'lucide-react'
 import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, type ResumoInteligencia, type CriativoHist } from '@/app/actions/rastreador-intel'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
@@ -209,7 +209,18 @@ export default function InteligenciaBib({ bibId, landingUrl }: { bibId: string; 
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0">{new Date(v.capturado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                   {v.precos?.length > 0 && <span className="text-emerald-300 font-semibold truncate">{v.precos.slice(0, 4).join(' · ')}</span>}
+                  <a href={`/api/rastreador/pagina/${v.id}`} target="_blank" rel="noreferrer"
+                    className="ml-auto shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-white/10 text-muted-foreground hover:text-primary hover:border-primary/40 transition text-[11px] font-semibold">
+                    <ExternalLink className="w-3 h-3" /> abrir
+                  </a>
                 </div>
+                {v.stack && v.stack.length > 0 && (
+                  <div className="flex items-center gap-1 flex-wrap mt-1.5">
+                    {v.stack.map((s) => (
+                      <span key={s.id} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">{s.label}</span>
+                    ))}
+                  </div>
+                )}
                 {v.resumo_mudanca && <p className="text-[11px] text-muted-foreground mt-1">{v.resumo_mudanca}</p>}
               </div>
             ))}

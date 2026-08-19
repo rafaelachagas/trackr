@@ -633,6 +633,7 @@ function CardCriativo({ c, inicial, onAbrir, novo }: { c: CriativoRastreado; ini
   const [transcrevendo, setTranscrevendo] = useState(false)
   const [texto, setTexto] = useState<string | null>(inicial ?? null)
   const [erroT, setErroT] = useState<string | null>(null)
+  const [tocando, setTocando] = useState(false)
 
   useEffect(() => { if (inicial) setTexto(inicial) }, [inicial])
 
@@ -661,13 +662,28 @@ function CardCriativo({ c, inicial, onAbrir, novo }: { c: CriativoRastreado; ini
     }
   }
 
+  const podeTocar = c.media_type === 'video' && !!c.video_url
   return (
     <div className={`rounded-2xl overflow-hidden flex flex-col ${cardClass}`}>
-      <div className="relative aspect-square bg-black/40 flex items-center justify-center overflow-hidden">
+      {tocando && c.video_url && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setTocando(false)}>
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-md">
+            <button onClick={() => setTocando(false)} className="absolute -top-9 right-0 p-1.5 rounded-lg text-white/80 hover:text-white"><X className="w-5 h-5" /></button>
+            <video src={c.video_url} controls autoPlay playsInline className="w-full rounded-2xl bg-black max-h-[80vh]" />
+            {c.headline && <p className="text-sm font-semibold text-white/90 mt-2 text-center">{c.headline}</p>}
+          </div>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => { if (podeTocar) setTocando(true) }}
+        disabled={!podeTocar}
+        className={`relative aspect-square bg-black/40 flex items-center justify-center overflow-hidden w-full ${podeTocar ? 'cursor-pointer group' : 'cursor-default'}`}>
         {c.image_url
           ? <img src={c.image_url} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
           : <Binoculars className="w-8 h-8 text-muted-foreground" />}
-        {c.media_type === 'video' && <PlayCircle className="absolute w-10 h-10 text-white/80 drop-shadow-lg" />}
+        {c.media_type === 'video' && <PlayCircle className="absolute w-10 h-10 text-white/80 drop-shadow-lg group-hover:scale-110 transition" />}
         <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/60 text-white">
           {c.dias_ativo != null ? `Ativo há ${c.dias_ativo}d` : 'Ativo'}
         </span>
@@ -682,7 +698,7 @@ function CardCriativo({ c, inicial, onAbrir, novo }: { c: CriativoRastreado; ini
           </span>
         )}
         {c.media_type === 'video' && <span className="absolute bottom-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/80 text-white">VÍDEO</span>}
-      </div>
+      </button>
 
       <div className="p-3 flex flex-col gap-1.5 flex-1">
         {c.page_name && <p className="text-xs font-semibold text-muted-foreground truncate">{c.page_name}</p>}

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { Search, Loader2, ExternalLink, Copy, Check, Clock, PlayCircle, Users, FolderOpen } from 'lucide-react'
+import { Search, Loader2, ExternalLink, Copy, Check, Clock, PlayCircle, Users, FolderOpen, X } from 'lucide-react'
 import { buscarSwipe, listarNichosOfertas, type SwipeItem } from '@/app/actions/rastreador-swipe'
 import { listarBibliotecas, type BibliotecaRastreada } from '@/app/actions/rastreador'
 import { ANGULOS, anguloMeta, CLASSIFICACAO_META, type ClassificacaoTeste } from '@/lib/rastreador-intel'
@@ -119,6 +119,8 @@ export default function SwipeFile() {
 function CardSwipe({ it }: { it: SwipeItem }) {
   const [copiado, setCopiado] = useState(false)
   const [aberto, setAberto] = useState(false)
+  const [tocando, setTocando] = useState(false)
+  const podeTocar = it.media_type === 'video' && !!it.video_url
   const a = anguloMeta(it.angulo)
   const m = it.classificacao ? CLASSIFICACAO_META[it.classificacao as ClassificacaoTeste] : null
   const texto = it.transcricao || [it.headline, it.body].filter(Boolean).join('\n\n')
@@ -126,15 +128,25 @@ function CardSwipe({ it }: { it: SwipeItem }) {
 
   return (
     <div className={`rounded-2xl overflow-hidden flex flex-col ${card}`}>
-      <div className="relative aspect-square bg-black/40 flex items-center justify-center overflow-hidden">
+      {tocando && it.video_url && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setTocando(false)}>
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-md">
+            <button onClick={() => setTocando(false)} className="absolute -top-9 right-0 p-1.5 rounded-lg text-white/80 hover:text-white"><X className="w-5 h-5" /></button>
+            <video src={it.video_url} controls autoPlay playsInline className="w-full rounded-2xl bg-black max-h-[80vh]" />
+          </div>
+        </div>
+      )}
+      <button type="button" onClick={() => { if (podeTocar) setTocando(true) }} disabled={!podeTocar}
+        className={`relative aspect-square bg-black/40 flex items-center justify-center overflow-hidden w-full ${podeTocar ? 'cursor-pointer group' : 'cursor-default'}`}>
         {it.image_url
           ? <img src={it.image_url} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
           : <Search className="w-7 h-7 text-muted-foreground" />}
-        {it.media_type === 'video' && <PlayCircle className="absolute w-9 h-9 text-white/80 drop-shadow-lg" />}
+        {it.media_type === 'video' && <PlayCircle className="absolute w-9 h-9 text-white/80 drop-shadow-lg group-hover:scale-110 transition" />}
         <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/60 text-white flex items-center gap-1"><Clock className="w-3 h-3" />{it.dias_no_ar}d</span>
         {m && <span className="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: m.cor, backgroundColor: m.bg }}>{m.label}</span>}
         {it.status === 'removido' && <span className="absolute bottom-2 left-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-500/80 text-white">Saiu do ar</span>}
-      </div>
+      </button>
       <div className="p-3 flex flex-col gap-1.5 flex-1">
         <div className="flex items-center gap-1.5 flex-wrap">
           {it.angulo && it.angulo !== 'indefinido' && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: a.cor, backgroundColor: `${a.cor}18` }}>{a.label}</span>}
