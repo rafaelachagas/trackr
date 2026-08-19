@@ -24,16 +24,14 @@ export const MODELOS_ANTHROPIC: ModeloLLM[] = [
   { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', provider: 'anthropic', nota: 'Legado' },
 ]
 
-// Google Gemini.
+// Google Gemini (geração 3.x atual — o 2.5 Pro e o 2.0/1.5 foram desativados pelo Google).
 export const MODELOS_GEMINI: ModeloLLM[] = [
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'gemini', nota: 'Mais capaz' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', nota: 'Rápido e barato' },
-  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', provider: 'gemini', nota: 'Mais barato' },
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', provider: 'gemini' },
-  { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash-Lite', provider: 'gemini' },
-  { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', provider: 'gemini', nota: 'Legado' },
-  { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', provider: 'gemini', nota: 'Legado' },
-  { id: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash-8B', provider: 'gemini', nota: 'Legado' },
+  { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', provider: 'gemini', nota: 'Mais capaz (raciocínio)' },
+  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', provider: 'gemini', nota: 'Rápido e barato (recomendado)' },
+  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', provider: 'gemini', nota: 'Mais barato' },
+  { id: 'gemini-3-flash-preview', label: 'Gemini 3.1 Flash', provider: 'gemini' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', nota: 'Estável (sai out/2026)' },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', provider: 'gemini', nota: 'Estável' },
 ]
 
 export const MODELOS_LLM: ModeloLLM[] = [...MODELOS_ANTHROPIC, ...MODELOS_GEMINI]
