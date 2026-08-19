@@ -26,6 +26,9 @@ import {
   Brain,
   Video,
   MonitorPlay,
+  FolderSearch,
+  Wand2,
+  Bell,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
@@ -48,6 +51,9 @@ const dataSources = [
 
 const ferramentas = [
   { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars, beta: true },
+  { href: '/ferramentas/swipe-file', label: 'Swipe File', icon: FolderSearch, beta: true },
+  { href: '/ferramentas/gerador-copy', label: 'Gerador de Copy', icon: Wand2, beta: true },
+  { href: '/ferramentas/alertas', label: 'Central de Alertas', icon: Bell, beta: true },
   { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
 ]
 

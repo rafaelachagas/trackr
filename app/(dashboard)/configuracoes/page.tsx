@@ -5,6 +5,8 @@ import { Save, Settings2, Sliders, ShoppingBag, Plus, Trash2, Loader2 } from 'lu
 import { supabase } from '@/lib/supabase'
 import { AcaoOtimizacao } from '@/types'
 import { getProdutos, addProduto, deleteProduto } from '@/app/actions/produtos'
+import { Sparkles } from 'lucide-react'
+import ConfigIA from '@/components/inteligencia/ConfigIA'
 
 interface Produto { id: string; nome_produto: string; tipo: 'front' | 'upsell'; ativo: boolean }
 
@@ -289,6 +291,20 @@ export default function ConfiguracoesPage() {
           <p className="text-[11px] text-muted-foreground mt-4">
             Cada linha é uma combinação de ROAS positivo/negativo nos últimos 7, 3 e 1 dia. A ação definida aqui aparece como selo em cada criativo na aba <span className="text-foreground font-medium">Analisar Criativos</span>.
           </p>
+        </div>
+
+        {/* IA / MODELO */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center border border-primary/30">
+              <Sparkles className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-foreground">IA / Modelo</h2>
+              <p className="text-xs text-muted-foreground">Modelo e chaves usados na clusterização de ângulos, gerador de copy e relatórios de espionagem</p>
+            </div>
+          </div>
+          <ConfigIA />
         </div>
 
       </div>
