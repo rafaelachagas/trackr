@@ -23,7 +23,7 @@ export async function reconciliarSck(opts: {
   startDate: number
   endDate?: number
   maxPages?: number
-}): Promise<{ atualizadas: number; coletadas: number; pages: number; upsellsVinculados: number }> {
+}): Promise<{ atualizadas: number; coletadas: number; pages: number; upsellsVinculados: number; erros?: string[] }> {
   const { data: cfg } = await supabaseAdmin
     .from('configuracoes')
     .select('valor')
@@ -45,6 +45,23 @@ export async function reconciliarSck(opts: {
   // 1. Coleta transaction -> sck da API (todos os status)
   const apiSck = new Map<string, string>()
   let pages = 0
+  const erros: string[] = []
+  // O Hotmart às vezes joga 429/5xx (rate-limit no IP do servidor). ANTES o
+  // código fazia `break` e engolia o erro → o cron "terminava" com 0 e ninguém
+  // via. Agora retenta com backoff e só desiste da PÁGINA após 4 tentativas,
+  // registrando o erro pra aparecer na resposta.
+  const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
+  async function fetchPagina(url: string): Promise<Response | null> {
+    for (let tent = 0; tent < 4; tent++) {
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } })
+      if (r.ok) return r
+      // 429/5xx: espera e retenta. 4xx (menos 429): erro definitivo, não adianta.
+      if (r.status !== 429 && r.status < 500) { erros.push(`${r.status}`); return null }
+      await sleep(1000 * (tent + 1))
+      if (tent === 3) erros.push(`${r.status} (após retries)`)
+    }
+    return null
+  }
   for (const status of STATUSES) {
     let pageToken: string | null = null
     let statusPages = 0
@@ -57,10 +74,8 @@ export async function reconciliarSck(opts: {
       if (status) p.set('transaction_status', status)
       if (pageToken) p.set('page_token', pageToken)
 
-      const r = await fetch(`${SALES_URL}?${p}`, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      })
-      if (!r.ok) break
+      const r = await fetchPagina(`${SALES_URL}?${p}`)
+      if (!r) break
       const j = await r.json()
       for (const it of j.items ?? []) {
         const tx = it.purchase?.transaction
@@ -110,7 +125,7 @@ export async function reconciliarSck(opts: {
   // de 48h, herda o sck/criativo do front e marca atribuicao_manual (asterisco na UI).
   const upsellsVinculados = await vincularUpsellsSemSck(opts.startDate, endDate)
 
-  return { atualizadas, coletadas: apiSck.size, pages, upsellsVinculados }
+  return { atualizadas, coletadas: apiSck.size, pages, upsellsVinculados, erros: erros.length ? erros : undefined }
 }
 
 async function vincularUpsellsSemSck(startDate: number, endDate: number): Promise<number> {
