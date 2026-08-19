@@ -4,10 +4,20 @@ import { extrairCriativo, extrairFase, extrairCampanha } from '@/lib/utils'
 const TOKEN_URL = 'https://api-sec-vlc.hotmart.com/security/oauth/token'
 const SALES_URL = 'https://developers.hotmart.com/payments/api/v1/sales/history'
 
+// O gateway do Hotmart (developers.hotmart.com) passou a rejeitar com 400 o fetch
+// "pelado" vindo do IP de datacenter da Vercel. Mandar cabeçalhos de navegador
+// costuma passar pelo WAF. Do IP residencial funciona sem isso, mas o cron roda
+// na Vercel — então esses headers são o que destrava a reconciliação em produção.
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+}
+
 async function getToken(basic: string): Promise<string> {
   const r = await fetch(`${TOKEN_URL}?grant_type=client_credentials`, {
     method: 'POST',
-    headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/json', ...BROWSER_HEADERS },
   })
   if (!r.ok) throw new Error(`Hotmart auth falhou (${r.status})`)
   return (await r.json()).access_token
@@ -53,10 +63,14 @@ export async function reconciliarSck(opts: {
   const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
   async function fetchPagina(url: string): Promise<Response | null> {
     for (let tent = 0; tent < 4; tent++) {
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } })
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...BROWSER_HEADERS } })
       if (r.ok) return r
       // 429/5xx: espera e retenta. 4xx (menos 429): erro definitivo, não adianta.
-      if (r.status !== 429 && r.status < 500) { erros.push(`${r.status}`); return null }
+      if (r.status !== 429 && r.status < 500) {
+        const body = await r.text().catch(() => '')
+        erros.push(`${r.status}${body ? ': ' + body.slice(0, 120) : ''}`)
+        return null
+      }
       await sleep(1000 * (tent + 1))
       if (tent === 3) erros.push(`${r.status} (após retries)`)
     }
