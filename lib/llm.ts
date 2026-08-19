@@ -61,13 +61,14 @@ export async function chamarLLM(opts: {
   prompt: string
   maxTokens?: number
   temperatura?: number
+  json?: boolean          // força saída JSON (Gemini: responseMimeType)
 }): Promise<LLMResult> {
   const cfg = await getLLMConfig()
   if (cfg.provider === 'gemini') return chamarGemini(cfg, opts)
   return chamarAnthropic(cfg, opts)
 }
 
-async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number }): Promise<LLMResult> {
+async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean }): Promise<LLMResult> {
   if (!cfg.anthropicKey) return { ok: false, texto: '', erro: 'Chave da Anthropic não configurada.' }
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 60000)
@@ -101,14 +102,21 @@ async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: 
   }
 }
 
-async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number }): Promise<LLMResult> {
+async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean }): Promise<LLMResult> {
   if (!cfg.geminiKey) return { ok: false, texto: '', erro: 'Chave do Gemini não configurada.' }
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 60000)
   try {
+    // Os modelos Gemini 3.x usam "thinking" que consome maxOutputTokens — por isso
+    // um teto baixo cortava o JSON. Damos folga e forçamos saída JSON quando pedido.
+    const gen: Record<string, any> = {
+      maxOutputTokens: opts.maxTokens ?? 1500,
+      temperature: opts.temperatura ?? 0.7,
+    }
+    if (opts.json) gen.responseMimeType = 'application/json'
     const body: Record<string, any> = {
       contents: [{ role: 'user', parts: [{ text: opts.prompt }] }],
-      generationConfig: { maxOutputTokens: opts.maxTokens ?? 1500, temperature: opts.temperatura ?? 0.7 },
+      generationConfig: gen,
     }
     if (opts.system) body.systemInstruction = { parts: [{ text: opts.system }] }
 

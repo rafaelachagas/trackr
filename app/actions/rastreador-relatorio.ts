@@ -77,7 +77,7 @@ OFERTA: ${bib.oferta || 'não informada'}
 CRIATIVOS MAIS ESCALADOS:
 ${material}`
 
-    const r = await chamarLLM({ system, prompt, maxTokens: 3500, temperatura: 0.5 })
+    const r = await chamarLLM({ system, prompt, maxTokens: 8000, temperatura: 0.5, json: true })
     if (!r.ok) return { success: false, error: r.erro, data: null }
     const parsed = extrairJSON<{ resumoExecutivo: any[]; padroes: any[]; recomendacoes: any[] }>(r.texto)
     if (!parsed) return { success: false, error: 'A IA não retornou um relatório válido.', data: null }

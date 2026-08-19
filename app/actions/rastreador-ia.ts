@@ -49,27 +49,32 @@ export async function clusterizarBiblioteca(bibliotecaId: string) {
     }
     if (itens.length === 0) return { success: true, classificados: 0, jaClassificados: hist.length }
 
-    // Uma chamada só, em lote.
-    const lista = itens.map((it, i) => `[${i}] ${it.texto}`).join('\n\n')
     const system = `Você é um estrategista de copy de resposta direta. Classifique cada anúncio no ÂNGULO DE COPY dominante. Ângulos válidos (use exatamente estes ids): ${IDS_ANGULO.join(', ')}. Responda SÓ com um array JSON [{"i": number, "angulo": "id", "resumo": "frase curta (máx 12 palavras) do gancho"}], sem texto fora do JSON.`
-    const prompt = `Anúncios:\n\n${lista}`
-    const r = await chamarLLM({ system, prompt, maxTokens: 2000, temperatura: 0.2 })
-    if (!r.ok) return { success: false, error: r.erro, classificados: 0 }
 
-    const arr = extrairJSON<{ i: number; angulo: string; resumo?: string }[]>(r.texto)
-    if (!Array.isArray(arr)) return { success: false, error: 'Resposta da IA não veio como JSON.', classificados: 0, _raw: r.texto.slice(0, 300) }
-
+    // Classifica em LOTES — com 30+ criativos a resposta estourava o teto de tokens
+    // e vinha cortada (JSON inválido). Lotes menores = resposta cabe sempre.
+    const LOTE = 12
     let classificados = 0
-    for (const item of arr) {
-      const it = itens[item.i]
-      if (!it) continue
-      const angulo = IDS_ANGULO.includes(item.angulo) ? item.angulo : 'indefinido'
-      const { error } = await supabaseAdmin
-        .from('rastreador_criativos_hist')
-        .update({ angulo, angulo_resumo: item.resumo?.slice(0, 160) ?? null, transcricao_hash: it.hash })
-        .eq('biblioteca_id', bibliotecaId).eq('ad_archive_id', it.id)
-      if (!error) classificados++
+    let ultimoErro: string | null = null
+    for (let inicio = 0; inicio < itens.length; inicio += LOTE) {
+      const bloco = itens.slice(inicio, inicio + LOTE)
+      const lista = bloco.map((it, i) => `[${i}] ${it.texto}`).join('\n\n')
+      const r = await chamarLLM({ system, prompt: `Anúncios:\n\n${lista}`, maxTokens: 8000, temperatura: 0.2, json: true })
+      if (!r.ok) { ultimoErro = r.erro ?? 'falha na IA'; continue }
+      const arr = extrairJSON<{ i: number; angulo: string; resumo?: string }[]>(r.texto)
+      if (!Array.isArray(arr)) { ultimoErro = 'Resposta da IA não veio como JSON.'; continue }
+      for (const item of arr) {
+        const it = bloco[item.i]
+        if (!it) continue
+        const angulo = IDS_ANGULO.includes(item.angulo) ? item.angulo : 'indefinido'
+        const { error } = await supabaseAdmin
+          .from('rastreador_criativos_hist')
+          .update({ angulo, angulo_resumo: item.resumo?.slice(0, 160) ?? null, transcricao_hash: it.hash })
+          .eq('biblioteca_id', bibliotecaId).eq('ad_archive_id', it.id)
+        if (!error) classificados++
+      }
     }
+    if (classificados === 0 && ultimoErro) return { success: false, error: ultimoErro, classificados: 0 }
     return { success: true, classificados }
   } catch (e: any) {
     return { success: false, error: e.message, classificados: 0 }
@@ -121,7 +126,7 @@ TRANSCRIÇÃO DO CONCORRENTE (referência de estrutura, NÃO copiar):
 ${fonte.slice(0, 4000)}
 """`
 
-    const r = await chamarLLM({ system, prompt, maxTokens: 3000, temperatura: 0.85 })
+    const r = await chamarLLM({ system, prompt, maxTokens: 8000, temperatura: 0.85, json: true })
     if (!r.ok) return { success: false, error: r.erro, data: null }
     const parsed = extrairJSON<{ variacoes: VariacaoCopy[] }>(r.texto)
     const variacoes = parsed?.variacoes
