@@ -34,6 +34,8 @@ export default function VendasPage() {
   const [loading, setLoading] = useState(false)
   const [busca, setBusca] = useState('')
   const [statusFiltro, setStatusFiltro] = useState('todos')
+  const [skcFiltro, setSkcFiltro] = useState('')       // input em edição
+  const [skcAplicado, setSkcAplicado] = useState('')    // valor que realmente filtra (server-side, período inteiro)
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -47,8 +49,8 @@ export default function VendasPage() {
     const { start, end } = getRange()
     try {
       const [res, statsRes] = await Promise.all([
-        getVendas(start, end, product, statusFiltro, p, PAGE_SIZE),
-        getVendasStats(start, end, product),
+        getVendas(start, end, product, statusFiltro, p, PAGE_SIZE, skcAplicado),
+        getVendasStats(start, end, product, skcAplicado),
       ])
       if (res.success) {
         setVendas(res.data ?? [])
@@ -71,7 +73,7 @@ export default function VendasPage() {
   useEffect(() => {
     setPage(1)
     carregar(1)
-  }, [product, statusFiltro, dateRange, lastUpdate])
+  }, [product, statusFiltro, dateRange, lastUpdate, skcAplicado])
 
   const vendasFiltradas = busca.trim()
     ? vendas.filter(
@@ -124,6 +126,31 @@ export default function VendasPage() {
             className="w-full pl-9 pr-4 py-2 text-sm bg-card border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
           />
         </div>
+        <div className="relative flex-1 min-w-[220px]">
+          <input
+            type="text"
+            placeholder="Filtrar por SCK (ex: ad51-fase02-pre-escala)..."
+            value={skcFiltro}
+            onChange={(e) => setSkcFiltro(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setSkcAplicado(skcFiltro) }}
+            title="Filtra pelo SCK/Origem de Checkout — roda no período inteiro (não só a página), pra conferir contra o export do Hotmart"
+            className="w-full pl-3 pr-20 py-2 text-sm bg-card border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
+          />
+          <button
+            onClick={() => setSkcAplicado(skcFiltro)}
+            className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-semibold bg-primary/15 text-primary rounded-md hover:bg-primary/25 transition-colors"
+          >
+            Filtrar
+          </button>
+        </div>
+        {skcAplicado && (
+          <button
+            onClick={() => { setSkcFiltro(''); setSkcAplicado('') }}
+            className="px-3 py-2 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg"
+          >
+            Limpar SCK ×
+          </button>
+        )}
         <select
           value={statusFiltro}
           onChange={(e) => { setStatusFiltro(e.target.value); setPage(1) }}

@@ -65,7 +65,8 @@ export async function reprocessarUpsellsSemCriativo() {
 export async function getVendasStats(
   startDate: string,
   endDate: string,
-  produto?: string
+  produto?: string,
+  sck?: string
 ) {
   try {
     // Vendas REAIS aprovadas (exclui lançamentos manuais). Pagina para somar a
@@ -84,6 +85,9 @@ export async function getVendasStats(
 
       if (produto && produto !== 'Qualquer') {
         query = query.ilike('produto', `%${produto}%`)
+      }
+      if (sck && sck.trim()) {
+        query = query.ilike('sck', `%${sck.trim()}%`)
       }
 
       const { data, error, count } = await query
@@ -106,7 +110,8 @@ export async function getVendas(
   produto?: string,
   status?: string,
   page = 1,
-  pageSize = 50
+  pageSize = 50,
+  sck?: string
 ) {
   try {
     // Histórico de transações REAIS da Hotmart (exclui lançamentos manuais).
@@ -125,6 +130,13 @@ export async function getVendas(
 
     if (status && status !== 'todos') {
       query = query.eq('status', status)
+    }
+
+    // Filtro por SCK (origem de checkout) — roda no servidor, sobre o
+    // PERÍODO INTEIRO (não só a página carregada), pra conferência real
+    // contra o export do Hotmart.
+    if (sck && sck.trim()) {
+      query = query.ilike('sck', `%${sck.trim()}%`)
     }
 
     const { data, error, count } = await query
