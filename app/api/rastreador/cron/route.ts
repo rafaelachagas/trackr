@@ -4,6 +4,7 @@ import { RASTREADOR_URL, RASTREADOR_APIKEY } from '@/lib/rastreador'
 import { registrarNovidade } from '@/app/actions/rastreador'
 import { foldHistoricoAoVivo } from '@/app/actions/rastreador-intel'
 import { registrarAlerta } from '@/lib/alertas'
+import { broadcastAlerta } from '@/lib/whatsapp-send'
 import { CLASSIFICACAO_META } from '@/lib/rastreador-intel'
 
 // Re-puxa automaticamente as bibliotecas agendadas e salva um snapshot pra
@@ -71,31 +72,57 @@ export async function GET(request: NextRequest) {
       const fold = await foldHistoricoAoVivo(b.id, j.criativos ?? [])
 
       // Push no painel de novidade (anúncio novo do concorrente) via WhatsApp também.
+      // UMA mensagem por biblioteca por rodada — não uma por criativo (era isso
+      // que enchia o WhatsApp de mensagem repetida quando várias cópias/variações
+      // do mesmo anúncio surgiam/saíam juntas). Cada criativo continua logado
+      // individualmente em alertas_log (Central de Alertas no painel), só o
+      // ENVIO pro WhatsApp é que vira 1 mensagem resumida com os links.
       if (anterior && (fold.novos?.length ?? 0) > 0) {
-        await registrarAlerta({
+        const { novo } = await registrarAlerta({
           orgId: b.org_id, tipo: 'concorrente_novo', chave: `${b.id}:${new Date().toISOString().slice(0, 10)}`,
           titulo: `${nomeDisplay} subiu ${fold.novos!.length} novo(s) anúncio(s)`,
           mensagem: `A biblioteca ${nomeDisplay} tem ${fold.novos!.length} criativo(s) novo(s) no ar. Vale conferir o ângulo.`,
           severidade: 'info',
-        }).catch(() => {})
+          enviarWhats: false,
+        }).catch(() => ({ novo: false, enviado: false }))
+        if (novo) {
+          const { data: rowsNovos } = await supabaseAdmin
+            .from('rastreador_criativos_hist')
+            .select('headline, snapshot_url')
+            .eq('biblioteca_id', b.id).in('ad_archive_id', fold.novos!).limit(5)
+          const links = (rowsNovos ?? [])
+            .map((r) => `• ${r.headline ? String(r.headline).slice(0, 80) : '(sem título)'}${r.snapshot_url ? `\n  ${r.snapshot_url}` : ''}`)
+            .join('\n')
+          const texto = `🆕 *${nomeDisplay} subiu ${fold.novos!.length} novo(s) anúncio(s)*\n\n${links || 'Confere no painel.'}`
+          await broadcastAlerta(texto).catch(() => {})
+        }
       }
 
       // Alerta de campeão removido: criativo que ficou 7+ dias no ar e saiu.
       if (anterior && (fold.removidos?.length ?? 0) > 0) {
         const { data: rows } = await supabaseAdmin
           .from('rastreador_criativos_hist')
-          .select('ad_archive_id, headline, dias_no_ar, classificacao')
+          .select('ad_archive_id, headline, dias_no_ar, classificacao, snapshot_url')
           .eq('biblioteca_id', b.id).in('ad_archive_id', fold.removidos!)
+        const itensNovos: string[] = []
         for (const r of rows ?? []) {
           if ((r.dias_no_ar ?? 0) < 7) continue // não passou no teste: não alerta
           const cl = CLASSIFICACAO_META[(r.classificacao as keyof typeof CLASSIFICACAO_META)] ?? null
           const rotulo = cl ? cl.label : r.classificacao
-          await registrarAlerta({
+          const { novo } = await registrarAlerta({
             orgId: b.org_id, tipo: 'concorrente_removido', chave: `${b.id}:${r.ad_archive_id}`,
             titulo: `${nomeDisplay} tirou um criativo do ar`,
-            mensagem: `Um criativo "${rotulo}" ficou ${r.dias_no_ar} dias no ar e saiu${(r.headline ? `:\n"${String(r.headline).slice(0, 120)}"` : '.')}\nPode ser fadiga ou troca de estratégia.`,
+            mensagem: `Criativo "${rotulo}" ficou ${r.dias_no_ar} dias no ar e saiu${(r.headline ? `: "${String(r.headline).slice(0, 120)}"` : '.')}`,
             severidade: (r.dias_no_ar ?? 0) >= 30 ? 'atencao' : 'info',
-          }).catch(() => {})
+            enviarWhats: false,
+          }).catch(() => ({ novo: false, enviado: false }))
+          if (novo) {
+            itensNovos.push(`• "${rotulo}" · ${r.dias_no_ar}d no ar${r.headline ? ` — ${String(r.headline).slice(0, 80)}` : ''}${r.snapshot_url ? `\n  ${r.snapshot_url}` : ''}`)
+          }
+        }
+        if (itensNovos.length > 0) {
+          const texto = `🪦 *${nomeDisplay} tirou ${itensNovos.length} criativo${itensNovos.length > 1 ? 's' : ''} do ar*\n\n${itensNovos.join('\n\n')}\n\nPode ser fadiga ou troca de estratégia.`
+          await broadcastAlerta(texto).catch(() => {})
         }
       }
 
