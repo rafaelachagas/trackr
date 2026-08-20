@@ -151,6 +151,7 @@ export async function POST(request: NextRequest) {
         sck = await buscarSckUnico(purchase.transaction)
       }
       if (sck) console.log('[Hotmart] sck resolvido em tempo real via API:', purchase.transaction)
+      else console.warn('[Hotmart] sck NÃO resolvido em tempo real (2 tentativas):', purchase.transaction)
     }
     const criativo = extrairCriativo(sck)
 

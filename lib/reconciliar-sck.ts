@@ -30,8 +30,18 @@ async function getToken(basic: string): Promise<string> {
  * o criativo já foi pausado/escalado antes da reconciliação em lote rodar).
  * Só essa transação, então é rápida (1-2 chamadas), mas ainda depende da API
  * do Hotmart responder — por isso tem timeout e nunca lança erro pro caller.
+ *
+ * Só tenta o status "aprovada" (padrão, sem transaction_status) por default —
+ * é chamada UMA vez por webhook, e quase sempre é um evento de aprovação.
+ * Antes tentava os 6 status possíveis sempre (6 chamadas × 2 tentativas = até
+ * 12 chamadas à API por venda) — num dia de volume alto (100+ vendas/hora)
+ * isso multiplicava as chamadas à API do Hotmart o suficiente pra bater rate
+ * limit e o sck parar de resolver silenciosamente pra QUASE TODAS as vendas
+ * do dia (429 não virava erro, só "continue" pro próximo status — nunca
+ * aparecia no log). full=true faz a varredura completa (evento de ciclo de
+ * vida raro, sem pressa).
  */
-export async function buscarSckUnico(transactionId: string, timeoutMs = 8000): Promise<string | null> {
+export async function buscarSckUnico(transactionId: string, timeoutMs = 8000, full = false): Promise<string | null> {
   try {
     const { data: cfg } = await supabaseAdmin
       .from('configuracoes')
@@ -43,10 +53,7 @@ export async function buscarSckUnico(transactionId: string, timeoutMs = 8000): P
 
     const token = await getToken(basic)
 
-    // Sem transaction_status: cobre a maioria (aprovada) numa chamada só.
-    // Se não achar, tenta os outros status (vendas que já nascem canceladas/
-    // reembolsadas raramente têm sck relevante, mas não custa tentar).
-    const STATUSES = ['', 'CANCELLED', 'REFUNDED', 'PROTESTED', 'CHARGEBACK', 'EXPIRED']
+    const STATUSES = full ? ['', 'CANCELLED', 'REFUNDED', 'PROTESTED', 'CHARGEBACK', 'EXPIRED'] : ['']
     for (const status of STATUSES) {
       const p = new URLSearchParams({
         max_results: '10',
@@ -69,7 +76,12 @@ export async function buscarSckUnico(transactionId: string, timeoutMs = 8000): P
       } finally {
         clearTimeout(timer)
       }
-      if (!r.ok) continue
+      if (!r.ok) {
+        // Antes isso era silencioso (só "continue") — um 429/403 da Hotmart
+        // nunca aparecia em lugar nenhum, impossível de diagnosticar depois.
+        console.error(`[buscarSckUnico] ${transactionId} status=${status || 'aprovada'} HTTP ${r.status}`)
+        continue
+      }
       const j = await r.json()
       const item = (j.items ?? []).find((it: any) => it.purchase?.transaction === transactionId)
       const sck = item?.purchase?.tracking?.source_sck
