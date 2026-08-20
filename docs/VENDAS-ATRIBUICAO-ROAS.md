@@ -26,9 +26,17 @@ vice-versa, é sinal de que a tarefa está no lugar errado. Pare e pergunte.
 ## Pipeline de uma venda, do zero ao ROAS
 
 1. **Webhook** (`app/api/webhooks/hotmart/route.ts`) recebe o evento da Hotmart.
-   - `sck` vem de `purchase.tracking.source_sck`. Às vezes vem vazio —
-     principalmente em eventos de ciclo de vida (PROTEST/REFUNDED/CHARGEBACK)
-     que chegam sem tracking, e ocasionalmente na aprovação inicial também.
+   - `sck` vem de **`purchase.origin.sck`** (formato ATUAL do webhook — a
+     Hotmart mudou em ~20/08/2026; o campo antigo `purchase.tracking.source_sck`
+     parou de vir no webhook, embora a API sales/history continue usando
+     `tracking.source_sck`). O código lê `origin.sck` primeiro e cai pro
+     formato antigo como fallback. LIÇÃO CARA: quando o sck sumir "do nada",
+     capture o payload CRU (debug em `configuracoes.hotmart_webhook_debug`)
+     ANTES de culpar rede/bloqueio — em 20/08 um dia inteiro de vendas ficou
+     sem atribuição e a causa era só o campo ter mudado de nome/lugar.
+   - Alguns eventos ainda chegam sem origin/tracking nenhum —
+     principalmente ciclo de vida (PROTEST/REFUNDED/CHARGEBACK), e
+     ocasionalmente a aprovação inicial também.
    - Se vier vazio: primeiro tenta preservar o sck que já estava salvo pra
      aquela transação (evita apagar um sck bom com um evento tardio sem
      tracking — bug real, corrigido no commit `905a24e`). Se ainda não tiver
