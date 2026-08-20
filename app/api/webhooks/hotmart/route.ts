@@ -141,16 +141,36 @@ export async function POST(request: NextRequest) {
 
     // 6. Calcular valor (bruto) e valor líquido (comissão do produtor = "Receita
     // Líquida" da Hotmart: preço − taxa Hotmart − comissão coprodutor/afiliado)
+    // original_offer_price já vem CONVERTIDO pra BRL pelo Hotmart (câmbio do dia);
+    // price vem na moeda original da venda (USD/EUR em compra internacional).
     const valorCentavos = Math.round((purchase.original_offer_price?.value ?? purchase.price?.value ?? 0) * 100)
     const valor = valorCentavos / 100
 
+    // Comissão do produtor (data.commissions) às vezes vem na moeda ORIGINAL da
+    // venda (ex: USD), mesmo quando original_offer_price já está em BRL — Hotmart
+    // não converte esse campo. Sem isso, uma venda de US$122 (R$631,80) entrava
+    // no banco como R$108,94 de líquido (o número em dólar, sem câmbio nenhum),
+    // furando o ROAS de todo criativo com comprador internacional. A razão
+    // original_offer_price/price É o câmbio do dia da Hotmart pra essa venda —
+    // aplica ela em cima da comissão bruta pra converter pro mesmo padrão.
+    const precoOriginal = purchase.price?.value
+    const precoConvertidoBRL = purchase.original_offer_price?.value
+    let taxaCambio = 1
+    if (precoOriginal && precoConvertidoBRL && precoOriginal > 0) {
+      const r = precoConvertidoBRL / precoOriginal
+      if (r > 0.01 && r < 100) taxaCambio = r
+    }
+
     const comissaoProdutor = (data.commissions ?? []).find((c) => c.source === 'PRODUCER')
-    const valorLiquido = comissaoProdutor
+    const valorLiquidoBruto = comissaoProdutor
       ? Number(
           typeof comissaoProdutor.value === 'object'
             ? comissaoProdutor.value?.value
             : comissaoProdutor.value
         )
+      : null
+    const valorLiquido = valorLiquidoBruto != null && Number.isFinite(valorLiquidoBruto)
+      ? Math.round(valorLiquidoBruto * taxaCambio * 100) / 100
       : null
 
     // 7. Preparar registro
