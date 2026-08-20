@@ -2,6 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { foldHistoricoAoVivo } from '@/app/actions/rastreador-intel'
+import { registrarAlerta } from '@/lib/alertas'
 
 async function resolveOrgId(): Promise<string | null> {
   const { data } = await supabaseAdmin
@@ -212,12 +213,25 @@ export async function registrarNovidade(
     const idsAntes = new Set((anteriores ?? []).map((c: any) => c?.ad_archive_id).filter(Boolean))
     const novos = (atuais ?? []).filter((c: any) => c?.ad_archive_id && !idsAntes.has(c.ad_archive_id))
     if (novos.length === 0) return { success: true, novos: 0 }
+    const novosIds = novos.map((c: any) => c.ad_archive_id)
     await supabaseAdmin.from('rastreador_novidades').insert({
       org_id: orgId,
       biblioteca_id: bibliotecaId,
       page_name: pageName,
       qtd_novos: novos.length,
-      novos_ids: novos.map((c: any) => c.ad_archive_id),
+      novos_ids: novosIds,
+    })
+    // Manda pro WhatsApp também (não só o banner do painel). Dedupe por
+    // conjunto exato de ids novos — não reenvia se essa mesma detecção já
+    // alertou antes. registrarAlerta cuida do envio; se alertas_whatsapp não
+    // estiver configurado (numeros/ativo), ela mesma vira no-op, sem erro.
+    await registrarAlerta({
+      orgId,
+      tipo: 'concorrente_novo',
+      chave: `${bibliotecaId}:${[...novosIds].sort().join(',')}`,
+      titulo: `${pageName} subiu ${novos.length} novo${novos.length > 1 ? 's' : ''} anúncio${novos.length > 1 ? 's' : ''}`,
+      mensagem: `Detectado no Rastreador de Anúncios. Confere no painel.`,
+      severidade: 'info',
     })
     return { success: true, novos: novos.length }
   } catch (e: any) {

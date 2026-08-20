@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { Eye, Sun, Edit2, Moon, EyeOff, LogOut, ChevronDown, Building2, Check, Users, CreditCard } from 'lucide-react'
 import FiltrosDashboard from '@/components/dashboard/FiltrosDashboard'
+import SinoNotificacoes from '@/components/ui/SinoNotificacoes'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useState, useRef, useEffect } from 'react'
@@ -77,6 +78,8 @@ export default function Topbar() {
 
           {/* Direita: org + usuário */}
           <div className="flex items-center gap-2">
+
+            <SinoNotificacoes />
 
             {/* Seletor de org */}
             {activeOrg && (
