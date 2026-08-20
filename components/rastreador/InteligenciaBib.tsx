@@ -21,6 +21,7 @@ export default function InteligenciaBib({ bibId, landingUrl }: { bibId: string; 
   const [clusterizando, setClusterizando] = useState(false)
   const [gerando, setGerando] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [classAberta, setClassAberta] = useState<ClassificacaoTeste | null>(null)
 
   // Página de vendas
   const [url, setUrl] = useState(landingUrl ?? '')
@@ -144,16 +145,50 @@ export default function InteligenciaBib({ bibId, landingUrl }: { bibId: string; 
             const n = resumo?.porClassificacao?.[cl] ?? 0
             const m = CLASSIFICACAO_META[cl]
             const pct = criativos.length ? (n / criativos.length) * 100 : 0
+            const aberta = classAberta === cl
             return (
-              <div key={cl} className="flex items-center gap-3">
-                <span className="text-xs font-semibold w-24 shrink-0" style={{ color: m.cor }}>{m.label}</span>
+              <button
+                key={cl}
+                onClick={() => n > 0 && setClassAberta(aberta ? null : cl)}
+                disabled={n === 0}
+                className={`w-full flex items-center gap-3 py-0.5 rounded-lg transition ${n > 0 ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}
+                title={n > 0 ? `Ver os ${n} criativo(s) ${m.label.toLowerCase()}` : undefined}
+              >
+                <span className="text-xs font-semibold w-24 shrink-0 text-left" style={{ color: m.cor }}>{m.label}</span>
                 <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: m.cor }} /></div>
                 <span className="text-xs tabular-nums text-muted-foreground w-8 text-right shrink-0">{n}</span>
-              </div>
+              </button>
             )
           })}
         </div>
         <p className="text-[10px] text-muted-foreground/70 mt-3">Regra: &lt;7d reprovado · 7–15d mediano · 15–30d bom · 30d+ espetacular.</p>
+
+        {/* Lista dos criativos da classificação clicada */}
+        {classAberta && (() => {
+          const m = CLASSIFICACAO_META[classAberta]
+          const lista = criativos.filter((c) => c.classificacao === classAberta).sort((a, b) => (b.dias_no_ar || 0) - (a.dias_no_ar || 0))
+          return (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              <p className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: m.cor }}>{m.label} · {lista.length} criativo{lista.length === 1 ? '' : 's'}</p>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {lista.map((c) => (
+                  <div key={c.ad_archive_id} className="flex items-center gap-3 text-sm py-1.5 border-b border-white/5 last:border-0">
+                    <span className="text-xs tabular-nums text-muted-foreground w-14 shrink-0 flex items-center gap-1"><Clock className="w-3 h-3" />{c.dias_no_ar}d</span>
+                    <span className="flex-1 min-w-0 truncate text-foreground/90">{c.headline || c.angulo_resumo || '(sem título)'}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${c.status === 'removido' ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                      {c.status === 'removido' ? 'saiu do ar' : 'ativo'}
+                    </span>
+                    {c.snapshot_url && (
+                      <a href={c.snapshot_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-primary transition" title="Ver anúncio">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Ângulos (IA) */}
