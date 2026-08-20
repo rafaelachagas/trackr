@@ -24,6 +24,65 @@ async function getToken(basic: string): Promise<string> {
 }
 
 /**
+ * Busca o sck de UMA transação específica, na hora, direto na API do Hotmart.
+ * Usada pelo webhook quando o payload não traz tracking.source_sck — em vez de
+ * esperar o cron horário (que chega tarde demais pra decisão de ROAS 1d/3d/7d,
+ * o criativo já foi pausado/escalado antes da reconciliação em lote rodar).
+ * Só essa transação, então é rápida (1-2 chamadas), mas ainda depende da API
+ * do Hotmart responder — por isso tem timeout e nunca lança erro pro caller.
+ */
+export async function buscarSckUnico(transactionId: string, timeoutMs = 8000): Promise<string | null> {
+  try {
+    const { data: cfg } = await supabaseAdmin
+      .from('configuracoes')
+      .select('valor')
+      .eq('chave', 'hotmart_basic')
+      .single()
+    const basic = cfg?.valor
+    if (!basic) return null
+
+    const token = await getToken(basic)
+
+    // Sem transaction_status: cobre a maioria (aprovada) numa chamada só.
+    // Se não achar, tenta os outros status (vendas que já nascem canceladas/
+    // reembolsadas raramente têm sck relevante, mas não custa tentar).
+    const STATUSES = ['', 'CANCELLED', 'REFUNDED', 'PROTESTED', 'CHARGEBACK', 'EXPIRED']
+    for (const status of STATUSES) {
+      const p = new URLSearchParams({
+        max_results: '10',
+        transaction: transactionId,
+        // A API exige start_date/end_date; usa uma janela larga (90 dias) pra
+        // não perder transações antigas reprocessadas.
+        start_date: String(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: String(Date.now()),
+      })
+      if (status) p.set('transaction_status', status)
+
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      let r: Response
+      try {
+        r = await fetch(`${SALES_URL}?${p}`, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...BROWSER_HEADERS },
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(timer)
+      }
+      if (!r.ok) continue
+      const j = await r.json()
+      const item = (j.items ?? []).find((it: any) => it.purchase?.transaction === transactionId)
+      const sck = item?.purchase?.tracking?.source_sck
+      if (sck) return sck
+    }
+    return null
+  } catch (e) {
+    console.error('[buscarSckUnico] Erro:', (e as Error).message)
+    return null
+  }
+}
+
+/**
  * Reconcilia o SCK das vendas a partir da API sales/history do Hotmart.
  * É NÃO-DESTRUTIVO: só preenche linhas onde sck ainda está null.
  * O webhook às vezes não traz o sck no payload; a API sempre tem — então
@@ -135,8 +194,12 @@ export async function reconciliarSck(opts: {
   }
 
   // 3. Upsells sem sck: muitas vezes a pessoa compra o upsell por link de checkout
-  // à parte que não carrega o sck. Se houver um front com o MESMO email na janela
-  // de 48h, herda o sck/criativo do front e marca atribuicao_manual (asterisco na UI).
+  // à parte que não carrega o sck. Se houver um front com o MESMO email nos
+  // últimos 30 dias, herda o sck/criativo do front e marca atribuicao_manual
+  // (asterisco na UI). Às vezes o upsell só é comprado dias depois do front,
+  // então a janela precisa ser larga (regra do usuário: procurar até 30 dias
+  // antes de desistir e deixar a venda sem atribuição — ela continua contando
+  // no faturamento total, só não entra no ROAS de nenhum criativo específico).
   const upsellsVinculados = await vincularUpsellsSemSck(opts.startDate, endDate)
 
   return { atualizadas, coletadas: apiSck.size, pages, upsellsVinculados, erros: erros.length ? erros : undefined }
@@ -156,7 +219,7 @@ async function vincularUpsellsSemSck(startDate: number, endDate: number): Promis
 
   let vinculados = 0
   for (const up of upsells) {
-    const janela = new Date(new Date(up.data).getTime() - 48 * 60 * 60 * 1000).toISOString()
+    const janela = new Date(new Date(up.data).getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const { data: front } = await supabaseAdmin
       .from('vendas')
       .select('id, criativo, fase, campanha, sck, vsl')

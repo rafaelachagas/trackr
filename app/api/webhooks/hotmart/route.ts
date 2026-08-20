@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { buscarSckUnico } from '@/lib/reconciliar-sck'
 import { extrairCriativo, extrairFase, extrairCampanha, normalizarPagamento } from '@/lib/utils'
 import { HotmartWebhookPayload } from '@/types'
 
@@ -129,6 +130,13 @@ export async function POST(request: NextRequest) {
         .from('vendas').select('sck').eq('transaction_id', purchase.transaction).maybeSingle()
       if (existente?.sck) sck = existente.sck
     }
+    // Ainda sem sck? Busca na hora, direto na API do Hotmart, pra essa
+    // transação específica — não dá pra esperar o cron horário, o criativo já
+    // pode ter sido pausado/escalado com base num ROAS de 1d errado até lá.
+    if (!sck) {
+      sck = await buscarSckUnico(purchase.transaction)
+      if (sck) console.log('[Hotmart] sck resolvido em tempo real via API:', purchase.transaction)
+    }
     const criativo = extrairCriativo(sck)
 
     // 6. Calcular valor (bruto) e valor líquido (comissão do produtor = "Receita
@@ -210,14 +218,19 @@ export async function POST(request: NextRequest) {
 
 async function vincularUpsell(upsellId: string, buyerEmail: string, orderDate: number) {
   try {
-    const janela24h = new Date(orderDate - 24 * 60 * 60 * 1000).toISOString()
+    // Janela de 30 dias: às vezes a pessoa compra o upsell dias depois do
+    // front (regra do usuário). Copia sck/fase/campanha também — antes só
+    // copiava criativo/vsl e deixava sck null, obrigando o cron a refazer o
+    // trabalho depois.
+    const janela30d = new Date(orderDate - 30 * 24 * 60 * 60 * 1000).toISOString()
 
     const { data: vendaFront } = await supabaseAdmin
       .from('vendas')
-      .select('id, criativo, vsl')
+      .select('id, criativo, vsl, sck, fase, campanha')
       .eq('buyer_email', buyerEmail)
       .eq('tipo', 'front')
-      .gte('data', janela24h)
+      .not('sck', 'is', null)
+      .gte('data', janela30d)
       .order('data', { ascending: false })
       .limit(1)
       .single()
@@ -229,6 +242,10 @@ async function vincularUpsell(upsellId: string, buyerEmail: string, orderDate: n
           venda_front_id: vendaFront.id,
           criativo: vendaFront.criativo,
           vsl: vendaFront.vsl,
+          sck: vendaFront.sck,
+          fase: vendaFront.fase,
+          campanha: vendaFront.campanha,
+          atribuicao_manual: true,
         })
         .eq('id', upsellId)
 
