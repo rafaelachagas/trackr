@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
         tracking: purchase?.tracking ?? null,
         trackingKeys: purchase?.tracking ? Object.keys(purchase.tracking) : null,
         purchaseKeys: purchase ? Object.keys(purchase) : null,
+        origin: (purchase as any)?.origin ?? null,
         sckPaymentLink: (purchase as any)?.sckPaymentLink ?? null,
       }
       const { data: orgDebug } = await supabaseAdmin
@@ -140,7 +141,11 @@ export async function POST(request: NextRequest) {
     // estava correto — a reconciliação nunca conserta pq só olha sck IS NULL,
     // e o sck só ficou null POR CAUSA disso. Busca o que já está salvo e não
     // deixa um evento sem tracking apagar um sck bom.
-    let sck = purchase.tracking?.source_sck ?? purchase.sckPaymentLink ?? null
+    // A Hotmart mudou o formato do webhook: o sck que vinha em
+    // purchase.tracking.source_sck passou a vir em purchase.origin.sck
+    // (payload capturado 20/08 não traz mais a chave `tracking`, só `origin`).
+    // Lê os dois — formato novo primeiro, antigo como fallback.
+    let sck = (purchase as any).origin?.sck ?? purchase.tracking?.source_sck ?? purchase.sckPaymentLink ?? null
     if (!sck) {
       const { data: existente } = await supabaseAdmin
         .from('vendas').select('sck').eq('transaction_id', purchase.transaction).maybeSingle()
