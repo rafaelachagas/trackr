@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink } from 'lucide-react'
+import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink, X, PlayCircle, Download, Copy, Binoculars } from 'lucide-react'
 import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, type ResumoInteligencia, type CriativoHist } from '@/app/actions/rastreador-intel'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
@@ -162,34 +162,33 @@ export default function InteligenciaBib({ bibId, landingUrl }: { bibId: string; 
           })}
         </div>
         <p className="text-[10px] text-muted-foreground/70 mt-3">Regra: &lt;7d reprovado · 7–15d mediano · 15–30d bom · 30d+ espetacular.</p>
+      </div>
 
-        {/* Lista dos criativos da classificação clicada */}
-        {classAberta && (() => {
-          const m = CLASSIFICACAO_META[classAberta]
-          const lista = criativos.filter((c) => c.classificacao === classAberta).sort((a, b) => (b.dias_no_ar || 0) - (a.dias_no_ar || 0))
-          return (
-            <div className="mt-3 pt-3 border-t border-white/5">
-              <p className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: m.cor }}>{m.label} · {lista.length} criativo{lista.length === 1 ? '' : 's'}</p>
-              <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                {lista.map((c) => (
-                  <div key={c.ad_archive_id} className="flex items-center gap-3 text-sm py-1.5 border-b border-white/5 last:border-0">
-                    <span className="text-xs tabular-nums text-muted-foreground w-14 shrink-0 flex items-center gap-1"><Clock className="w-3 h-3" />{c.dias_no_ar}d</span>
-                    <span className="flex-1 min-w-0 truncate text-foreground/90">{c.headline || c.angulo_resumo || '(sem título)'}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${c.status === 'removido' ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                      {c.status === 'removido' ? 'saiu do ar' : 'ativo'}
-                    </span>
-                    {c.snapshot_url && (
-                      <a href={c.snapshot_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-primary transition" title="Ver anúncio">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
+      {/* Modal: criativos da classificação clicada, em cards (mesmo visual do "Movimento") */}
+      {classAberta && (() => {
+        const m = CLASSIFICACAO_META[classAberta]
+        const lista = criativos.filter((c) => c.classificacao === classAberta).sort((a, b) => (b.dias_no_ar || 0) - (a.dias_no_ar || 0))
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setClassAberta(null)}>
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+            <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+                <p className="text-sm font-bold" style={{ color: m.cor }}>{m.label} · {lista.length} criativo{lista.length === 1 ? '' : 's'}</p>
+                <button onClick={() => setClassAberta(null)} className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="overflow-y-auto p-5">
+                {lista.length === 0 ? (
+                  <p className="text-center text-sm text-muted-foreground py-10">Nenhum criativo nessa faixa.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {lista.map((c) => <CardCriativoHist key={c.ad_archive_id} c={c} />)}
                   </div>
-                ))}
+                )}
               </div>
             </div>
-          )
-        })()}
-      </div>
+          </div>
+        )
+      })()}
 
       {/* Ângulos (IA) */}
       <div className={`rounded-2xl p-4 ${card}`}>
@@ -262,6 +261,76 @@ export default function InteligenciaBib({ bibId, landingUrl }: { bibId: string; 
           </div>
         )}
         <p className="text-[10px] text-muted-foreground/70 mt-2">Cada captura guarda uma versão. Quando o concorrente muda preço, bônus ou oferta, aparece aqui.</p>
+      </div>
+    </div>
+  )
+}
+
+// Card de criativo a partir do histórico (mesmo visual do "Movimento", mas
+// lendo de CriativoHist em vez do snapshot ao vivo — dá pra abrir mesmo pra
+// um criativo que já saiu do ar).
+function CardCriativoHist({ c }: { c: CriativoHist }) {
+  const [tocando, setTocando] = useState(false)
+  const podeTocar = c.media_type === 'video' && !!c.video_url
+
+  return (
+    <div className="rounded-2xl overflow-hidden flex flex-col bg-card border border-border">
+      {tocando && c.video_url && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setTocando(false)}>
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-md">
+            <button onClick={() => setTocando(false)} className="absolute -top-9 right-0 p-1.5 rounded-lg text-white/80 hover:text-white"><X className="w-5 h-5" /></button>
+            <video src={c.video_url} controls autoPlay playsInline className="w-full rounded-2xl bg-black max-h-[80vh]" />
+            {c.headline && <p className="text-sm font-semibold text-white/90 mt-2 text-center">{c.headline}</p>}
+          </div>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => { if (podeTocar) setTocando(true) }}
+        disabled={!podeTocar}
+        className={`relative aspect-square bg-black/40 flex items-center justify-center overflow-hidden w-full ${podeTocar ? 'cursor-pointer group' : 'cursor-default'}`}>
+        {c.image_url
+          ? <img src={c.image_url} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+          : <Binoculars className="w-8 h-8 text-muted-foreground" />}
+        {c.media_type === 'video' && <PlayCircle className="absolute w-10 h-10 text-white/80 drop-shadow-lg group-hover:scale-110 transition" />}
+        <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/60 text-white">{c.dias_no_ar}d no ar</span>
+        <span className={`absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded ${c.status === 'removido' ? 'bg-rose-500/80 text-white' : 'bg-emerald-500/80 text-white'}`}>
+          {c.status === 'removido' ? 'saiu do ar' : 'ativo'}
+        </span>
+        {(c.copias ?? 0) > 1 && (
+          <span className="absolute bottom-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/80 text-black flex items-center gap-1">
+            <Copy className="w-3 h-3" /> {c.copias}
+          </span>
+        )}
+        {c.media_type === 'video' && <span className="absolute bottom-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/80 text-white">VÍDEO</span>}
+      </button>
+
+      <div className="p-3 flex flex-col gap-1.5 flex-1">
+        {c.page_name && <p className="text-xs font-semibold text-muted-foreground truncate">{c.page_name}</p>}
+        {c.headline && <p className="text-sm font-bold text-foreground leading-tight line-clamp-2">{c.headline}</p>}
+        {(c.body || c.angulo_resumo) && <p className="text-[11px] text-muted-foreground line-clamp-3">{c.body || c.angulo_resumo}</p>}
+
+        <div className="mt-auto pt-2 flex flex-wrap gap-1.5">
+          {c.snapshot_url && (
+            <a href={c.snapshot_url} target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-white/10 text-muted-foreground hover:text-primary hover:border-primary/40 transition">
+              <ExternalLink className="w-3.5 h-3.5" /> Ver na Meta
+            </a>
+          )}
+          {c.link_url && (
+            <a href={c.link_url} target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-white/10 text-muted-foreground hover:text-primary hover:border-primary/40 transition">
+              Página
+            </a>
+          )}
+          {c.video_url && (
+            <a href={c.video_url} target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-white/10 text-muted-foreground hover:text-primary hover:border-primary/40 transition">
+              <Download className="w-3.5 h-3.5" /> Vídeo
+            </a>
+          )}
+        </div>
       </div>
     </div>
   )
