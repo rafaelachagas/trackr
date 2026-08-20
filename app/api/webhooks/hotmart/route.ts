@@ -4,6 +4,13 @@ import { buscarSckUnico } from '@/lib/reconciliar-sck'
 import { extrairCriativo, extrairFase, extrairCampanha, normalizarPagamento } from '@/lib/utils'
 import { HotmartWebhookPayload } from '@/types'
 
+// Hotmart às vezes dispara o webhook ANTES de terminar de indexar o tracking
+// da compra na própria API sales/history — uma busca em tempo real feita nos
+// primeiros segundos pode vir vazia mesmo pra transação que, minutos depois,
+// já aparece com sck certinho (confirmado em produção: HP1632312192, 20/08).
+// Por isso a busca em tempo real tenta de novo antes de desistir.
+export const maxDuration = 30
+
 // Eventos Hotmart que processamos
 const EVENTOS_ACEITOS = [
   'PURCHASE_COMPLETE',
@@ -133,8 +140,16 @@ export async function POST(request: NextRequest) {
     // Ainda sem sck? Busca na hora, direto na API do Hotmart, pra essa
     // transação específica — não dá pra esperar o cron horário, o criativo já
     // pode ter sido pausado/escalado com base num ROAS de 1d errado até lá.
+    // Uma tentativa às vezes vem vazia porque a Hotmart ainda não terminou de
+    // indexar o tracking na API deles (confirmado: HP1632312192, 20/08 — sck
+    // não veio na primeira busca, mas já estava lá minutos depois). Por isso
+    // tenta de novo com um espaço curto antes de desistir.
     if (!sck) {
       sck = await buscarSckUnico(purchase.transaction)
+      if (!sck) {
+        await new Promise((res) => setTimeout(res, 5000))
+        sck = await buscarSckUnico(purchase.transaction)
+      }
       if (sck) console.log('[Hotmart] sck resolvido em tempo real via API:', purchase.transaction)
     }
     const criativo = extrairCriativo(sck)
