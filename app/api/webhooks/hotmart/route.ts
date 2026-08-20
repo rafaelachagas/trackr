@@ -56,6 +56,9 @@ export async function POST(request: NextRequest) {
 
     // [DEBUG TEMPORÁRIO] Guarda o `tracking` cru dos últimos webhooks pra
     // diagnosticar por que o sck está vindo null. Não afeta o processamento.
+    // (configuracoes.org_id é NOT NULL — sem ele o upsert falhava silencioso e
+    // esse capturador nunca gravou nada desde que foi criado; o erro pelo menos
+    // agora vai pro log em vez de sumir.)
     try {
       const snap = {
         ts: new Date().toISOString(),
@@ -63,17 +66,23 @@ export async function POST(request: NextRequest) {
         event,
         tracking: purchase?.tracking ?? null,
         trackingKeys: purchase?.tracking ? Object.keys(purchase.tracking) : null,
+        purchaseKeys: purchase ? Object.keys(purchase) : null,
         sckPaymentLink: (purchase as any)?.sckPaymentLink ?? null,
       }
+      const { data: orgDebug } = await supabaseAdmin
+        .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
       const { data: prev } = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', 'hotmart_webhook_debug').maybeSingle()
       let arr: any[] = []
       try { arr = prev?.valor ? JSON.parse(prev.valor) : [] } catch {}
       arr.unshift(snap)
-      await supabaseAdmin.from('configuracoes').upsert(
-        { chave: 'hotmart_webhook_debug', valor: JSON.stringify(arr.slice(0, 8)), updated_at: new Date().toISOString() },
+      const { error: errDebug } = await supabaseAdmin.from('configuracoes').upsert(
+        { chave: 'hotmart_webhook_debug', valor: JSON.stringify(arr.slice(0, 12)), updated_at: new Date().toISOString(), org_id: orgDebug?.id },
         { onConflict: 'chave' }
       )
-    } catch {}
+      if (errDebug) console.error('[Hotmart][debug] falha ao gravar snapshot:', errDebug.message)
+    } catch (e) {
+      console.error('[Hotmart][debug] erro inesperado:', (e as Error).message)
+    }
 
     // 3. Mapear status
     const statusMap: Record<string, string> = {
