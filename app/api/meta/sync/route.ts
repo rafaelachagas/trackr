@@ -93,9 +93,10 @@ async function sincronizarMeta(request: NextRequest) {
     // em vez de um upsert sobrescrever o outro (onConflict data,ad_name).
     const mapaRegistros = new Map<string, ReturnType<typeof buildRegistro>>()
 
-    for (const adAccountId of adAccountIds) {
-      const idLimpo = adAccountId.replace('act_', '')
-      const fator = fatores.get(idLimpo) ?? 1
+    // Busca os insights de TODAS as contas em paralelo (antes era uma de cada
+    // vez, com await encadeado — com várias contas isso dava os ~10s que
+    // seguravam os cards do overview). A agregação continua sequencial abaixo.
+    const porConta = await Promise.all(adAccountIds.map(async (adAccountId) => {
       // Coleta TODOS os insights de todas as páginas antes de agregar
       // (evita o bug onde page2 sobrescreve page1 para o mesmo ad_name+data)
       const todosInsights: MetaAdInsight[] = []
@@ -112,15 +113,24 @@ async function sincronizarMeta(request: NextRequest) {
           cursor,
         })
 
-        if (resultado.error) {
-          await atualizarSyncLog(syncLog?.id, 'erro', resultado.error)
-          return NextResponse.json({ error: resultado.error }, { status: 500 })
-        }
+        if (resultado.error) return { adAccountId, error: resultado.error, insights: [] as MetaAdInsight[] }
 
         todosInsights.push(...(resultado.data ?? []))
         cursor = resultado.nextCursor ?? null
       } while (cursor && paginaAtual < 20)
 
+      return { adAccountId, error: null as string | null, insights: todosInsights }
+    }))
+
+    const falha = porConta.find(c => c.error)
+    if (falha) {
+      await atualizarSyncLog(syncLog?.id, 'erro', falha.error!)
+      return NextResponse.json({ error: falha.error }, { status: 500 })
+    }
+
+    for (const { adAccountId, insights: todosInsights } of porConta) {
+      const idLimpo = adAccountId.replace('act_', '')
+      const fator = fatores.get(idLimpo) ?? 1
       const ehBRL = moedas.get(idLimpo) !== 'USD'
       for (const insight of todosInsights) {
         const spendRaw = parseFloat(insight.spend) || 0

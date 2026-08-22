@@ -202,11 +202,19 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const sincronizarTudo = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.allSettled([
-        fetch('/api/meta/sync', { method: 'POST' }),
+      // Hotmart/Vturb rodam em paralelo mas NÃO seguram os cards: a Hotmart já
+      // chega por webhook e a Vturb não entra em nenhum card. Só a Meta muda o
+      // gasto — então os cards liberam assim que ELA terminar.
+      const outros = Promise.allSettled([
         fetch('/api/hotmart/sync', { method: 'POST' }),
         fetch('/api/vturb/sync'),
       ]);
+      // dias=2: só hoje (+ontem por segurança de fuso). Os 90 dias completos
+      // ficam com o cron diário — aqui o que importa é o gasto de hoje, rápido.
+      await fetch('/api/meta/sync?dias=2', { method: 'POST' }).catch(() => {});
+      await refreshData();
+      setFirstLoadDone(true);
+      await outros;
       await refreshData();
     } catch (error) {
       console.error('Erro ao sincronizar:', error);

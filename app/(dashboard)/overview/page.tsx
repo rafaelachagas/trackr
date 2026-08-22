@@ -104,7 +104,13 @@ export default function OverviewPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <GraficoDiario dados={chartData} />
+          {/* Mesma regra dos cards: o gráfico lê o gasto do banco (último sync),
+              então antes do sync de hoje ele mostraria gasto defasado. */}
+          {!firstLoadDone ? (
+            <div className="bg-card border border-border rounded-[10px] shadow-sm h-full min-h-[340px] animate-pulse" />
+          ) : (
+            <GraficoDiario dados={chartData} />
+          )}
         </div>
         <GraficoTipoVendas />
       </div>
