@@ -30,9 +30,44 @@ async function vturbPost(token: string, path: string, body: any) {
   })
   if (!r.ok) {
     const txt = await r.text().catch(() => '')
-    return { erro: `${path} respondeu ${r.status}`, data: null, body: txt.slice(0, 600) }
+    return { erro: `${path} respondeu ${r.status}`, data: null as any, body: txt.slice(0, 600) }
   }
   return { erro: null, data: await r.json().catch(() => null), body: null }
+}
+
+// Curva de retenção no formato da VTurb. A API (/times/user_engagement) devolve
+// `grouped_timed` = quantos usuários SAÍRAM em cada marca de 5s (ponto de abandono),
+// não quantos ainda estão assistindo. A retenção em t é a soma dos que saíram em
+// t ou depois ÷ total — acumulada do fim pro começo. É isso que dá a curva que
+// começa em 100% e vai caindo, igual ao painel da VTurb. (Ver prova em
+// scripts/tmp/vt3.mjs: pitch 20,30% vs 20,31 da VTurb; 1 min 39,22% vs 39,25.)
+function curvaSobreviventes(grouped: any[]): { pontos: { t: number; pct: number; users: number }[]; total: number } {
+  const saidas = (Array.isArray(grouped) ? grouped : [])
+    .map((g: any) => ({ t: Number(g?.timed ?? g?.time ?? g?.second ?? 0), n: Number(g?.total_users ?? g?.count ?? g?.users ?? 0) }))
+    .sort((a, b) => a.t - b.t)
+  const total = saidas.reduce((a, s) => a + s.n, 0)
+  if (total === 0) return { pontos: [], total: 0 }
+  let acumAntes = 0
+  const pontos = saidas.map((s) => {
+    const vivos = total - acumAntes
+    acumAntes += s.n
+    return { t: s.t, users: vivos, pct: (vivos / total) * 100 }
+  })
+  return { pontos, total }
+}
+
+// % de usuários que ainda assistiam no segundo `t` (último ponto <= t).
+function sobreviventesEm(pontos: { t: number; pct: number; users: number }[], t: number) {
+  let p = pontos[0]
+  for (const x of pontos) { if (x.t <= t) p = x; else break }
+  return p ?? { pct: 0, users: 0, t }
+}
+
+const CAMPOS_ABA: Record<string, { tipo: 'field' | 'traffic'; chave: string }> = {
+  paises: { tipo: 'field', chave: 'country' },
+  dispositivos: { tipo: 'field', chave: 'device_type' },
+  navegadores: { tipo: 'field', chave: 'browser' },
+  origem: { tipo: 'traffic', chave: 'utm_source' },
 }
 
 export async function GET(request: NextRequest) {
@@ -44,8 +79,12 @@ export async function GET(request: NextRequest) {
   const dInicio = sp.get('d_inicio') ?? format(subDays(agora, 6), 'yyyy-MM-dd')
   const dFim = sp.get('d_fim') ?? format(agora, 'yyyy-MM-dd')
   // A VTurb exige datetime com hora/min/seg (yyyy-MM-dd HH:mm:ss), não só a data.
+  // E o `timezone` é obrigatório pra bater com o painel deles — sem ele a VTurb
+  // corta o dia em UTC e os números divergem do que aparece lá.
   const dtInicio = `${dInicio} 00:00:00`
   const dtFim = `${dFim} 23:59:59`
+  const aba = sp.get('aba') // paises | dispositivos | navegadores | origem | (vazio = geral)
+  const queryKey = sp.get('query_key') || 'utm_source'
 
   // Chave VTurb + VSL
   const [{ data: cfg }, { data: vsl }] = await Promise.all([
@@ -57,40 +96,85 @@ export async function GET(request: NextRequest) {
   if (!vsl) return NextResponse.json({ error: 'VSL não encontrado.' }, { status: 404 })
 
   const playerId = vsl.vturb_player_id
-  const dur = Number(vsl.video_duration) || undefined
   const campanhas: string[] = Array.isArray(vsl.campanhas) ? vsl.campanhas : []
+  const base = { player_id: playerId, start_date: dtInicio, end_date: dtFim, timezone: TZ }
 
-  // 1) Curva de retenção primeiro — além da curva, ela dá a DURAÇÃO do vídeo
-  // (maior "timed"), que o /sessions/stats exige (e faltava → dava 400).
-  const reten = await vturbPost(token, '/times/user_engagement', { player_id: playerId, start_date: dtInicio, end_date: dtFim, video_duration: dur })
+  // Player: duração e pitch_time (o "Retenção ao Pitch" da VTurb depende dele).
+  let dur = Number(vsl.video_duration) || undefined
+  let pitchTime: number | undefined
+  try {
+    const r = await fetch(`${VTURB_ANALYTICS_BASE}/players/list`, { headers: vturbHeaders(token), cache: 'no-store' })
+    const arr: any[] = r.ok ? await r.json() : []
+    const p = (Array.isArray(arr) ? arr : []).find((x: any) => String(x?.id) === String(playerId))
+    if (p) {
+      dur = Number(p.duration ?? p.video_duration) || dur
+      pitchTime = Number(p.pitch_time) || undefined
+    }
+  } catch {}
 
-  const grouped: any[] = reten.data?.grouped_timed ?? reten.data?.groupedTimed ?? reten.data?.retention ?? (Array.isArray(reten.data) ? reten.data : [])
-  const curva = (Array.isArray(grouped) ? grouped : []).map((g: any) => ({
-    t: Number(g?.timed ?? g?.time ?? g?.second ?? g?.t ?? 0),
-    users: Number(g?.total_users ?? g?.count ?? g?.users ?? g?.value ?? 0),
-  })).sort((a, b) => a.t - b.t)
-  const base = curva.length ? (curva[0].users || Math.max(...curva.map((c) => c.users), 1)) : 0
-  const retencao = curva.map((c) => ({ t: c.t, pct: base > 0 ? Math.min(100, (c.users / base) * 100) : 0 }))
+  // ---- Abas de quebra (Países / Dispositivos / Navegadores / Origem) ----
+  if (aba && CAMPOS_ABA[aba]) {
+    const cfgAba = CAMPOS_ABA[aba]
+    const path = cfgAba.tipo === 'field' ? '/sessions/stats_by_field' : '/traffic_origin/stats'
+    const body = cfgAba.tipo === 'field'
+      ? { ...base, field: cfgAba.chave, video_duration: dur, pitch_time: pitchTime }
+      : { ...base, query_key: queryKey, video_duration: dur, pitch_time: pitchTime }
+    const r = await vturbPost(token, path, body)
+    const rows = (Array.isArray(r.data) ? r.data : []).map((x: any) => ({
+      grupo: String(x.grouped_field ?? '—'),
+      visualizacoes: pick(x, ['total_viewed']),
+      visualizacoesUnicas: pick(x, ['total_viewed_device_uniq', 'total_viewed_session_uniq']),
+      plays: pick(x, ['total_started']),
+      playsUnicos: pick(x, ['total_started_device_uniq', 'total_started_session_uniq']),
+      playRate: pick(x, ['play_rate']),
+      retencaoPitch: pick(x, ['over_pitch_rate']),
+      engajamento: pick(x, ['engagement_rate']),
+      cliques: pick(x, ['total_clicked_session_uniq', 'total_clicked']),
+      conversoes: pick(x, ['total_conversions']),
+      taxaConversao: pick(x, ['overall_conversion_rate']),
+      receita: pick(x, ['total_amount_brl']) / 100,
+    })).sort((a: any, b: any) => b.visualizacoes - a.visualizacoes)
+    return NextResponse.json({ ok: true, aba, rows, erro: r.erro })
+  }
 
-  // Duração: a do cadastro, ou a maior marca de tempo da curva.
-  const duracaoEstimada = curva.length ? Math.max(...curva.map((c) => c.t)) : undefined
-  const durFinal = dur ?? (duracaoEstimada || undefined)
+  // ---- Geral ----
+  const [reten, stats, convTimed] = await Promise.all([
+    vturbPost(token, '/times/user_engagement', { ...base, video_duration: dur }),
+    vturbPost(token, '/sessions/stats', { ...base, video_duration: dur, pitch_time: pitchTime }),
+    vturbPost(token, '/conversions/video_timed', base),
+  ])
 
-  // 2) Métricas agregadas, agora com a duração resolvida.
-  const stats = await vturbPost(token, '/sessions/stats', { player_id: playerId, start_date: dtInicio, end_date: dtFim, video_duration: durFinal })
+  const grouped: any[] = reten.data?.grouped_timed ?? reten.data?.groupedTimed ?? (Array.isArray(reten.data) ? reten.data : [])
+  const { pontos, total: totalCurva } = curvaSobreviventes(grouped)
+  const duracao = dur ?? (pontos.length ? pontos[pontos.length - 1].t : undefined)
 
   const s = stats.data ?? {}
-  // Nomes REAIS da VTurb (/sessions/stats):
-  // views = total_viewed_*, plays/started = total_started_*, receita = total_amount_brl (em centavos).
-  const viewsUnicas = pick(s, ['total_viewed_device_uniq', 'total_viewed_session_uniq', 'total_viewed'])
+  const visualizacoes = pick(s, ['total_viewed'])
+  const visualizacoesUnicas = pick(s, ['total_viewed_device_uniq', 'total_viewed_session_uniq', 'total_viewed'])
+  const plays = pick(s, ['total_started'])
   const playsUnicos = pick(s, ['total_started_device_uniq', 'total_started_session_uniq', 'total_started'])
-  const playRateVturb = pick(s, ['play_rate', 'playRate']) || (viewsUnicas > 0 ? (playsUnicos / viewsUnicas) * 100 : 0)
-  const engajamento = pick(s, ['engagement_rate', 'engagement', 'engagementRate'])
-  const conversoes = pick(s, ['total_conversions', 'conversions', 'conversions_count'])
-  // total_amount_brl vem em centavos (inteiro) → divide por 100. Fallback USD × ~5,2.
+  const playRateVturb = pick(s, ['play_rate']) || (visualizacoesUnicas > 0 ? (playsUnicos / visualizacoesUnicas) * 100 : 0)
+  const engajamento = pick(reten.data, ['engagement_rate']) || pick(s, ['engagement_rate'])
+  const cliques = pick(s, ['total_clicked_session_uniq', 'total_clicked_device_uniq', 'total_clicked'])
+  const conversoes = pick(s, ['total_conversions'])
+  const taxaConversao = pick(s, ['overall_conversion_rate']) || (playsUnicos > 0 ? (conversoes / playsUnicos) * 100 : 0)
   const receitaBrlCent = pick(s, ['total_amount_brl'])
   const receitaUsdCent = pick(s, ['total_amount_usd'])
   const receitaVturb = receitaBrlCent > 0 ? receitaBrlCent / 100 : (receitaUsdCent > 0 ? (receitaUsdCent / 100) * 5.2 : 0)
+
+  // Pitch e 1 min: lidos da curva (é assim que o painel da VTurb calcula).
+  const noPitch = pitchTime ? sobreviventesEm(pontos, pitchTime) : null
+  const retencaoPitch = noPitch ? noPitch.pct : pick(s, ['over_pitch_rate'])
+  const audienciaPitch = noPitch ? noPitch.users : pick(s, ['total_over_pitch'])
+  const retencao1Min = pontos.length ? sobreviventesEm(pontos, 60).pct : 0
+
+  // Conversões ao longo do vídeo (toggle "Conversões" do gráfico).
+  const conversoesTimed = (Array.isArray(convTimed.data) ? convTimed.data : []).map((c: any) => ({
+    t: Number(c.timed) || 0,
+    conversoes: Number(c.timed_conversions) || 0,
+    acumulado: Number(c.cumulative_conversions) || 0,
+    receita: (Number(c.timed_amount_brl) || 0) / 100,
+  }))
 
   // 3) LP views + gasto da Meta (campanhas mapeadas; vazio = todas).
   let lpViews = 0, gasto = 0
@@ -122,19 +206,22 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     periodo: { d_inicio: dInicio, d_fim: dFim },
-    vturb: { viewsUnicas, playsUnicos, playRateVturb, engajamento, conversoes, receitaVturb },
+    player: { id: playerId, duracao, pitchTime },
+    vturb: {
+      visualizacoes, visualizacoesUnicas, plays, playsUnicos, playRateVturb,
+      retencaoPitch, audienciaPitch, engajamento, cliques, conversoes, taxaConversao,
+      receitaVturb, retencao1Min,
+      // compat com quem ainda lê os nomes antigos
+      viewsUnicas: visualizacoesUnicas,
+    },
     meta: { lpViews, gasto },
     real: { playRateReal, custoPorPlay, custoPorLp, roas, cpa },
-    retencao,
-    // Eco cru pra depurar/lapidar os nomes de campo sem adivinhar.
+    retencao: pontos.map((p) => ({ t: p.t, pct: p.pct })),
+    retencaoTotal: totalCurva,
+    conversoesTimed,
     _raw: {
-      statsErro: stats.erro,
-      statsBody: stats.body,
-      durEnviada: durFinal,
-      retenErro: reten.erro,
+      statsErro: stats.erro, statsBody: stats.body, retenErro: reten.erro,
       statsKeys: s && typeof s === 'object' ? Object.keys(s) : null,
-      statsRaw: stats.data,
-      retenSample: Array.isArray(grouped) ? grouped.slice(0, 2) : reten.data,
     },
   })
 }

@@ -7,7 +7,7 @@ import VslManager from '@/components/vturb/VslManager'
 
 export default function VslsPage() {
   return (
-    <div className="pb-20 max-w-[1100px] mx-auto w-full text-foreground space-y-6 px-4 sm:px-6 lg:px-8">
+    <div className="pb-20 max-w-[1500px] mx-auto w-full text-foreground space-y-6 px-4 sm:px-6 lg:px-8">
       <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
         <div className="flex items-start sm:items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary/10 border border-primary/30">
