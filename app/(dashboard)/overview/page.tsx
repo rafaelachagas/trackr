@@ -82,7 +82,9 @@ export default function OverviewPage() {
 
   return (
     <div className="relative space-y-6 w-full mx-auto text-foreground">
-      {!firstLoadDone ? (
+      {editorAberto ? (
+        <EditorMetricas metrics={metrics} onClose={() => setEditorAberto(false)} />
+      ) : !firstLoadDone ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-5">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="bg-card border border-border p-5 rounded-[10px] shadow-sm animate-pulse">
@@ -96,8 +98,6 @@ export default function OverviewPage() {
         {layout.map((id) => <MetricaCardById key={id} id={id} metrics={metrics} />)}
       </div>
       )}
-
-      {editorAberto && <EditorMetricas metrics={metrics} onClose={() => setEditorAberto(false)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">

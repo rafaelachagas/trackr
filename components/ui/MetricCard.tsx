@@ -9,14 +9,15 @@ interface Props {
   tendencia?: string
   tooltip?: string
   verde?: boolean
+  alinharTooltipDireita?: boolean
 }
 
-export default function MetricCard({ titulo, valor, subtitulo, tendencia, tooltip, verde }: Props) {
+export default function MetricCard({ titulo, valor, subtitulo, tendencia, tooltip, verde, alinharTooltipDireita }: Props) {
   const { isPrivate } = useDashboard()
   const [showTooltip, setShowTooltip] = useState(false)
 
   return (
-    <div className="bg-card border border-border p-5 rounded-[10px] shadow-sm relative overflow-hidden">
+    <div className="bg-card border border-border p-5 rounded-[10px] shadow-sm relative">
       <div className="flex items-center gap-1.5 mb-1">
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{titulo}</p>
         {tooltip && (
@@ -32,14 +33,16 @@ export default function MetricCard({ titulo, valor, subtitulo, tendencia, toolti
               className="w-3 h-3 text-muted-foreground/60 cursor-help hover:text-muted-foreground transition-colors"
             />
             {showTooltip && (
-              <div className="absolute left-0 top-5 z-50 w-64 rounded-xl bg-popover border border-border shadow-xl p-3 text-xs text-foreground leading-relaxed">
+              <div
+                className={`absolute top-5 z-50 w-64 rounded-xl bg-popover border border-border shadow-xl p-3 text-xs text-foreground leading-relaxed ${alinharTooltipDireita ? 'right-0' : 'left-0'}`}
+              >
                 {tooltip}
               </div>
             )}
           </div>
         )}
       </div>
-      <h3 className={`text-2xl font-black tracking-tighter ${verde ? 'text-emerald-400' : 'text-white'} ${isPrivate ? 'blur-md select-none opacity-50' : ''}`}>
+      <h3 className={`text-2xl font-black tracking-tighter ${verde ? 'text-emerald-400' : 'text-foreground'} ${isPrivate ? 'blur-md select-none opacity-50' : ''}`}>
         {isPrivate ? '••••••' : valor}
       </h3>
       {(tendencia || subtitulo) && (

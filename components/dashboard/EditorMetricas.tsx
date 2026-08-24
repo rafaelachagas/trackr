@@ -69,16 +69,19 @@ export default function EditorMetricas({ metrics, onClose }: { metrics: any; onC
 
   const DeviceIcon = device === 'desktop' ? Monitor : Smartphone
 
+  // Inline (NÃO fixed inset-0) — igual à Utmify: o resto do dashboard (gráficos,
+  // tabelas abaixo) continua visível e normal, só esta faixa vira modo edição.
   return (
-    <div className="fixed inset-0 z-[200] flex flex-col" style={{ backgroundColor: 'var(--background)' }}>
+    <div className="rounded-2xl border border-border overflow-hidden" style={{ backgroundColor: 'var(--card)' }}>
       {/* Barra "você está editando para: Desktop ▾" + Redefinir/Cancelar/Salvar */}
       <div className="flex items-center gap-4 px-5 py-3 border-b border-border flex-wrap" style={{ backgroundColor: 'var(--secondary)' }}>
+        <span className="text-sm text-muted-foreground">Você está editando esse dashboard para:</span>
         <div className="relative" ref={deviceRef}>
-          <button onClick={() => setDeviceMenuOpen((v) => !v)} className="flex items-center gap-2 text-sm text-foreground/90">
-            <span className="text-muted-foreground">Você está editando esse dashboard para:</span>
-            <span className="flex items-center gap-1.5 font-semibold text-primary px-2 py-1 rounded-md hover:bg-white/5 transition">
-              <DeviceIcon className="w-3.5 h-3.5" /> {device === 'desktop' ? 'Desktop' : 'Mobile'} <ChevronDown className="w-3.5 h-3.5" />
-            </span>
+          <button
+            onClick={() => setDeviceMenuOpen((v) => !v)}
+            className="flex items-center gap-1.5 text-sm font-semibold text-primary px-2 py-1 rounded-md hover:bg-white/5 transition"
+          >
+            <DeviceIcon className="w-3.5 h-3.5" /> {device === 'desktop' ? 'Desktop' : 'Mobile'} <ChevronDown className="w-3.5 h-3.5" />
           </button>
           {deviceMenuOpen && (
             <div className="absolute left-0 top-full mt-1 z-10 rounded-xl border border-border bg-popover shadow-xl p-1 w-40">
@@ -104,9 +107,9 @@ export default function EditorMetricas({ metrics, onClose }: { metrics: any; onC
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex flex-col md:flex-row">
         {/* Sidebar: catálogo de métricas */}
-        <aside className="w-72 flex-shrink-0 border-r border-border overflow-y-auto p-4 hidden md:block">
+        <aside className="w-full md:w-72 flex-shrink-0 border-b md:border-b-0 md:border-r border-border p-4 max-h-[420px] overflow-y-auto">
           <h2 className="text-sm font-bold text-foreground mb-4">Métricas Disponíveis</h2>
           {[...porCategoria.entries()].map(([categoria, ids]) => (
             <div key={categoria} className="mb-5">
@@ -136,7 +139,7 @@ export default function EditorMetricas({ metrics, onClose }: { metrics: any; onC
         </aside>
 
         {/* Canvas: prévia ao vivo, reordenável */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 p-6 min-h-[240px]">
           <p className="text-xs text-muted-foreground mb-4">Arraste os cards abaixo pra reordenar. Esta é uma prévia com os dados reais do período atual.</p>
           {carregando ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-16 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> Carregando layout...</div>
