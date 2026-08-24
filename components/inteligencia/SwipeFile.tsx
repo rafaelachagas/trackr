@@ -5,15 +5,18 @@ import { Search, Loader2, ExternalLink, Copy, Check, Clock, PlayCircle, Users, F
 import { buscarSwipe, listarNichosOfertas, type SwipeItem } from '@/app/actions/rastreador-swipe'
 import { listarBibliotecas, type BibliotecaRastreada } from '@/app/actions/rastreador'
 import { ANGULOS, anguloMeta, CLASSIFICACAO_META, type ClassificacaoTeste } from '@/lib/rastreador-intel'
+import { useDashboard } from '@/context/DashboardContext'
 
 const card = 'bg-card border border-border'
 const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0' }
+const NOME_OCULTO = 'Perfil oculto'
 
 function nomeBib(b: BibliotecaRastreada): string {
   return (b.nome_custom?.trim() || b.page_name?.trim() || `Página ${b.page_id}`)
 }
 
 export default function SwipeFile() {
+  const { isPrivate } = useDashboard()
   const [bibs, setBibs] = useState<BibliotecaRastreada[]>([])
   const [bibId, setBibId] = useState('')        // pessoa selecionada
   const [termo, setTermo] = useState('')
@@ -63,7 +66,7 @@ export default function SwipeFile() {
             <Users className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <select value={bibId} onChange={(e) => setBibId(e.target.value)} className="w-full pl-9 pr-3 py-2.5 rounded-lg text-sm outline-none appearance-none" style={inputStyle}>
               <option value="">Todas as pessoas ({bibs.length})</option>
-              {bibs.map((b) => <option key={b.id} value={b.id}>{nomeBib(b)}</option>)}
+              {bibs.map((b) => <option key={b.id} value={b.id}>{isPrivate ? NOME_OCULTO : nomeBib(b)}</option>)}
             </select>
           </div>
           <div className="flex-1 relative">
@@ -102,7 +105,7 @@ export default function SwipeFile() {
             <div key={g.nome}>
               <div className="flex items-center gap-2 mb-3">
                 <FolderOpen className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-bold">{g.nome}</h3>
+                <h3 className={`text-sm font-bold ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? NOME_OCULTO : g.nome}</h3>
                 <span className="text-[11px] text-muted-foreground">{g.itens.length} criativo(s)</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

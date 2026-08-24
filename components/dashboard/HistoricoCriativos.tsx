@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { HistoricoCriativo } from '@/app/api/criativos-historico/route'
+import { useDashboard } from '@/context/DashboardContext'
 
 function fmt(v: number) {
   if (v >= 1000) return `R$ ${(v / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })} mil`
@@ -9,6 +10,7 @@ function fmt(v: number) {
 }
 
 export default function HistoricoCriativos() {
+  const { isPrivate } = useDashboard()
   const [dados, setDados] = useState<HistoricoCriativo[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -52,17 +54,17 @@ export default function HistoricoCriativos() {
                   <td className="px-4 py-3 font-medium text-foreground max-w-[300px] truncate" title={row.criativo}>
                     {row.criativo}
                   </td>
-                  <td className="px-4 py-3 text-right text-rose-400 font-semibold">
-                    {fmt(row.gasto_total)}
+                  <td className={`px-4 py-3 text-right text-rose-400 font-semibold ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                    {isPrivate ? 'R$ ••••' : fmt(row.gasto_total)}
                   </td>
-                  <td className="px-4 py-3 text-right text-emerald-400 font-semibold">
-                    {fmt(row.receita_total)}
+                  <td className={`px-4 py-3 text-right text-emerald-400 font-semibold ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                    {isPrivate ? 'R$ ••••' : fmt(row.receita_total)}
                   </td>
-                  <td className={`px-4 py-3 text-right font-bold ${roasColor}`}>
-                    {row.roas === null ? '—' : `${row.roas.toFixed(2)}x`}
+                  <td className={`px-4 py-3 text-right font-bold ${roasColor} ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                    {isPrivate ? '•.••x' : (row.roas === null ? '—' : `${row.roas.toFixed(2)}x`)}
                   </td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">
-                    {row.vendas}
+                  <td className={`px-4 py-3 text-right text-muted-foreground ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                    {isPrivate ? '••' : row.vendas}
                   </td>
                 </tr>
               )

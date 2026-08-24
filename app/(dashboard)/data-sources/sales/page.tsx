@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { RefreshCw, Upload, Target, Plus, ChevronDown, ChevronUp, Eye, EyeOff, CheckCircle2, Save } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useDashboard } from '@/context/DashboardContext'
 
 const hotmartIcon = (
   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
@@ -13,6 +14,7 @@ const hotmartIcon = (
 )
 
 export default function VendasPage() {
+  const { isPrivate } = useDashboard()
   const [aba, setAba] = useState<'visao-geral' | 'ultimas-vendas'>('visao-geral')
   const [instrucaoAberta, setInstrucaoAberta] = useState(false)
 
@@ -148,7 +150,7 @@ export default function VendasPage() {
                   <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-base">
                     {s.icon}
                   </div>
-                  <span className="text-xl font-bold text-foreground">{s.value}</span>
+                  <span className={`text-xl font-bold text-foreground ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : s.value}</span>
                 </div>
               </div>
             ))}

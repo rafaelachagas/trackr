@@ -6,6 +6,7 @@ import { Upload, X, Sparkles, AlertTriangle, CheckCircle2, Trash2, FileSpreadshe
 import { getProdutosMapeamento, importarLancamentosEmLote, buscarGastoMetaPorPeriodo } from '@/app/actions/lancamento'
 import { listarCriativosParaImport } from '@/app/actions/criativos'
 import { extrairCriativo } from '@/lib/utils'
+import { useDashboard } from '@/context/DashboardContext'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
@@ -202,6 +203,7 @@ function reconciliarGasto(linhas: LinhaPreview[], gastoAgg: Record<string, Gasto
 }
 
 export default function ImportarLote({ onImported }: { onImported: () => void }) {
+  const { isPrivate } = useDashboard()
   const [open, setOpen] = useState(false)
   const [data, setData] = useState(hoje)
   const [criativos, setCriativos] = useState<Criativo[]>([])
@@ -650,7 +652,7 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                     )}
                     {orgLinhas.length > 0 && (
                       <div className="flex items-center gap-2 bg-muted/40 border border-border rounded-xl px-3 py-2">
-                        <p className="text-xs text-muted-foreground">{orgLinhas.length} linha(s) orgânica(s) (bio/sem anúncio) — R$ {fmtBR(totOrg)}. Não entram; remova as que quiser.</p>
+                        <p className="text-xs text-muted-foreground">{orgLinhas.length} linha(s) orgânica(s) (bio/sem anúncio) — R$ <span className={isPrivate ? 'blur-sm select-none' : ''}>{isPrivate ? '••••' : fmtBR(totOrg)}</span>. Não entram; remova as que quiser.</p>
                       </div>
                     )}
                     {descartadas?.semData ? (
@@ -721,17 +723,17 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                               )}
                             </td>
                             <td className="px-3 py-2">
-                              <input type="number" step="0.01" min="0" value={l.vendaFront} onChange={e => atualizar(l.id, { vendaFront: e.target.value })} placeholder="0,00" className="bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60" />
+                              <input type="number" step="0.01" min="0" value={l.vendaFront} onChange={e => atualizar(l.id, { vendaFront: e.target.value })} placeholder="0,00" className={`bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60 ${isPrivate ? 'blur-sm select-none' : ''}`} />
                             </td>
                             <td className="px-3 py-2">
-                              <input type="number" step="0.01" min="0" value={l.vendaUpsell} onChange={e => atualizar(l.id, { vendaUpsell: e.target.value })} placeholder="0,00" className="bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60" />
+                              <input type="number" step="0.01" min="0" value={l.vendaUpsell} onChange={e => atualizar(l.id, { vendaUpsell: e.target.value })} placeholder="0,00" className={`bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60 ${isPrivate ? 'blur-sm select-none' : ''}`} />
                             </td>
                             <td className="px-3 py-2">
                               {l.organica ? (
                                 <div className="text-right text-xs text-muted-foreground pr-2">—</div>
                               ) : (
                                 <div className="relative">
-                                  <input type="number" step="0.01" min="0" value={l.gasto} onChange={e => atualizar(l.id, { gasto: e.target.value, gastoAuto: false })} placeholder="0,00" className={`bg-background border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60 ${l.gastoAuto ? 'border-emerald-500/40' : 'border-border'}`} />
+                                  <input type="number" step="0.01" min="0" value={l.gasto} onChange={e => atualizar(l.id, { gasto: e.target.value, gastoAuto: false })} placeholder="0,00" className={`bg-background border rounded-lg px-2 py-1.5 text-xs text-right w-full focus:outline-none focus:border-primary/60 ${l.gastoAuto ? 'border-emerald-500/40' : 'border-border'} ${isPrivate ? 'blur-sm select-none' : ''}`} />
                                   {l.gastoAuto && (
                                     <span title="Gasto puxado da Meta" className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500/40">
                                       <Zap className="w-2.5 h-2.5 text-emerald-400" />
@@ -751,9 +753,9 @@ export default function ImportarLote({ onImported }: { onImported: () => void })
                       <tfoot>
                         <tr className="border-t-2 border-border bg-muted/30">
                           <td className="px-3 py-2.5 text-[11px] font-bold text-foreground uppercase tracking-wide" colSpan={multiDia ? 2 : 1}>Total anúncios ({adLinhas.length})</td>
-                          <td className="px-3 py-2.5 text-right text-xs font-bold text-emerald-400">R$ {fmtBR(totFront)}</td>
-                          <td className="px-3 py-2.5 text-right text-xs font-bold text-violet-400">R$ {fmtBR(totUpsell)}</td>
-                          <td className="px-3 py-2.5 text-right text-xs font-bold text-foreground">R$ {fmtBR(totGasto)}</td>
+                          <td className={`px-3 py-2.5 text-right text-xs font-bold text-emerald-400 ${isPrivate ? 'blur-sm select-none' : ''}`}>R$ {isPrivate ? '••••' : fmtBR(totFront)}</td>
+                          <td className={`px-3 py-2.5 text-right text-xs font-bold text-violet-400 ${isPrivate ? 'blur-sm select-none' : ''}`}>R$ {isPrivate ? '••••' : fmtBR(totUpsell)}</td>
+                          <td className={`px-3 py-2.5 text-right text-xs font-bold text-foreground ${isPrivate ? 'blur-sm select-none' : ''}`}>R$ {isPrivate ? '••••' : fmtBR(totGasto)}</td>
                           <td />
                         </tr>
                       </tfoot>

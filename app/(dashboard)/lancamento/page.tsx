@@ -18,6 +18,7 @@ import {
 } from '@/app/actions/lancamento'
 import { listarCriativosAtivos, listarCriativosParaImport } from '@/app/actions/criativos'
 import ImportarLote from '@/components/lancamento/ImportarLote'
+import { useDashboard } from '@/context/DashboardContext'
 
 const hoje = format(new Date(), 'yyyy-MM-dd')
 
@@ -39,6 +40,7 @@ type EditGastoState = { id: string; data: string; valor_gasto: string } | null
 type TrocarDiaState = { tipo: Tab; dataAtual: string; novaData: string; ids: string[]; count: number } | null
 
 export default function LancamentoPage() {
+  const { isPrivate } = useDashboard()
   const [produtos, setProdutos] = useState<string[]>([])
   const [criativosAtivos, setCriativosAtivos] = useState<{ nome: string; campaign_name: string; fase: string | null }[]>([])
   const [criativosTodos, setCriativosTodos] = useState<{ nome: string }[]>([])
@@ -303,7 +305,7 @@ export default function LancamentoPage() {
               <ShoppingCart className="w-4 h-4 text-emerald-400" />
             </div>
           </div>
-          <p className="text-2xl font-black text-foreground">R$ {totalVendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+          <p className={`text-2xl font-black text-foreground ${isPrivate ? 'blur-sm select-none' : ''}`}>R$ {isPrivate ? '••••••' : totalVendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
           <p className="text-xs text-muted-foreground mt-1">{vendasList.length} registro{vendasList.length !== 1 ? 's' : ''}</p>
         </div>
         <div onClick={() => setTab('gastos')} className={`bg-card border rounded-2xl p-5 cursor-pointer transition-all ${tab === 'gastos' ? 'border-primary/50 shadow-lg shadow-primary/10' : 'border-border hover:border-border/80'}`}>
@@ -313,7 +315,7 @@ export default function LancamentoPage() {
               <TrendingDown className="w-4 h-4 text-rose-400" />
             </div>
           </div>
-          <p className="text-2xl font-black text-foreground">R$ {totalGastos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+          <p className={`text-2xl font-black text-foreground ${isPrivate ? 'blur-sm select-none' : ''}`}>R$ {isPrivate ? '••••••' : totalGastos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
           <p className="text-xs text-muted-foreground mt-1">{gastosList.length} registro{gastosList.length !== 1 ? 's' : ''}</p>
         </div>
       </div>
@@ -358,7 +360,7 @@ export default function LancamentoPage() {
                       >
                         <CalendarDays className="w-3.5 h-3.5" /> trocar dia
                       </button>
-                      <span className={`text-sm font-bold ${tab === 'vendas' ? 'text-emerald-400' : 'text-foreground'}`}>R$ {grupo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      <span className={`text-sm font-bold ${tab === 'vendas' ? 'text-emerald-400' : 'text-foreground'} ${isPrivate ? 'blur-sm select-none' : ''}`}>R$ {isPrivate ? '••••' : grupo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </div>
                   </div>
 
@@ -379,7 +381,7 @@ export default function LancamentoPage() {
                               <tr key={v.id} className="border-t border-border/30 hover:bg-muted/10 transition-colors">
                                 <td className="px-6 py-3 text-primary font-medium pl-14">{v.criativo ?? '—'}</td>
                                 <td className="px-6 py-3 text-muted-foreground text-xs">{v.produto ?? '—'}</td>
-                                <td className="px-6 py-3 text-right font-bold text-emerald-400">R$ {Number(v.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                <td className={`px-6 py-3 text-right font-bold text-emerald-400 ${isPrivate ? 'blur-sm select-none' : ''}`}>R$ {isPrivate ? '••••' : Number(v.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-4 py-3 text-right">
                                   <div className="flex items-center justify-end gap-1">
                                     <button onClick={() => setEditVenda({ id: v.id, data: v.data.substring(0, 10), produto: v.produto, valor: String(v.valor), criativo: v.criativo ?? '' })} className="text-muted-foreground hover:text-primary transition p-1 rounded">
@@ -409,7 +411,7 @@ export default function LancamentoPage() {
                               <tr key={g.id} className="border-t border-border/30 hover:bg-muted/10 transition-colors">
                                 <td className="px-6 py-3 text-primary font-medium pl-14">{g.criativo ?? '—'}</td>
                                 <td className="px-6 py-3 text-muted-foreground text-xs">{g.campaign_name ?? '—'}</td>
-                                <td className="px-6 py-3 text-right font-bold text-foreground">R$ {Number(g.valor_gasto).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                <td className={`px-6 py-3 text-right font-bold text-foreground ${isPrivate ? 'blur-sm select-none' : ''}`}>R$ {isPrivate ? '••••' : Number(g.valor_gasto).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-4 py-3 text-right">
                                   <div className="flex items-center justify-end gap-1">
                                     <button onClick={() => setEditGasto({ id: g.id, data: g.data.substring(0, 10), valor_gasto: String(g.valor_gasto) })} className="text-muted-foreground hover:text-primary transition p-1 rounded">

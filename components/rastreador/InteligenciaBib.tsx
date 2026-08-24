@@ -14,7 +14,7 @@ const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1
 
 const ORDEM_CLASS: ClassificacaoTeste[] = ['espetacular', 'bom', 'mediano', 'em_teste', 'reprovado']
 
-export default function InteligenciaBib({ bibId, landingUrl }: { bibId: string; landingUrl?: string | null }) {
+export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }: { bibId: string; landingUrl?: string | null; isPrivate?: boolean }) {
   const [resumo, setResumo] = useState<ResumoInteligencia | null>(null)
   const [criativos, setCriativos] = useState<CriativoHist[]>([])
   const [loading, setLoading] = useState(true)
@@ -181,7 +181,7 @@ export default function InteligenciaBib({ bibId, landingUrl }: { bibId: string; 
                   <p className="text-center text-sm text-muted-foreground py-10">Nenhum criativo nessa faixa.</p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {lista.map((c) => <CardCriativoHist key={c.ad_archive_id} c={c} />)}
+                    {lista.map((c) => <CardCriativoHist key={c.ad_archive_id} c={c} isPrivate={isPrivate} />)}
                   </div>
                 )}
               </div>
@@ -269,7 +269,7 @@ export default function InteligenciaBib({ bibId, landingUrl }: { bibId: string; 
 // Card de criativo a partir do histórico (mesmo visual do "Movimento", mas
 // lendo de CriativoHist em vez do snapshot ao vivo — dá pra abrir mesmo pra
 // um criativo que já saiu do ar).
-function CardCriativoHist({ c }: { c: CriativoHist }) {
+function CardCriativoHist({ c, isPrivate = false }: { c: CriativoHist; isPrivate?: boolean }) {
   const [tocando, setTocando] = useState(false)
   const podeTocar = c.media_type === 'video' && !!c.video_url
 
@@ -307,7 +307,7 @@ function CardCriativoHist({ c }: { c: CriativoHist }) {
       </button>
 
       <div className="p-3 flex flex-col gap-1.5 flex-1">
-        {c.page_name && <p className="text-xs font-semibold text-muted-foreground truncate">{c.page_name}</p>}
+        {c.page_name && <p className="text-xs font-semibold text-muted-foreground truncate">{isPrivate ? 'Perfil oculto' : c.page_name}</p>}
         {c.headline && <p className="text-sm font-bold text-foreground leading-tight line-clamp-2">{c.headline}</p>}
         {(c.body || c.angulo_resumo) && <p className="text-[11px] text-muted-foreground line-clamp-3">{c.body || c.angulo_resumo}</p>}
 

@@ -11,6 +11,7 @@ import { Calendar, ChevronDown, ArrowUpDown, ExternalLink, RefreshCw, ImageOff, 
 import type { AdMetric } from '@/app/api/meta/ad-metrics/route'
 import type { AcaoOtimizacao } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { useDashboard } from '@/context/DashboardContext'
 
 // ─── Framework de decisão (mesma matriz do Setup) ──────────────────
 type RegraFramework = { p7: boolean; p3: boolean; p1: boolean; acao: AcaoOtimizacao }
@@ -44,8 +45,8 @@ function hookColor(v: number) { return v >= 30 ? 'bg-emerald-500' : v >= 15 ? 'b
 function roasColor(v: number) { return v >= 2 ? 'text-emerald-400' : v >= 1 ? 'text-amber-400' : 'text-red-400' }
 function roasBg(v: number) { return v >= 2 ? 'bg-emerald-500' : v >= 1 ? 'bg-amber-500' : 'bg-red-500' }
 
-function MetricBar({ label, value, formatted, barPct, colorFn }: {
-  label: string; value: number | null; formatted: string; barPct: number; colorFn: (v: number) => string
+function MetricBar({ label, value, formatted, barPct, colorFn, isPrivate }: {
+  label: string; value: number | null; formatted: string; barPct: number; colorFn: (v: number) => string; isPrivate?: boolean
 }) {
   return (
     <div className="flex items-center gap-2 text-[11px]">
@@ -53,7 +54,7 @@ function MetricBar({ label, value, formatted, barPct, colorFn }: {
       <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
         <div className={`h-full rounded-full ${value !== null ? colorFn(value) : 'bg-muted'}`} style={{ width: `${Math.min(barPct, 100)}%` }} />
       </div>
-      <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : 'text-foreground'}`}>{formatted}</span>
+      <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : 'text-foreground'} ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : formatted}</span>
     </div>
   )
 }
@@ -182,7 +183,7 @@ function fmtBRL2(v: number) {
 }
 
 /* ─── Detail Modal ───────────────────────────────────────────────── */
-function DetailModal({ metric: m, onClose }: { metric: AdMetric; onClose: () => void }) {
+function DetailModal({ metric: m, onClose, isPrivate }: { metric: AdMetric; onClose: () => void; isPrivate: boolean }) {
   const [imgErr, setImgErr] = useState(false)
   const thumbSrc = m.thumbnail_url ? `/api/meta/thumb-proxy?url=${encodeURIComponent(m.thumbnail_url)}` : null
   const hasThumb = !!thumbSrc && !imgErr
@@ -198,7 +199,7 @@ function DetailModal({ metric: m, onClose }: { metric: AdMetric; onClose: () => 
     return (
       <div className="bg-background/60 rounded-xl p-3">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">{label}</p>
-        <p className="text-sm font-bold text-foreground tabular-nums">{value}</p>
+        <p className={`text-sm font-bold text-foreground tabular-nums ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : value}</p>
       </div>
     )
   }
@@ -276,7 +277,7 @@ function DetailModal({ metric: m, onClose }: { metric: AdMetric; onClose: () => 
               <div className="bg-background/60 rounded-xl p-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">ROAS</p>
                 {hasRoas ? (
-                  <p className={`text-sm font-bold tabular-nums ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
+                  <p className={`text-sm font-bold tabular-nums ${roasColor(m.roas!)} ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : `${m.roas!.toFixed(2)}x`}</p>
                 ) : (
                   <p className="text-sm font-bold text-muted-foreground">—</p>
                 )}
@@ -302,8 +303,8 @@ function DetailModal({ metric: m, onClose }: { metric: AdMetric; onClose: () => 
                         />
                       )}
                     </div>
-                    <span className={`w-14 text-right font-bold tabular-nums ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
-                      {value !== null ? `${value.toFixed(2)}x` : '—'}
+                    <span className={`w-14 text-right font-bold tabular-nums ${value === null ? 'text-muted-foreground' : roasColor(value)} ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                      {isPrivate ? '••••' : (value !== null ? `${value.toFixed(2)}x` : '—')}
                     </span>
                   </div>
                 ))}
@@ -317,7 +318,7 @@ function DetailModal({ metric: m, onClose }: { metric: AdMetric; onClose: () => 
 }
 
 /* ─── Ad Card ────────────────────────────────────────────────────── */
-function AdCard({ metric: m, onExpand, acao }: { metric: AdMetric; onExpand: () => void; acao: AcaoOtimizacao | null }) {
+function AdCard({ metric: m, onExpand, acao, isPrivate }: { metric: AdMetric; onExpand: () => void; acao: AcaoOtimizacao | null; isPrivate: boolean }) {
   const [imgErr, setImgErr] = useState(false)
 
   const cpmPct = m.cpm !== null ? Math.min((m.cpm / 60) * 100, 100) : 0
@@ -399,22 +400,22 @@ function AdCard({ metric: m, onExpand, acao }: { metric: AdMetric; onExpand: () 
         {/* Mini-card: Gasto + Impressões empilhados */}
         <div className="flex-1 rounded-xl p-3" style={{ backgroundColor: '#262d2f' }}>
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Gasto</p>
-          <p className="text-base font-bold text-rose-500 tabular-nums leading-tight">{fmtBRL2(m.spend)}</p>
+          <p className={`text-base font-bold text-rose-500 tabular-nums leading-tight ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : fmtBRL2(m.spend)}</p>
           <div className="h-px my-2" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Impressões</p>
-          <p className="text-base font-semibold text-foreground tabular-nums leading-tight">{fmtK(m.impressions)}</p>
+          <p className={`text-base font-semibold text-foreground tabular-nums leading-tight ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : fmtK(m.impressions)}</p>
         </div>
         {/* Mini-card direito: Sem conversões ou ROAS */}
         <div className="flex-1 rounded-xl p-3 flex items-center justify-center" style={{ backgroundColor: '#262d2f' }}>
           {hasRoas ? (
             <div className="w-full">
               <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">ROAS</p>
-              <p className={`text-base font-bold tabular-nums ${roasColor(m.roas!)}`}>{m.roas!.toFixed(2)}x</p>
+              <p className={`text-base font-bold tabular-nums ${roasColor(m.roas!)} ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : `${m.roas!.toFixed(2)}x`}</p>
               {m.receita > 0 && (
                 <>
                   <div className="h-px my-2" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
                   <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Receita</p>
-                  <p className="text-base font-semibold text-emerald-400 tabular-nums">{fmtBRL(m.receita)}</p>
+                  <p className={`text-base font-semibold text-emerald-400 tabular-nums ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : fmtBRL(m.receita)}</p>
                 </>
               )}
             </div>
@@ -426,9 +427,9 @@ function AdCard({ metric: m, onExpand, acao }: { metric: AdMetric; onExpand: () 
 
       {/* Metric bars section */}
       <div className="px-1 pb-2 space-y-2.5">
-        <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} />
-        <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} />
-        <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} />
+        <MetricBar label="CPM" value={m.cpm} formatted={m.cpm !== null ? fmtBRL2(m.cpm) : '—'} barPct={cpmPct} colorFn={cpmColor} isPrivate={isPrivate} />
+        <MetricBar label="CTR" value={m.ctr} formatted={m.ctr !== null ? `${m.ctr.toFixed(2)}%` : '—'} barPct={ctrPct} colorFn={ctrColor} isPrivate={isPrivate} />
+        <MetricBar label="Hook Rate" value={m.hook_rate} formatted={m.hook_rate !== null ? `${m.hook_rate.toFixed(2)}%` : '—'} barPct={hookPct} colorFn={hookColor} isPrivate={isPrivate} />
       </div>
 
       {/* Rolling ROAS section */}
@@ -452,8 +453,8 @@ function AdCard({ metric: m, onExpand, acao }: { metric: AdMetric; onExpand: () 
                     />
                   )}
                 </div>
-                <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)}`}>
-                  {value !== null ? `${value.toFixed(2)}x` : '—'}
+                <span className={`w-14 text-right font-semibold tabular-nums text-[11px] ${value === null ? 'text-muted-foreground' : roasColor(value)} ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                  {isPrivate ? '••••' : (value !== null ? `${value.toFixed(2)}x` : '—')}
                 </span>
               </div>
             ))}
@@ -471,6 +472,7 @@ function AdCard({ metric: m, onExpand, acao }: { metric: AdMetric; onExpand: () 
 
 /* ─── Page ───────────────────────────────────────────────────────── */
 export default function AdAnalysisPage() {
+  const { isPrivate } = useDashboard()
   const hoje = format(new Date(), 'yyyy-MM-dd')
   const [dataInicio, setDataInicio] = useState(format(subDays(new Date(), 6), 'yyyy-MM-dd'))
   const [dataFim, setDataFim] = useState(hoje)
@@ -578,7 +580,7 @@ export default function AdAnalysisPage() {
 
   return (
     <div className="pb-12 space-y-6 max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-8">
-      {expanded && <DetailModal metric={expanded} onClose={() => setExpanded(null)} />}
+      {expanded && <DetailModal metric={expanded} onClose={() => setExpanded(null)} isPrivate={isPrivate} />}
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Análise de Criativos</h1>
@@ -716,6 +718,7 @@ export default function AdAnalysisPage() {
                   metric={m}
                   onExpand={() => setExpanded(m)}
                   acao={calcAcao(m, roasMin, regras)}
+                  isPrivate={isPrivate}
                 />
               ))}
             </div>

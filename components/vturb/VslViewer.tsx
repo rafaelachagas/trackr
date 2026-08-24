@@ -15,6 +15,7 @@ import { formatInTimeZone } from 'date-fns-tz'
 import { addDays, subDays, format, startOfMonth, endOfMonth, getDay, getDaysInMonth, addMonths, parseISO, isAfter, isBefore, isSameDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { VSL } from '@/app/actions/vsl'
+import { useDashboard } from '@/context/DashboardContext'
 
 const TZ = 'America/Sao_Paulo'
 
@@ -53,6 +54,7 @@ const ABAS: { id: Aba; label: string }[] = [
 ]
 
 export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () => void }) {
+  const { isPrivate } = useDashboard()
   const [range, setRange] = useState<Range>(rangeDoPreset('Hoje'))
   const [dados, setDados] = useState<any>(null)
   const [carregando, setCarregando] = useState(true)
@@ -98,20 +100,20 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
     { v: fmtNum(vt?.audienciaPitch), l: 'Audiência do Pitch' },
     { v: fmtPct(vt?.engajamento), l: 'Engajamento' },
     { v: fmtNum(vt?.cliques), l: 'Cliques no Botão' },
-    { v: fmtNum(vt?.conversoes), l: 'Conversões' },
+    { v: isPrivate ? '••••' : fmtNum(vt?.conversoes), l: 'Conversões' },
     { v: fmtPct(vt?.taxaConversao), l: 'Taxa de Conversão' },
-    { v: fmtBRL(vt?.receitaVturb), l: 'Receita' },
+    { v: isPrivate ? '••••' : fmtBRL(vt?.receitaVturb), l: 'Receita' },
     { v: fmtPct(vt?.retencao1Min), l: 'Retenção 1 Min', menu: true },
   ]
 
   const cardsTrack = [
     { v: fmtPct(r?.playRateReal), l: 'Play Rate Real', sub: 'plays únicos ÷ LP views da Meta', destaque: true },
-    { v: r?.roas == null ? '—' : `${r.roas.toFixed(2).replace('.', ',')}x`, l: 'ROAS Real', sub: 'receita VTurb ÷ gasto Meta', verde: true },
+    { v: isPrivate ? '••••' : (r?.roas == null ? '—' : `${r.roas.toFixed(2).replace('.', ',')}x`), l: 'ROAS Real', sub: 'receita VTurb ÷ gasto Meta', verde: true },
     { v: fmtNum(mt?.lpViews), l: 'LP Views (Meta)' },
-    { v: fmtBRL(mt?.gasto), l: 'Gasto (Meta)' },
-    { v: fmtBRL(r?.custoPorPlay), l: 'Custo por Play' },
-    { v: fmtBRL(r?.custoPorLp), l: 'Custo por LP View' },
-    { v: fmtBRL(r?.cpa), l: 'CPA' },
+    { v: isPrivate ? '••••' : fmtBRL(mt?.gasto), l: 'Gasto (Meta)' },
+    { v: isPrivate ? '••••' : fmtBRL(r?.custoPorPlay), l: 'Custo por Play' },
+    { v: isPrivate ? '••••' : fmtBRL(r?.custoPorLp), l: 'Custo por LP View' },
+    { v: isPrivate ? '••••' : fmtBRL(r?.cpa), l: 'CPA' },
   ]
 
   function baixarMetricas() {
@@ -192,7 +194,7 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
                 )}
               </div>
             ) : (
-              <TabelaQuebra vslId={vsl.id} range={range} aba={aba} />
+              <TabelaQuebra vslId={vsl.id} range={range} aba={aba} isPrivate={isPrivate} />
             )}
 
             {/* ---------- Métricas ---------- */}
@@ -209,7 +211,7 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-                {cardsVturb.map((c) => <CardMetrica key={c.l} valor={c.v} label={c.l} menu={c.menu} />)}
+                {cardsVturb.map((c) => <CardMetrica key={c.l} valor={c.v} label={c.l} menu={c.menu} isPrivate={isPrivate} />)}
                 <button className="rounded-xl border border-border p-5 text-left hover:bg-white/5 transition">
                   <Plus className="w-6 h-6 text-foreground/80 mb-3" strokeWidth={1.5} />
                   <p className="text-[15px] text-foreground/80">Métrica personalizada</p>
@@ -222,7 +224,7 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
               <h3 className="text-[22px] font-medium mb-1 flex items-center gap-2"><Zap className="w-5 h-5 text-primary" /> Métricas The Track</h3>
               <p className="text-[13px] text-muted-foreground mb-5">Cruzamento VTurb × Meta — Play Rate real, custo por play e ROAS real desta VSL.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-                {cardsTrack.map((c) => <CardMetrica key={c.l} valor={c.v} label={c.l} sub={c.sub} destaque={c.destaque} verde={c.verde} />)}
+                {cardsTrack.map((c) => <CardMetrica key={c.l} valor={c.v} label={c.l} sub={c.sub} destaque={c.destaque} verde={c.verde} isPrivate={isPrivate} />)}
               </div>
             </div>
           </>
@@ -249,11 +251,12 @@ function TooltipRet({ active, payload, label, mostrarConv }: any) {
   )
 }
 
-function CardMetrica({ valor, label, sub, destaque, verde, menu }: { valor: string; label: string; sub?: string; destaque?: boolean; verde?: boolean; menu?: boolean }) {
+function CardMetrica({ valor, label, sub, destaque, verde, menu, isPrivate }: { valor: string; label: string; sub?: string; destaque?: boolean; verde?: boolean; menu?: boolean; isPrivate?: boolean }) {
+  const mascarado = valor === '••••'
   return (
     <div className={`relative rounded-xl border p-5 ${destaque ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
       {menu && <MoreVertical className="w-4 h-4 text-muted-foreground absolute right-3 top-4" />}
-      <p className={`text-[26px] leading-none font-medium tabular-nums tracking-tight ${verde ? 'text-emerald-400' : destaque ? 'text-primary' : 'text-foreground/90'}`}>{valor}</p>
+      <p className={`text-[26px] leading-none font-medium tabular-nums tracking-tight ${verde ? 'text-emerald-400' : destaque ? 'text-primary' : 'text-foreground/90'} ${mascarado && isPrivate ? 'blur-sm select-none' : ''}`}>{valor}</p>
       <p className="text-[15px] text-foreground/70 mt-3">{label}</p>
       {sub && <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>}
     </div>
@@ -261,7 +264,7 @@ function CardMetrica({ valor, label, sub, destaque, verde, menu }: { valor: stri
 }
 
 // ---------- Abas de quebra ----------
-function TabelaQuebra({ vslId, range, aba }: { vslId: string; range: Range; aba: Aba }) {
+function TabelaQuebra({ vslId, range, aba, isPrivate }: { vslId: string; range: Range; aba: Aba; isPrivate?: boolean }) {
   const [rows, setRows] = useState<any[] | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [queryKey, setQueryKey] = useState('utm_source')
@@ -302,7 +305,7 @@ function TabelaQuebra({ vslId, range, aba }: { vslId: string; range: Range; aba:
                 <td className={`${td} font-medium`}>{x.grupo}</td>
                 <td className={td}>{fmtNum(x.visualizacoes)}</td><td className={td}>{fmtNum(x.playsUnicos)}</td><td className={td}>{fmtPct(x.playRate)}</td>
                 <td className={td}>{fmtPct(x.retencaoPitch)}</td><td className={td}>{fmtPct(x.engajamento)}</td><td className={td}>{fmtNum(x.cliques)}</td>
-                <td className={td}>{fmtNum(x.conversoes)}</td><td className={td}>{fmtPct(x.taxaConversao)}</td><td className={td}>{fmtBRL(x.receita)}</td>
+                <td className={`${td} ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : fmtNum(x.conversoes)}</td><td className={td}>{fmtPct(x.taxaConversao)}</td><td className={`${td} ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••••' : fmtBRL(x.receita)}</td>
               </tr>
             ))}
           </tbody>

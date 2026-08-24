@@ -4,6 +4,8 @@ import MetricCard from '@/components/ui/MetricCard'
 import GraficoDiario from '@/components/dashboard/GraficoDiario'
 import GraficoTipoVendas from '@/components/dashboard/GraficoTipoVendas'
 import PainelVendasExtra from '@/components/dashboard/PainelVendasExtra'
+import VendasPorProdutoBloco from '@/components/dashboard/VendasPorProdutoBloco'
+import VendasPorPagamentoBloco from '@/components/dashboard/VendasPorPagamentoBloco'
 import GraficosPorHora from '@/components/dashboard/GraficosPorHora'
 import TabelaCriativosV2 from '@/components/dashboard/TabelaCriativosV2'
 import TabelaCriativos from '@/components/dashboard/TabelaCriativos'
@@ -95,7 +97,13 @@ export default function BlocoById({ id, metrics, chartData, criativos }: {
     case 'vendas-por-tipo':
       return <GraficoTipoVendas />
     case 'vendas-extra':
+      // Id antigo, mantido só pra não quebrar layouts salvos antes da divisão
+      // em dois blocos separados (vendas-por-produto / vendas-por-pagamento).
       return <PainelVendasExtra />
+    case 'vendas-por-produto':
+      return <VendasPorProdutoBloco />
+    case 'vendas-por-pagamento':
+      return <VendasPorPagamentoBloco />
     case 'graficos-por-hora':
       return <GraficosPorHora />
     case 'tabela-criativos-v2':

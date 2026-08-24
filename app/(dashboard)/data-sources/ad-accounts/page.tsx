@@ -4,11 +4,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Search, X, Check, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { salvarContasAnuncio, desconectarContaMeta, salvarImpostoMeta, conectarMetaComToken } from '@/app/actions/meta'
+import { useDashboard } from '@/context/DashboardContext'
 
 type Conta = { id: string; name: string; account_status?: number; currency?: string }
 type GastoMensal = { mes: string; total: number }
 
 export default function ContasAnunciosPage() {
+  const { isPrivate } = useDashboard()
   const [loading, setLoading] = useState(true)
   const [metaAccessToken, setMetaAccessToken] = useState('')
   const [metaUserName, setMetaUserName] = useState('')
@@ -553,14 +555,14 @@ export default function ContasAnunciosPage() {
             {/* Totais */}
             <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
               <div className="text-center min-w-0">
-                <p className="text-[15px] sm:text-2xl font-black text-foreground leading-tight tabular-nums break-words">
-                  {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0))}
+                <p className={`text-[15px] sm:text-2xl font-black text-foreground leading-tight tabular-nums break-words ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                  {isPrivate ? 'R$ ••••' : formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0))}
                 </p>
                 <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">Total {gastosMensais.length} {gastosMensais.length === 1 ? 'mês' : 'meses'}</p>
               </div>
               <div className="text-center min-w-0 border-x border-border px-1">
-                <p className="text-[15px] sm:text-2xl font-black text-primary leading-tight tabular-nums break-words">
-                  {formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0) / gastosMensais.length)}
+                <p className={`text-[15px] sm:text-2xl font-black text-primary leading-tight tabular-nums break-words ${isPrivate ? 'blur-sm select-none' : ''}`}>
+                  {isPrivate ? 'R$ ••••' : formatBRL(gastosMensais.reduce((s, g) => s + g.total, 0) / gastosMensais.length)}
                 </p>
                 <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">Média mensal</p>
               </div>

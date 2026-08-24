@@ -6,7 +6,7 @@
 
 export type BlocoId =
   | 'revenue' | 'spend' | 'roas' | 'lucro' | 'imposto' | 'reembolso' | 'cpm' | 'cpa'
-  | 'grafico-diario' | 'vendas-por-tipo' | 'vendas-extra' | 'graficos-por-hora'
+  | 'grafico-diario' | 'vendas-por-tipo' | 'vendas-extra' | 'vendas-por-produto' | 'vendas-por-pagamento' | 'graficos-por-hora'
   | 'tabela-criativos-v2' | 'tabela-criativos' | 'historico-criativos'
 
 // Compat com código antigo que ainda usa o nome anterior.
@@ -16,7 +16,7 @@ export type CategoriaBloco = 'Geral' | 'Impostos e Reembolsos' | 'Tráfego pago'
 
 // Quantas colunas (de 12) o bloco ocupa em telas grandes — no mobile tudo vira
 // largura cheia. 3 = do tamanho de um card de métrica (4 por linha), 12 = full.
-export type SpanBloco = 3 | 4 | 8 | 12
+export type SpanBloco = 3 | 4 | 6 | 8 | 12
 
 export interface BlocoDef {
   id: BlocoId
@@ -36,7 +36,8 @@ export const CATALOGO_METRICAS: BlocoDef[] = [
   { id: 'cpa', categoria: 'Tráfego pago', label: 'CPA médio', span: 3 },
   { id: 'grafico-diario', categoria: 'Gráficos', label: 'Receita vs Gasto + ROAS Diário', span: 8 },
   { id: 'vendas-por-tipo', categoria: 'Gráficos', label: 'Vendas por Tipo', span: 4 },
-  { id: 'vendas-extra', categoria: 'Vendas', label: 'Vendas por Produto e Pagamento', span: 12 },
+  { id: 'vendas-por-produto', categoria: 'Vendas', label: 'Vendas por Produto', span: 6 },
+  { id: 'vendas-por-pagamento', categoria: 'Vendas', label: 'Vendas por Pagamento', span: 6 },
   { id: 'graficos-por-hora', categoria: 'Gráficos', label: 'Gráficos por Hora', span: 12 },
   { id: 'tabela-criativos-v2', categoria: 'Criativos', label: 'Performance por Criativo', span: 12 },
   { id: 'tabela-criativos', categoria: 'Criativos', label: 'Criativos (framework)', span: 12 },
@@ -46,7 +47,7 @@ export const CATALOGO_METRICAS: BlocoDef[] = [
 // Ordem/seleção padrão — o que já temos hoje. "Redefinir configurações" volta pra isto.
 export const LAYOUT_PADRAO: BlocoId[] = [
   'revenue', 'spend', 'roas', 'lucro', 'imposto', 'reembolso', 'cpm', 'cpa',
-  'grafico-diario', 'vendas-por-tipo', 'vendas-extra', 'graficos-por-hora',
+  'grafico-diario', 'vendas-por-tipo', 'vendas-por-produto', 'vendas-por-pagamento', 'graficos-por-hora',
   'tabela-criativos-v2', 'tabela-criativos', 'historico-criativos',
 ]
 

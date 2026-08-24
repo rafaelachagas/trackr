@@ -9,6 +9,11 @@ import InteligenciaBib from '@/components/rastreador/InteligenciaBib'
 import GeradorCopy from '@/components/inteligencia/GeradorCopy'
 import Radar from '@/components/inteligencia/Radar'
 import { Gauge, Wand2, Radar as RadarIcon } from 'lucide-react'
+import { useDashboard } from '@/context/DashboardContext'
+
+// Placeholder de nome quando o modo privado (isPrivate) está ativo — esconde
+// quem está sendo rastreado/espionado durante compartilhamento de tela.
+const NOME_OCULTO = 'Perfil oculto'
 
 // Nome de exibição: renomeado pelo usuário > nome da página > ID.
 function nomeBiblioteca(b: BibliotecaRastreada): string {
@@ -19,11 +24,13 @@ function nomeBiblioteca(b: BibliotecaRastreada): string {
 const NOVO_DIAS = 3
 
 // Avatar da biblioteca: foto escolhida ou iniciais do nome.
-function Avatar({ nome, foto, size = 44 }: { nome: string; foto?: string | null; size?: number }) {
+// Quando isPrivate estiver ativo, a foto/iniciais ficam borradas pra não
+// revelar quem está sendo rastreado durante um compartilhamento de tela.
+function Avatar({ nome, foto, size = 44, isPrivate = false }: { nome: string; foto?: string | null; size?: number; isPrivate?: boolean }) {
   const style = { width: size, height: size, backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.06)' }
-  if (foto) return <img src={foto} alt="" referrerPolicy="no-referrer" className="rounded-full object-cover shrink-0" style={{ ...style, objectFit: 'cover' }} />
+  if (foto) return <img src={foto} alt="" referrerPolicy="no-referrer" className={`rounded-full object-cover shrink-0 ${isPrivate ? 'blur-md select-none' : ''}`} style={{ ...style, objectFit: 'cover' }} />
   return (
-    <div className="rounded-full flex items-center justify-center shrink-0 font-black text-primary" style={{ ...style, fontSize: size * 0.32 }}>
+    <div className={`rounded-full flex items-center justify-center shrink-0 font-black text-primary ${isPrivate ? 'blur-md select-none' : ''}`} style={{ ...style, fontSize: size * 0.32 }}>
       {(nome || '?').replace(/^Página\s+/, '').slice(0, 2).toUpperCase()}
     </div>
   )
@@ -45,6 +52,7 @@ interface Resultado { stats?: { encontrados: number; duplicacoes: number; idade_
 interface ModalT { c: CriativoRastreado; texto: string }
 
 export default function RastreadorPage() {
+  const { isPrivate } = useDashboard()
   const [aba, setAba] = useState<Aba>('buscar')
   const [link, setLink] = useState('')
   const [freq, setFreq] = useState('3 dias')
@@ -170,7 +178,7 @@ export default function RastreadorPage() {
               <div key={n.id} className="flex items-center gap-2.5 text-sm">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                 <button onClick={() => { abrirBibPorId(n.biblioteca_id); marcarVista(n.id) }} className="text-left hover:underline">
-                  <b className="text-foreground">{n.page_name}</b>
+                  <b className="text-foreground">{isPrivate ? NOME_OCULTO : n.page_name}</b>
                   <span className="text-muted-foreground"> subiu {n.qtd_novos} {n.qtd_novos === 1 ? 'novo anúncio' : 'novos anúncios'}</span>
                 </button>
                 <span className="text-[11px] text-muted-foreground/70 ml-auto shrink-0">{new Date(n.criado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
@@ -259,7 +267,8 @@ export default function RastreadorPage() {
                 {criativos.map((c) => (
                   <CardCriativo key={c.ad_archive_id} c={c}
                     inicial={c.ad_archive_id ? cacheTranscricoes[c.ad_archive_id] : undefined}
-                    onAbrir={(texto) => setModalT({ c, texto })} />
+                    onAbrir={(texto) => setModalT({ c, texto })}
+                    isPrivate={isPrivate} />
                 ))}
               </div>
             </>
@@ -280,8 +289,8 @@ export default function RastreadorPage() {
 
       {aba === 'bibliotecas' && (
         bibAberta
-          ? <DetalheBiblioteca bib={bibAberta} onVoltar={() => setBibAberta(null)} onPuxarAgora={() => puxar(bibAberta.link || bibAberta.page_id)} onAbrirTranscricao={(c, texto) => setModalT({ c, texto })} onEditar={(bib, imagens) => setEditando({ bib, imagens })} />
-          : <ListaBibliotecas bibliotecas={bibliotecas} onAbrir={setBibAberta} onPuxar={(b) => puxar(b.link || b.page_id)} onRemover={removerBib} onEditar={(bib) => setEditando({ bib, imagens: [] })} />
+          ? <DetalheBiblioteca bib={bibAberta} onVoltar={() => setBibAberta(null)} onPuxarAgora={() => puxar(bibAberta.link || bibAberta.page_id)} onAbrirTranscricao={(c, texto) => setModalT({ c, texto })} onEditar={(bib, imagens) => setEditando({ bib, imagens })} isPrivate={isPrivate} />
+          : <ListaBibliotecas bibliotecas={bibliotecas} onAbrir={setBibAberta} onPuxar={(b) => puxar(b.link || b.page_id)} onRemover={removerBib} onEditar={(bib) => setEditando({ bib, imagens: [] })} isPrivate={isPrivate} />
       )}
 
       {modalT && (
@@ -304,17 +313,19 @@ export default function RastreadorPage() {
             if (bibAberta?.id === atualizada.id) setBibAberta(atualizada)
             setEditando(null)
           }}
+          isPrivate={isPrivate}
         />
       )}
     </div>
   )
 }
 
-function ModalEditarBib({ bib, imagens, onFechar, onSalvo }: {
+function ModalEditarBib({ bib, imagens, onFechar, onSalvo, isPrivate = false }: {
   bib: BibliotecaRastreada
   imagens: string[]
   onFechar: () => void
   onSalvo: (b: BibliotecaRastreada) => void
+  isPrivate?: boolean
 }) {
   const [nome, setNome] = useState(bib.nome_custom ?? bib.page_name ?? '')
   const [foto, setFoto] = useState(bib.foto_url ?? '')
@@ -351,9 +362,9 @@ function ModalEditarBib({ bib, imagens, onFechar, onSalvo }: {
         <div className="p-5 overflow-y-auto space-y-4">
           {/* Preview */}
           <div className="flex items-center gap-3">
-            <Avatar nome={nomePreview} foto={foto} size={52} />
+            <Avatar nome={nomePreview} foto={foto} size={52} isPrivate={isPrivate} />
             <div className="min-w-0">
-              <p className="text-sm font-bold truncate">{nomePreview}</p>
+              <p className="text-sm font-bold truncate">{isPrivate ? NOME_OCULTO : nomePreview}</p>
               <p className="text-[10px] text-muted-foreground/70 font-mono">ID {bib.page_id}</p>
             </div>
           </div>
@@ -444,12 +455,13 @@ function ResumoStats({ stats, tipo, setTipo, ordem, setOrdem }: {
   )
 }
 
-function ListaBibliotecas({ bibliotecas, onAbrir, onPuxar, onRemover, onEditar }: {
+function ListaBibliotecas({ bibliotecas, onAbrir, onPuxar, onRemover, onEditar, isPrivate = false }: {
   bibliotecas: BibliotecaRastreada[]
   onAbrir: (b: BibliotecaRastreada) => void
   onPuxar: (b: BibliotecaRastreada) => void
   onRemover: (id: string) => void
   onEditar: (b: BibliotecaRastreada) => void
+  isPrivate?: boolean
 }) {
   if (bibliotecas.length === 0) {
     return (
@@ -467,9 +479,9 @@ function ListaBibliotecas({ bibliotecas, onAbrir, onPuxar, onRemover, onEditar }
       {bibliotecas.map((b) => (
         <div key={b.id} className={`rounded-2xl p-4 ${cardClass} flex flex-col gap-3`}>
           <button onClick={() => onAbrir(b)} className="text-left flex items-center gap-3 group">
-            <Avatar nome={nomeBiblioteca(b)} foto={b.foto_url} size={44} />
+            <Avatar nome={nomeBiblioteca(b)} foto={b.foto_url} size={44} isPrivate={isPrivate} />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition">{nomeBiblioteca(b)}</p>
+              <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition">{isPrivate ? NOME_OCULTO : nomeBiblioteca(b)}</p>
               <p className="text-[10px] text-muted-foreground/70 font-mono truncate">ID {b.page_id}</p>
               <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
                 {b.freq_dias
@@ -491,12 +503,13 @@ function ListaBibliotecas({ bibliotecas, onAbrir, onPuxar, onRemover, onEditar }
   )
 }
 
-function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, onEditar }: {
+function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, onEditar, isPrivate = false }: {
   bib: BibliotecaRastreada
   onVoltar: () => void
   onPuxarAgora: () => void
   onAbrirTranscricao: (c: CriativoRastreado, texto: string) => void
   onEditar: (b: BibliotecaRastreada, imagens: string[]) => void
+  isPrivate?: boolean
 }) {
   const [snaps, setSnaps] = useState<SnapshotRastreador[] | null>(null)
   const [cache, setCache] = useState<Record<string, string>>({})
@@ -544,10 +557,10 @@ function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, on
     <div className="space-y-5">
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={onVoltar} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><ArrowLeft className="w-4 h-4" /></button>
-        <Avatar nome={nomeBiblioteca(bib)} foto={bib.foto_url} size={44} />
+        <Avatar nome={nomeBiblioteca(bib)} foto={bib.foto_url} size={44} isPrivate={isPrivate} />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold truncate">{nomeBiblioteca(bib)}</h2>
+            <h2 className="text-lg font-bold truncate">{isPrivate ? NOME_OCULTO : nomeBiblioteca(bib)}</h2>
             <button onClick={() => onEditar(bib, imagens)} className="p-1 rounded text-muted-foreground hover:text-primary transition" title="Renomear / foto"><Pencil className="w-3.5 h-3.5" /></button>
           </div>
           <p className="text-[10px] text-muted-foreground/70 font-mono">ID {bib.page_id}{bib.freq_dias ? ` · a cada ${bib.freq_dias}d` : ' · sem agendamento'}</p>
@@ -567,7 +580,7 @@ function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, on
         ))}
       </div>
 
-      {subaba === 'inteligencia' && <InteligenciaBib bibId={bib.id} landingUrl={bib.landing_url} />}
+      {subaba === 'inteligencia' && <InteligenciaBib bibId={bib.id} landingUrl={bib.landing_url} isPrivate={isPrivate} />}
 
       {subaba === 'movimento' && (<>
       {snaps === null && <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> Carregando movimento...</div>}
@@ -617,7 +630,8 @@ function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, on
                   <CardCriativo key={c.ad_archive_id || i} c={c}
                     inicial={c.ad_archive_id ? cache[c.ad_archive_id] : undefined}
                     novo={c.ad_archive_id ? novosIds.has(c.ad_archive_id) : false}
-                    onAbrir={(texto) => onAbrirTranscricao(c, texto)} />
+                    onAbrir={(texto) => onAbrirTranscricao(c, texto)}
+                    isPrivate={isPrivate} />
                 ))}
               </div>
             </>
@@ -629,7 +643,7 @@ function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, on
   )
 }
 
-function CardCriativo({ c, inicial, onAbrir, novo }: { c: CriativoRastreado; inicial?: string; onAbrir: (texto: string) => void; novo?: boolean }) {
+function CardCriativo({ c, inicial, onAbrir, novo, isPrivate = false }: { c: CriativoRastreado; inicial?: string; onAbrir: (texto: string) => void; novo?: boolean; isPrivate?: boolean }) {
   const [transcrevendo, setTranscrevendo] = useState(false)
   const [texto, setTexto] = useState<string | null>(inicial ?? null)
   const [erroT, setErroT] = useState<string | null>(null)
@@ -701,7 +715,7 @@ function CardCriativo({ c, inicial, onAbrir, novo }: { c: CriativoRastreado; ini
       </button>
 
       <div className="p-3 flex flex-col gap-1.5 flex-1">
-        {c.page_name && <p className="text-xs font-semibold text-muted-foreground truncate">{c.page_name}</p>}
+        {c.page_name && <p className="text-xs font-semibold text-muted-foreground truncate">{isPrivate ? NOME_OCULTO : c.page_name}</p>}
         {c.headline && <p className="text-sm font-bold text-foreground leading-tight line-clamp-2">{c.headline}</p>}
         {c.body && <p className="text-[11px] text-muted-foreground line-clamp-3">{c.body}</p>}
 
