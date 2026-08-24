@@ -2,6 +2,7 @@ import Sidebar from "@/components/ui/Sidebar"
 import Topbar from "@/components/ui/Topbar"
 import MobileNav from "@/components/ui/MobileNav"
 import { DashboardProvider } from "@/context/DashboardContext"
+import { EditorDashboardProvider } from "@/context/EditorDashboardContext"
 
 export default function DashboardLayout({
   children,
@@ -10,6 +11,7 @@ export default function DashboardLayout({
 }) {
   return (
     <DashboardProvider>
+      <EditorDashboardProvider>
       <div className="flex min-h-screen text-foreground transition-colors duration-400" style={{ backgroundColor: 'var(--background)' }}>
         <Sidebar />
         <main className="flex-1 min-w-0 min-h-screen flex flex-col transition-colors duration-300 overflow-hidden">
@@ -22,6 +24,7 @@ export default function DashboardLayout({
           </div>
         </main>
       </div>
+      </EditorDashboardProvider>
     </DashboardProvider>
   )
 }

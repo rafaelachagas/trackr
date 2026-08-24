@@ -1,12 +1,25 @@
 'use client'
 
 import MetricCard from '@/components/ui/MetricCard'
-import type { MetricaId } from '@/lib/metricas-overview'
+import GraficoDiario from '@/components/dashboard/GraficoDiario'
+import GraficoTipoVendas from '@/components/dashboard/GraficoTipoVendas'
+import PainelVendasExtra from '@/components/dashboard/PainelVendasExtra'
+import GraficosPorHora from '@/components/dashboard/GraficosPorHora'
+import TabelaCriativosV2 from '@/components/dashboard/TabelaCriativosV2'
+import TabelaCriativos from '@/components/dashboard/TabelaCriativos'
+import HistoricoCriativos from '@/components/dashboard/HistoricoCriativos'
+import type { BlocoId } from '@/lib/metricas-overview'
+import type { RoasPorCriativo } from '@/types'
 
-// Uma métrica (por id do catálogo) → o MetricCard já pronto com os dados reais.
-// Usado tanto no Overview de verdade quanto na prévia ao vivo do editor de
-// layout — assim os dois NUNCA divergem (é o mesmo componente, os mesmos dados).
-export default function MetricaCardById({ id, metrics }: { id: MetricaId; metrics: any }) {
+// Qualquer bloco do Overview (card de métrica OU seção grande) a partir do id
+// do catálogo — usado tanto na página de verdade quanto na prévia ao vivo do
+// editor de layout. Nunca duas versões divergentes: é o MESMO componente.
+export default function BlocoById({ id, metrics, chartData, criativos }: {
+  id: BlocoId
+  metrics: any
+  chartData?: any[]
+  criativos?: RoasPorCriativo[]
+}) {
   switch (id) {
     case 'revenue':
       return (
@@ -77,5 +90,19 @@ export default function MetricaCardById({ id, metrics }: { id: MetricaId; metric
           alinharTooltipDireita
         />
       )
+    case 'grafico-diario':
+      return <GraficoDiario dados={chartData ?? []} />
+    case 'vendas-por-tipo':
+      return <GraficoTipoVendas />
+    case 'vendas-extra':
+      return <PainelVendasExtra />
+    case 'graficos-por-hora':
+      return <GraficosPorHora />
+    case 'tabela-criativos-v2':
+      return <TabelaCriativosV2 />
+    case 'tabela-criativos':
+      return <TabelaCriativos dados={criativos ?? []} />
+    case 'historico-criativos':
+      return <HistoricoCriativos />
   }
 }

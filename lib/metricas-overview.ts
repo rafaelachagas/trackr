@@ -1,32 +1,54 @@
-// Catálogo dos cards de métrica do topo do Overview — usado pelo editor de
-// layout (lápis na Topbar, estilo Utmify: sidebar de métricas disponíveis +
-// canvas com o que já foi adicionado, reordenável, por dispositivo).
-// Adicionar um card novo ao dashboard = só adicionar uma entrada aqui.
+// Catálogo de TUDO que pode aparecer no Overview — usado pelo editor de layout
+// (lápis na Topbar, estilo Utmify): os 8 cards de métrica do topo E as seções
+// grandes da página (gráficos, painéis, tabelas). Adicionar um bloco novo ao
+// dashboard = só adicionar uma entrada aqui + o case correspondente em
+// components/dashboard/BlocoById.tsx.
 
-export type MetricaId =
+export type BlocoId =
   | 'revenue' | 'spend' | 'roas' | 'lucro' | 'imposto' | 'reembolso' | 'cpm' | 'cpa'
+  | 'grafico-diario' | 'vendas-por-tipo' | 'vendas-extra' | 'graficos-por-hora'
+  | 'tabela-criativos-v2' | 'tabela-criativos' | 'historico-criativos'
 
-export type CategoriaMetrica = 'Geral' | 'Impostos e Reembolsos' | 'Tráfego pago'
+// Compat com código antigo que ainda usa o nome anterior.
+export type MetricaId = BlocoId
 
-export interface MetricaDef {
-  id: MetricaId
-  categoria: CategoriaMetrica
+export type CategoriaBloco = 'Geral' | 'Impostos e Reembolsos' | 'Tráfego pago' | 'Gráficos' | 'Vendas' | 'Criativos'
+
+// Quantas colunas (de 12) o bloco ocupa em telas grandes — no mobile tudo vira
+// largura cheia. 3 = do tamanho de um card de métrica (4 por linha), 12 = full.
+export type SpanBloco = 3 | 4 | 8 | 12
+
+export interface BlocoDef {
+  id: BlocoId
+  categoria: CategoriaBloco
   label: string
+  span: SpanBloco
 }
 
-export const CATALOGO_METRICAS: MetricaDef[] = [
-  { id: 'revenue', categoria: 'Geral', label: 'Faturamento Líquido' },
-  { id: 'spend', categoria: 'Geral', label: 'Gastos com anúncios' },
-  { id: 'roas', categoria: 'Geral', label: 'ROAS' },
-  { id: 'lucro', categoria: 'Geral', label: 'Lucro' },
-  { id: 'imposto', categoria: 'Impostos e Reembolsos', label: 'Imposto total' },
-  { id: 'reembolso', categoria: 'Impostos e Reembolsos', label: 'Reembolsos' },
-  { id: 'cpm', categoria: 'Tráfego pago', label: 'CPM médio' },
-  { id: 'cpa', categoria: 'Tráfego pago', label: 'CPA médio' },
+export const CATALOGO_METRICAS: BlocoDef[] = [
+  { id: 'revenue', categoria: 'Geral', label: 'Faturamento Líquido', span: 3 },
+  { id: 'spend', categoria: 'Geral', label: 'Gastos com anúncios', span: 3 },
+  { id: 'roas', categoria: 'Geral', label: 'ROAS', span: 3 },
+  { id: 'lucro', categoria: 'Geral', label: 'Lucro', span: 3 },
+  { id: 'imposto', categoria: 'Impostos e Reembolsos', label: 'Imposto total', span: 3 },
+  { id: 'reembolso', categoria: 'Impostos e Reembolsos', label: 'Reembolsos', span: 3 },
+  { id: 'cpm', categoria: 'Tráfego pago', label: 'CPM médio', span: 3 },
+  { id: 'cpa', categoria: 'Tráfego pago', label: 'CPA médio', span: 3 },
+  { id: 'grafico-diario', categoria: 'Gráficos', label: 'Receita vs Gasto + ROAS Diário', span: 8 },
+  { id: 'vendas-por-tipo', categoria: 'Gráficos', label: 'Vendas por Tipo', span: 4 },
+  { id: 'vendas-extra', categoria: 'Vendas', label: 'Vendas por Produto e Pagamento', span: 12 },
+  { id: 'graficos-por-hora', categoria: 'Gráficos', label: 'Gráficos por Hora', span: 12 },
+  { id: 'tabela-criativos-v2', categoria: 'Criativos', label: 'Performance por Criativo', span: 12 },
+  { id: 'tabela-criativos', categoria: 'Criativos', label: 'Criativos (framework)', span: 12 },
+  { id: 'historico-criativos', categoria: 'Criativos', label: 'Histórico de Criativos', span: 12 },
 ]
 
 // Ordem/seleção padrão — o que já temos hoje. "Redefinir configurações" volta pra isto.
-export const LAYOUT_PADRAO: MetricaId[] = ['revenue', 'spend', 'roas', 'lucro', 'imposto', 'reembolso', 'cpm', 'cpa']
+export const LAYOUT_PADRAO: BlocoId[] = [
+  'revenue', 'spend', 'roas', 'lucro', 'imposto', 'reembolso', 'cpm', 'cpa',
+  'grafico-diario', 'vendas-por-tipo', 'vendas-extra', 'graficos-por-hora',
+  'tabela-criativos-v2', 'tabela-criativos', 'historico-criativos',
+]
 
 export function chaveLayout(device: 'desktop' | 'mobile') {
   return `overview_layout_${device}`

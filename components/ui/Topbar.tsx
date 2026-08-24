@@ -1,12 +1,13 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { Eye, Palette, Edit2, EyeOff, LogOut, ChevronDown, Building2, Check, Users, CreditCard, ShieldCheck } from 'lucide-react'
+import { Eye, Palette, Edit2, EyeOff, LogOut, ChevronDown, Building2, Check, Users, CreditCard, ShieldCheck, Monitor, Smartphone, RotateCcw, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { pareceSuperAdmin } from '@/lib/admin-client'
 import FiltrosDashboard from '@/components/dashboard/FiltrosDashboard'
 import SinoNotificacoes from '@/components/ui/SinoNotificacoes'
 import { useDashboard } from '@/context/DashboardContext'
+import { useEditorDashboard } from '@/context/EditorDashboardContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
@@ -17,6 +18,11 @@ const ModalAssinatura = dynamic(() => import('@/components/org/ModalAssinatura')
 export default function Topbar() {
   const pathname = usePathname()
   const isOverview = pathname === '/overview' || pathname === '/' || pathname === '/sales'
+  const {
+    ativo: editando, abrir, device, setDevice, redefinir, salvar, salvando, fechar: fecharEdicao,
+  } = useEditorDashboard()
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false)
+  const deviceRef = useRef<HTMLDivElement>(null)
   const { theme, setTheme, isPrivate, setIsPrivate } = useDashboard()
   const { user, orgs, activeOrg, setActiveOrg, signOut } = useAuth()
 
@@ -34,6 +40,7 @@ export default function Topbar() {
       if (orgRef.current && !orgRef.current.contains(e.target as Node)) setOrgMenuOpen(false)
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserMenuOpen(false)
       if (aparenciaRef.current && !aparenciaRef.current.contains(e.target as Node)) setAparenciaOpen(false)
+      if (deviceRef.current && !deviceRef.current.contains(e.target as Node)) setDeviceMenuOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -49,7 +56,43 @@ export default function Topbar() {
   return (
     <>
       {/* Topbar fina — não sticky, flui com o conteúdo. Escondida no mobile (MobileNav cobre). */}
-      <header className="hidden md:block" style={{ border: '1px solid var(--border)', backgroundColor: 'var(--card)', padding: '20px', margin: '30px 30px 15px 30px', borderRadius: '10px' }}>
+      <header className="hidden md:block" style={{ border: '1px solid var(--border)', backgroundColor: editando ? 'var(--secondary)' : 'var(--card)', padding: '20px', margin: '30px 30px 15px 30px', borderRadius: '10px' }}>
+        {editando ? (
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-sm text-muted-foreground">Você está editando esse dashboard para:</span>
+            <div className="relative" ref={deviceRef}>
+              <button
+                onClick={() => setDeviceMenuOpen((v) => !v)}
+                className="flex items-center gap-1.5 text-sm font-semibold text-primary px-2 py-1 rounded-md hover:bg-white/5 transition"
+              >
+                {device === 'desktop' ? <Monitor className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
+                {device === 'desktop' ? 'Desktop' : 'Mobile'}
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              {deviceMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 z-10 rounded-xl border border-border bg-popover shadow-xl p-1 w-40">
+                  {(['desktop', 'mobile'] as const).map((d) => (
+                    <button key={d} onClick={() => { setDevice(d); setDeviceMenuOpen(false) }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition text-left ${device === d ? 'text-primary bg-primary/10' : 'text-foreground/80 hover:bg-white/5'}`}>
+                      {d === 'desktop' ? <Monitor className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
+                      {d === 'desktop' ? 'Desktop' : 'Mobile'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={redefinir} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-white/5 transition">
+                <RotateCcw className="w-3.5 h-3.5" /> Redefinir configurações
+              </button>
+              <button onClick={fecharEdicao} className="px-4 py-2 rounded-lg text-xs font-semibold border border-border text-foreground/80 hover:bg-white/5 transition">Cancelar</button>
+              <button onClick={salvar} disabled={salvando} className="px-4 py-2 rounded-lg text-xs font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5">
+                {salvando && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Salvar
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="flex items-center justify-between">
 
           {/* Esquerda: título + ações */}
@@ -122,7 +165,7 @@ export default function Topbar() {
               </div>
               {isOverview && (
                 <button
-                  onClick={() => window.dispatchEvent(new CustomEvent('abrir-editor-metricas'))}
+                  onClick={abrir}
                   title="Editar cards do dashboard"
                   className="p-1.5 rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-white/5"
                 >
@@ -253,6 +296,7 @@ export default function Topbar() {
 
           </div>
         </div>
+        )}
       </header>
 
       {/* Card separado: filtros */}

@@ -32,6 +32,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
+import { useEditorDashboard } from '@/context/EditorDashboardContext'
+import { CATALOGO_METRICAS, type BlocoId, type CategoriaBloco } from '@/lib/metricas-overview'
 
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
@@ -60,6 +62,7 @@ const ferramentas = [
 export default function Sidebar() {
   const pathname = usePathname()
   const { sincronizarTudo, isRefreshing: sincronizando } = useDashboard()
+  const { ativo } = useEditorDashboard()
   const [collapsed, setCollapsed] = useState(false)
   const [dataSourcesOpen, setDataSourcesOpen] = useState(pathname.startsWith('/data-sources'))
   const dataSourcesActive = pathname.startsWith('/data-sources')
@@ -102,7 +105,7 @@ export default function Sidebar() {
   return (
     <>
       <aside
-        className={`${collapsed ? 'w-[60px]' : 'w-64'} text-foreground hidden md:flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar transition-all duration-300 z-40`}
+        className={`${ativo ? 'w-72' : collapsed ? 'w-[60px]' : 'w-64'} text-foreground hidden md:flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar transition-all duration-300 z-40`}
         style={{ backgroundColor: 'var(--card)', borderRight: '1px solid var(--border)', boxShadow: '4px 0 24px rgba(0,0,0,.4)' }}
       >
         {/* Logo */}
@@ -116,6 +119,7 @@ export default function Sidebar() {
           </div>
         </div>
 
+        {ativo ? <CatalogoEdicaoDashboard /> : <>
         {/* Nav */}
         <nav className="flex-1 px-2 pt-4 pb-8 space-y-1">
 
@@ -267,21 +271,65 @@ export default function Sidebar() {
             </div>
           </div>
         )}
+        </>}
       </aside>
 
-      {/* Toggle button — centralizado na borda direita da sidebar */}
-      <button
-        onClick={() => setCollapsed(v => !v)}
-        className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full hidden md:flex items-center justify-center transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
-        style={{ backgroundColor: 'var(--secondary)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#00aeef'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,174,239,0.4)' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)' }}
-      >
-        {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
-      </button>
+      {/* Toggle button — centralizado na borda direita da sidebar (some durante a edição, a largura fica fixa) */}
+      {!ativo && (
+        <button
+          onClick={() => setCollapsed(v => !v)}
+          className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full hidden md:flex items-center justify-center transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
+          style={{ backgroundColor: 'var(--secondary)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#00aeef'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,174,239,0.4)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)' }}
+        >
+          {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+        </button>
+      )}
 
       {/* Spacer */}
-      <div className={`${collapsed ? 'w-[60px]' : 'w-64'} hidden md:block flex-shrink-0 transition-all duration-300`} aria-hidden />
+      <div className={`${ativo ? 'w-72' : collapsed ? 'w-[60px]' : 'w-64'} hidden md:block flex-shrink-0 transition-all duration-300`} aria-hidden />
     </>
+  )
+}
+
+// Assume o lugar do menu de navegação enquanto o dashboard está em modo de
+// edição — igual à Utmify: catálogo de blocos agrupado por categoria, apagado
+// (cinza/tracejado) quando já está no dashboard, aceso quando ainda não foi
+// adicionado. Clicar alterna adicionar/remover do rascunho.
+function CatalogoEdicaoDashboard() {
+  const { rascunho, adicionar, remover } = useEditorDashboard()
+  const porCategoria = new Map<CategoriaBloco, BlocoId[]>()
+  for (const m of CATALOGO_METRICAS) porCategoria.set(m.categoria, [...(porCategoria.get(m.categoria) ?? []), m.id])
+
+  return (
+    <div className="flex-1 px-3 pt-4 pb-8 overflow-y-auto">
+      <h2 className="text-sm font-bold text-foreground mb-4 px-1">Métricas Disponíveis</h2>
+      {[...porCategoria.entries()].map(([categoria, ids]) => (
+        <div key={categoria} className="mb-5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1">{categoria}</p>
+          <div className="space-y-1.5">
+            {ids.map((id) => {
+              const jaAdicionada = rascunho.includes(id)
+              const label = CATALOGO_METRICAS.find((m) => m.id === id)!.label
+              return (
+                <button
+                  key={id}
+                  onClick={() => (jaAdicionada ? remover(id) : adicionar(id))}
+                  title={jaAdicionada ? 'Já está no dashboard — clique pra remover' : 'Clique pra adicionar ao dashboard'}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold border border-dashed transition ${
+                    jaAdicionada
+                      ? 'border-border text-muted-foreground/50 hover:border-rose-400/40 hover:text-rose-300/70'
+                      : 'border-primary/30 text-foreground hover:bg-primary/5 hover:border-primary/50'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
