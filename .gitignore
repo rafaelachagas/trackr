@@ -42,3 +42,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Backups locais do banco (dados sensiveis -- NUNCA versionar)
+/backups/
