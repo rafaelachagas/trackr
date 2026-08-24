@@ -61,7 +61,7 @@ export default function MobileNav() {
       {/* Barra do topo */}
       <div
         className="flex items-center justify-between px-4 h-14 sticky top-0 z-40"
-        style={{ backgroundColor: '#13181a', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+        style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
       >
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-xl bg-card border border-white/5 flex items-center justify-center relative overflow-hidden">
@@ -96,11 +96,11 @@ export default function MobileNav() {
 
       {/* Overlay tela cheia */}
       {open && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: '#0e1315' }}>
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: 'var(--background)' }}>
           {/* Header do menu */}
           <div
             className="flex items-center justify-between px-4 h-14 flex-shrink-0"
-            style={{ backgroundColor: '#13181a', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+            style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
           >
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-xl bg-card border border-white/5 flex items-center justify-center relative overflow-hidden">
@@ -127,7 +127,7 @@ export default function MobileNav() {
                   className={itemClass(active)}
                   style={active ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
                 >
-                  <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : '#71777a' }} />
+                  <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
                   {label}
                 </Link>
               )
@@ -136,7 +136,7 @@ export default function MobileNav() {
             {/* Fontes de dados */}
             <div className="pt-2 mt-2 border-t border-white/5">
               <div className="flex items-center gap-2 px-4 pt-2 pb-1">
-                <Database className="w-4 h-4" style={{ color: '#71777a' }} />
+                <Database className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />
                 <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Fontes de dados</span>
               </div>
               {dataSources.map(({ href, label, icon: Icon }) => {
@@ -149,7 +149,7 @@ export default function MobileNav() {
                     className={`${itemClass(active)} ml-2`}
                     style={active ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
                   >
-                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : '#71777a' }} />
+                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
                     {label}
                   </Link>
                 )
@@ -159,7 +159,7 @@ export default function MobileNav() {
             {/* Ferramentas */}
             <div className="pt-2 mt-2 border-t border-white/5">
               <div className="flex items-center gap-2 px-4 pt-2 pb-1">
-                <Wrench className="w-4 h-4" style={{ color: '#71777a' }} />
+                <Wrench className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />
                 <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Ferramentas</span>
               </div>
               {ferramentas.map(({ href, label, icon: Icon }) => {
@@ -172,7 +172,7 @@ export default function MobileNav() {
                     className={`${itemClass(active)} ml-2`}
                     style={active ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
                   >
-                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : '#71777a' }} />
+                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
                     <span className="flex-1">{label}</span>
                     <span className="text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-primary/15 text-primary">Beta</span>
                   </Link>
@@ -188,14 +188,14 @@ export default function MobileNav() {
                 className={itemClass(pathname === '/configuracoes')}
                 style={pathname === '/configuracoes' ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
               >
-                <Settings className="w-5 h-5 flex-shrink-0" style={{ color: pathname === '/configuracoes' ? '#00aeef' : '#71777a' }} />
+                <Settings className="w-5 h-5 flex-shrink-0" style={{ color: pathname === '/configuracoes' ? '#00aeef' : 'var(--muted-foreground)' }} />
                 Configurações
               </Link>
             </div>
           </nav>
 
           {/* Rodapé: sincronizar + usuário */}
-          <div className="flex-shrink-0 p-3 border-t border-white/5 space-y-3" style={{ backgroundColor: '#13181a' }}>
+          <div className="flex-shrink-0 p-3 border-t border-white/5 space-y-3" style={{ backgroundColor: 'var(--card)' }}>
             <button
               onClick={() => { sincronizarTudo() }}
               disabled={isRefreshing}

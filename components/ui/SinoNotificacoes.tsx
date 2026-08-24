@@ -84,9 +84,9 @@ export default function SinoNotificacoes() {
       {aberto && (
         <div
           className="absolute right-0 top-full mt-1.5 z-50 rounded-xl shadow-2xl overflow-hidden w-80 max-h-96 flex flex-col"
-          style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}
+          style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}
         >
-          <div className="flex items-center justify-between px-3.5 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          <div className="flex items-center justify-between px-3.5 py-2.5 border-b" style={{ borderColor: 'var(--border)' }}>
             <span className="text-[11px] font-bold uppercase tracking-widest text-foreground">Notificações</span>
             {naoVistas.length > 0 && (
               <button onClick={marcarTodasVistas} className="text-[11px] font-semibold text-muted-foreground hover:text-foreground transition">

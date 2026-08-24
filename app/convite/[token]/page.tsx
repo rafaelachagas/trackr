@@ -13,7 +13,7 @@ export default async function ConvitePage({ params }: Props) {
   // Busca o convite (service_role, sem RLS)
   const { data: invite } = await supabaseAdmin
     .from('organization_invites')
-    .select('org_id, role, expires_at, accepted_at, organizations(name)')
+    .select('org_id, role, expires_at, used_at, organizations(name)')
     .eq('token', token)
     .single()
 
@@ -21,7 +21,7 @@ export default async function ConvitePage({ params }: Props) {
     return <ConviteClient status="invalid" />
   }
 
-  if (invite.accepted_at) {
+  if (invite.used_at) {
     return <ConviteClient status="used" />
   }
 

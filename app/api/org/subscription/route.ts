@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from('subscriptions')
-    .select('plan_name, status, subscriber_email, purchase_date, access_until, transaction_id, subscriber_code, max_members, max_criativos')
+    .select('plan_name, status, hotmart_email, purchase_date, access_until, transaction_id, subscriber_code, recurrence_count, max_workspaces')
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
     .limit(1)

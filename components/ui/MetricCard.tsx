@@ -20,8 +20,17 @@ export default function MetricCard({ titulo, valor, subtitulo, tendencia, toolti
       <div className="flex items-center gap-1.5 mb-1">
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{titulo}</p>
         {tooltip && (
-          <div className="relative" onMouseEnter={() => setShowTooltip(true)} onMouseLeave={() => setShowTooltip(false)}>
-            <Info className="w-3 h-3 text-muted-foreground/60 cursor-help hover:text-muted-foreground transition-colors" />
+          <div
+            className="relative"
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+          >
+            {/* onClick além do hover — no mobile não tem "passar o mouse", então
+                toca no (i) pra abrir/fechar. */}
+            <Info
+              onClick={(e) => { e.stopPropagation(); setShowTooltip((v) => !v) }}
+              className="w-3 h-3 text-muted-foreground/60 cursor-help hover:text-muted-foreground transition-colors"
+            />
             {showTooltip && (
               <div className="absolute left-0 top-5 z-50 w-64 rounded-xl bg-popover border border-border shadow-xl p-3 text-xs text-foreground leading-relaxed">
                 {tooltip}

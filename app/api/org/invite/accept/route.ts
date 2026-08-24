@@ -15,12 +15,12 @@ export async function POST(req: NextRequest) {
   // Busca o convite
   const { data: invite } = await supabaseAdmin
     .from('organization_invites')
-    .select('org_id, role, expires_at, accepted_at')
+    .select('org_id, role, expires_at, used_at')
     .eq('token', token)
     .single()
 
   if (!invite) return NextResponse.json({ error: 'Convite inválido ou não encontrado' }, { status: 404 })
-  if (invite.accepted_at) return NextResponse.json({ error: 'Este convite já foi utilizado' }, { status: 400 })
+  if (invite.used_at) return NextResponse.json({ error: 'Este convite já foi utilizado' }, { status: 400 })
   if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ error: 'Este convite expirou' }, { status: 400 })
 
   // Verifica se já é membro
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   // Marca convite como aceito
   await supabaseAdmin
     .from('organization_invites')
-    .update({ accepted_at: new Date().toISOString() })
+    .update({ used_at: new Date().toISOString(), used_by: user.id })
     .eq('token', token)
 
   return NextResponse.json({ ok: true, org_id: invite.org_id })

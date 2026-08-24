@@ -7,14 +7,13 @@ import type { OrgMembership } from '@/hooks/useAuth'
 interface Subscription {
   plan_name: string | null
   status: string | null
-  subscriber_email: string | null
+  hotmart_email: string | null
   purchase_date: string | null
   access_until: string | null
   transaction_id: string | null
   subscriber_code: string | null
-  recurrence_number: number | null
-  max_members: number | null
-  max_criativos: number | null
+  recurrence_count: number | null
+  max_workspaces: number | null
 }
 
 interface Props {
@@ -62,11 +61,11 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div
         className="relative z-10 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-        style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}
+        style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-3 px-6 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0,174,239,0.1)' }}>
             <CreditCard className="w-4 h-4 text-primary" />
           </div>
@@ -90,8 +89,8 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
             <div className="space-y-3">
 
               {/* Card: Informações da Assinatura */}
-              <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+              <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}>
+                <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Informações da Assinatura</p>
                 </div>
                 <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
@@ -103,14 +102,14 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
                         {status.label}
                       </span>
                     ) : '—' },
-                    { label: 'Email', value: sub.subscriber_email },
+                    { label: 'Email', value: sub.hotmart_email },
                     { label: 'Data de Compra', value: fmtShort(sub.purchase_date) },
-                    { label: 'Recorrência', value: sub.recurrence_number != null ? `${sub.recurrence_number}ª` : '—' },
+                    { label: 'Recorrência', value: sub.recurrence_count != null ? `${sub.recurrence_count}ª` : '—' },
                     { label: 'Transaction ID', value: sub.transaction_id },
                     { label: 'Subscriber Code', value: sub.subscriber_code },
                     { label: 'Acesso até', value: sub.access_until ? (
                       <span className="text-xs font-bold" style={{ color: '#f59e0b' }}>{fmt(sub.access_until)}</span>
-                    ) : '—' },
+                    ) : <span className="text-xs font-bold text-emerald-400">Sem vencimento</span> },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex items-center justify-between px-4 py-2.5 gap-4">
                       <p className="text-[11px] text-muted-foreground flex-shrink-0">{label}:</p>
@@ -121,33 +120,29 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
               </div>
 
               {/* Card: Limites */}
-              {sub.max_members != null && (
-                <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+              {sub.max_workspaces != null && (
+                <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}>
+                  <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Limites da Assinatura</p>
                   </div>
                   <div className="px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Organizações Permitidas:</span>
-                      <span className="font-bold text-foreground">1 / 1</span>
+                      <span className="text-muted-foreground">Workspaces permitidos:</span>
+                      <span className="font-bold text-foreground">{sub.max_workspaces}</span>
                     </div>
-                    <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                      <div className="h-full rounded-full" style={{ width: '100%', backgroundColor: '#00aeef' }} />
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">Este plano permite apenas 1 organização</p>
                   </div>
                 </div>
               )}
 
               {/* Card: Organização vinculada */}
-              <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+              <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}>
+                <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Organizações Vinculadas</p>
                 </div>
                 <div className="px-4 py-3">
                   <div
                     className="flex items-center justify-between px-3 py-2.5 rounded-lg"
-                    style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.06)' }}
+                    style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}
                   >
                     <div className="flex items-center gap-2">
                       <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
@@ -168,7 +163,7 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t flex justify-end" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="px-6 py-4 border-t flex justify-end" style={{ borderColor: 'var(--border)' }}>
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-lg text-xs font-bold transition"

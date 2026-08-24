@@ -1,7 +1,9 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { Eye, Sun, Edit2, Moon, EyeOff, LogOut, ChevronDown, Building2, Check, Users, CreditCard } from 'lucide-react'
+import { Eye, Palette, Edit2, EyeOff, LogOut, ChevronDown, Building2, Check, Users, CreditCard, ShieldCheck } from 'lucide-react'
+import Link from 'next/link'
+import { pareceSuperAdmin } from '@/lib/admin-client'
 import FiltrosDashboard from '@/components/dashboard/FiltrosDashboard'
 import SinoNotificacoes from '@/components/ui/SinoNotificacoes'
 import { useDashboard } from '@/context/DashboardContext'
@@ -24,11 +26,14 @@ export default function Topbar() {
   const [modalAssinatura, setModalAssinatura] = useState(false)
   const orgRef = useRef<HTMLDivElement>(null)
   const userRef = useRef<HTMLDivElement>(null)
+  const [aparenciaOpen, setAparenciaOpen] = useState(false)
+  const aparenciaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (orgRef.current && !orgRef.current.contains(e.target as Node)) setOrgMenuOpen(false)
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserMenuOpen(false)
+      if (aparenciaRef.current && !aparenciaRef.current.contains(e.target as Node)) setAparenciaOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -44,7 +49,7 @@ export default function Topbar() {
   return (
     <>
       {/* Topbar fina — não sticky, flui com o conteúdo. Escondida no mobile (MobileNav cobre). */}
-      <header className="hidden md:block" style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', padding: '20px', margin: '30px 30px 15px 30px', borderRadius: '10px' }}>
+      <header className="hidden md:block" style={{ border: '1px solid var(--border)', backgroundColor: 'var(--card)', padding: '20px', margin: '30px 30px 15px 30px', borderRadius: '10px' }}>
         <div className="flex items-center justify-between">
 
           {/* Esquerda: título + ações */}
@@ -60,19 +65,70 @@ export default function Topbar() {
               >
                 {isPrivate ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
-              <button
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                title="Alternar tema"
-                className="p-1.5 rounded-md transition-all text-primary hover:bg-white/5"
-              >
-                {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5 text-slate-500" />}
-              </button>
-              <button
-                title="Editar"
-                className="p-1.5 rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-white/5"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="relative" ref={aparenciaRef}>
+                <button
+                  onClick={() => setAparenciaOpen((v) => !v)}
+                  title="Aparência"
+                  className="p-1.5 rounded-md transition-all text-primary hover:bg-white/5"
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                </button>
+                {aparenciaOpen && (
+                  <div
+                    className="absolute right-0 top-full mt-2 z-50 rounded-2xl shadow-2xl p-4 w-64"
+                    style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3">Aparência</p>
+                    <div className="flex items-center gap-3">
+                      {([
+                        { id: 'light' as const, label: 'Claro', bg: '#f8fafc', line: '#cbd5e1', barBg: '#ffffff' },
+                        { id: 'dark' as const, label: 'Escuro', bg: '#0b0f10', line: '#3a4145', barBg: 'var(--card)' },
+                      ]).map((opt) => {
+                        const ativo = theme === opt.id
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={() => { setTheme(opt.id); setAparenciaOpen(false) }}
+                            className="flex-1 flex flex-col items-center gap-2 group"
+                          >
+                            <div
+                              className="relative w-full aspect-[4/3] rounded-lg overflow-hidden flex flex-col gap-1 p-1.5 transition-all"
+                              style={{
+                                backgroundColor: opt.barBg,
+                                border: ativo ? '2px solid #00aeef' : '1px solid var(--border)',
+                              }}
+                            >
+                              <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: opt.line }} />
+                              <div className="w-2/3 h-1.5 rounded-full" style={{ backgroundColor: opt.line }} />
+                              <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: opt.line }} />
+                              {ativo && (
+                                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                                  <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                                </span>
+                              )}
+                            </div>
+                            <span
+                              className="text-xs font-semibold transition-colors"
+                              style={{ color: ativo ? '#00aeef' : 'var(--muted-foreground)' }}
+                            >
+                              {opt.label}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {isOverview && (
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('abrir-editor-metricas'))}
+                  title="Editar cards do dashboard"
+                  className="p-1.5 rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-white/5"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -97,7 +153,7 @@ export default function Topbar() {
                 {orgMenuOpen && (
                   <div
                     className="absolute right-0 top-full mt-1.5 z-50 rounded-xl shadow-2xl overflow-hidden w-52"
-                    style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}
+                    style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}
                   >
                     <div className="p-1.5">
                       {orgs.map(org => (
@@ -106,7 +162,7 @@ export default function Topbar() {
                           onClick={() => { setActiveOrg(org); setOrgMenuOpen(false) }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold transition hover:bg-white/5 text-left"
                           style={{
-                            color: activeOrg.org_id === org.org_id ? '#00aeef' : '#e2e8f0',
+                            color: activeOrg.org_id === org.org_id ? '#00aeef' : 'var(--foreground)',
                             backgroundColor: activeOrg.org_id === org.org_id ? 'rgba(0,174,239,0.06)' : undefined,
                           }}
                         >
@@ -118,7 +174,7 @@ export default function Topbar() {
                     </div>
                     {activeOrg.role === 'admin' && (
                       <>
-                        <div className="border-t mx-1.5" style={{ borderColor: 'rgba(255,255,255,0.05)' }} />
+                        <div className="border-t mx-1.5" style={{ borderColor: 'var(--border)' }} />
                         <div className="p-1.5">
                           <button
                             onClick={() => { setOrgMenuOpen(false); setModalUsuarios(true) }}
@@ -168,12 +224,22 @@ export default function Topbar() {
               {userMenuOpen && (
                 <div
                   className="absolute right-0 top-full mt-1.5 z-50 rounded-xl shadow-2xl p-1 w-44"
-                  style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}
+                  style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}
                 >
-                  <div className="px-3 py-2.5 border-b mb-1" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                  <div className="px-3 py-2.5 border-b mb-1" style={{ borderColor: 'var(--border)' }}>
                     <p className="text-[11px] font-bold text-foreground truncate">{firstName}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
                   </div>
+                  {pareceSuperAdmin(user?.email) && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-white/5 transition"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Painel Admin
+                    </Link>
+                  )}
                   <button
                     onClick={signOut}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition"
@@ -193,7 +259,7 @@ export default function Topbar() {
       {isOverview && (
         <div
           className="mx-4 md:mx-[30px] mt-3 mb-5 md:mt-2.5 md:mb-[25px] p-4 md:p-5"
-          style={{ border: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#13181a', borderRadius: '10px' }}
+          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--card)', borderRadius: '10px' }}
         >
           <FiltrosDashboard />
         </div>

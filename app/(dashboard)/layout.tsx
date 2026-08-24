@@ -10,12 +10,12 @@ export default function DashboardLayout({
 }) {
   return (
     <DashboardProvider>
-      <div className="flex min-h-screen text-foreground transition-colors duration-400" style={{ backgroundColor: '#0e1315' }}>
+      <div className="flex min-h-screen text-foreground transition-colors duration-400" style={{ backgroundColor: 'var(--background)' }}>
         <Sidebar />
         <main className="flex-1 min-w-0 min-h-screen flex flex-col transition-colors duration-300 overflow-hidden">
           <MobileNav />
           <Topbar />
-          <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: '#0e1315' }}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: 'var(--background)' }}>
             <div className="px-4 md:px-8 pb-8">
               {children}
             </div>

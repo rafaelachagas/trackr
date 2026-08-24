@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react'
 import { formatInTimeZone } from 'date-fns-tz'
-import MetricCard from '@/components/ui/MetricCard'
 import GraficoDiario from '@/components/dashboard/GraficoDiario'
+import MetricaCardById from '@/components/dashboard/MetricaCardById'
+import EditorMetricas from '@/components/dashboard/EditorMetricas'
+import { LAYOUT_PADRAO, type MetricaId } from '@/lib/metricas-overview'
 import TabelaCriativos from '@/components/dashboard/TabelaCriativos'
 import TabelaCriativosV2 from '@/components/dashboard/TabelaCriativosV2'
 import HistoricoCriativos from '@/components/dashboard/HistoricoCriativos'
@@ -17,6 +19,30 @@ import { useDashboard } from '@/context/DashboardContext'
 export default function OverviewPage() {
   const { metrics, chartData, lastUpdate, dateRange, firstLoadDone } = useDashboard()
   const [criativos, setCriativos] = useState<RoasPorCriativo[]>([])
+  const [layout, setLayout] = useState<MetricaId[]>(LAYOUT_PADRAO)
+  const [editorAberto, setEditorAberto] = useState(false)
+
+  // Layout dos cards do topo (lápis → Editor de Métricas): desktop e mobile
+  // guardam configurações separadas — troca sozinho quando a tela vira.
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const carregar = () => {
+      const device = mq.matches ? 'mobile' : 'desktop'
+      fetch(`/api/config/overview-layout?device=${device}`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((j) => setLayout(j.items ?? LAYOUT_PADRAO))
+        .catch(() => setLayout(LAYOUT_PADRAO))
+    }
+    carregar()
+    mq.addEventListener('change', carregar)
+    return () => mq.removeEventListener('change', carregar)
+  }, [])
+
+  useEffect(() => {
+    const h = () => setEditorAberto(true)
+    window.addEventListener('abrir-editor-metricas', h)
+    return () => window.removeEventListener('abrir-editor-metricas', h)
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -57,8 +83,8 @@ export default function OverviewPage() {
   return (
     <div className="relative space-y-6 w-full mx-auto text-foreground">
       {!firstLoadDone ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-5">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-5">
+          {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="bg-card border border-border p-5 rounded-[10px] shadow-sm animate-pulse">
               <div className="h-2.5 w-24 bg-muted rounded mb-4" />
               <div className="h-7 w-32 bg-muted rounded" />
@@ -66,41 +92,12 @@ export default function OverviewPage() {
           ))}
         </div>
       ) : (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-5">
-        <MetricCard
-          titulo="Faturamento Líquido"
-          valor={`R$ ${metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          tooltip="Faturamento líquido das vendas aprovadas. Fat. Líq. = Venda Aprovada − Taxa do Gateway de Pagamentos − Taxas de Coprodutores e Afiliados"
-        />
-        <MetricCard
-          titulo="Gastos com anúncios"
-          valor={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-        />
-        <MetricCard
-          titulo="ROAS"
-          valor={`${metrics.roas.toFixed(2)}`}
-          verde
-          tooltip="Retorno sobre o investimento em anúncios. ROAS = Faturamento Bruto / Gastos com anúncios"
-        />
-        <MetricCard
-          titulo="Lucro"
-          valor={`R$ ${(metrics.revenue - metrics.spend - metrics.imposto).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          verde
-          tooltip="Lucro (ROI final). Lucro = Faturamento Líquido − Gastos com anúncios − Imposto sobre anúncios (Meta)"
-        />
-        <MetricCard
-          titulo="Imposto total"
-          valor={`R$ ${metrics.imposto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          tooltip="Imposto sobre gastos em anúncios (Meta). Alíquota configurável em Fontes de dados → Contas de anúncios, aplicada sobre o gasto das contas em BRL — a conta em dólar fica de fora. Não é somado ao card de Gastos."
-        />
-        <MetricCard
-          titulo="Reembolsos"
-          valor={`R$ ${metrics.reembolso.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          subtitulo={`${metrics.taxaReembolso.toFixed(1).replace('.', ',')}% • ${metrics.reembolsoCount} venda${metrics.reembolsoCount !== 1 ? 's' : ''}`}
-          tooltip="Vendas reembolsadas + chargeback no período (valor líquido devolvido). A taxa = reembolsos ÷ (faturamento aprovado + reembolsos) do período. Não é descontado do Faturamento/ROAS/Lucro — que já contam só as vendas aprovadas."
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-5">
+        {layout.map((id) => <MetricaCardById key={id} id={id} metrics={metrics} />)}
       </div>
       )}
+
+      {editorAberto && <EditorMetricas metrics={metrics} onClose={() => setEditorAberto(false)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">

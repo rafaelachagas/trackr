@@ -81,11 +81,11 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div
         className="relative z-10 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
-        style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}
+        style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
           <div>
             <h2 className="text-base font-black text-foreground tracking-tight">Gerenciar usuários</h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">Ajuste as permissões dos usuários nesta organização</p>
@@ -101,7 +101,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
           {isAdmin && (
             <div
               className="rounded-xl p-4 space-y-3"
-              style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.06)' }}
+              style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}
             >
               <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Convidar por link</p>
               <p className="text-[11px] text-muted-foreground -mt-1">
@@ -114,14 +114,14 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
                   <button
                     onClick={() => setRoleMenuOpen(roleMenuOpen === 'new' ? null : 'new')}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition hover:bg-white/5"
-                    style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0' }}
+                    style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', color: '#e2e8f0' }}
                   >
                     {inviteRole === 'admin' ? <Crown className="w-3 h-3 text-yellow-400" /> : <User className="w-3 h-3 text-muted-foreground" />}
                     {inviteRole === 'admin' ? 'Admin' : 'Membro'}
                     <ChevronDown className="w-3 h-3 text-muted-foreground" />
                   </button>
                   {roleMenuOpen === 'new' && (
-                    <div className="absolute top-full mt-1 left-0 z-20 rounded-xl p-1 w-32 shadow-xl" style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div className="absolute top-full mt-1 left-0 z-20 rounded-xl p-1 w-32 shadow-xl" style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}>
                       {(['member', 'admin'] as const).map(r => (
                         <button
                           key={r}
@@ -151,7 +151,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
               {inviteLink ? (
                 <div
                   className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-                  style={{ backgroundColor: '#1a2022', border: '1px solid rgba(0,174,239,0.25)' }}
+                  style={{ backgroundColor: 'var(--popover)', border: '1px solid rgba(0,174,239,0.25)' }}
                 >
                   <Link2 className="w-3 h-3 text-primary flex-shrink-0" />
                   <p className="flex-1 text-[10px] font-mono text-muted-foreground truncate">{inviteLink}</p>
@@ -184,7 +184,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
               <div
                 key={member.user_id}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                style={{ backgroundColor: '#13181a', border: '1px solid rgba(255,255,255,0.05)' }}
+                style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}
               >
                 <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center font-black text-[11px] text-primary flex-shrink-0">
                   {initials(member)}
@@ -214,7 +214,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
                       <ChevronDown className="w-2.5 h-2.5" />
                     </button>
                     {roleMenuOpen === member.user_id && (
-                      <div className="absolute right-0 top-full mt-1 z-20 rounded-xl p-1 w-32 shadow-xl" style={{ backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div className="absolute right-0 top-full mt-1 z-20 rounded-xl p-1 w-32 shadow-xl" style={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)' }}>
                         {(['member', 'admin'] as const).map(r => (
                           <button
                             key={r}
@@ -252,7 +252,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t flex justify-end" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="px-6 py-4 border-t flex justify-end" style={{ borderColor: 'var(--border)' }}>
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-white/5 transition"

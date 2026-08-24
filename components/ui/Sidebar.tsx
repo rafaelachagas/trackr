@@ -81,8 +81,8 @@ export default function Sidebar() {
         >
           {active && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
           <Icon
-            className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`}
-            style={{ color: active ? '#00aeef' : '#71777a' }}
+            className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`}
+            style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }}
           />
           <span className={labelClass} style={{ color: active ? '#00aeef' : '' }}>{label}</span>
         </Link>
@@ -103,7 +103,7 @@ export default function Sidebar() {
     <>
       <aside
         className={`${collapsed ? 'w-[60px]' : 'w-64'} text-foreground hidden md:flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar transition-all duration-300 z-40`}
-        style={{ backgroundColor: '#13181a', borderRight: '1px solid hsla(0,0%,100%,.05)', boxShadow: '4px 0 24px rgba(0,0,0,.4)' }}
+        style={{ backgroundColor: 'var(--card)', borderRight: '1px solid var(--border)', boxShadow: '4px 0 24px rgba(0,0,0,.4)' }}
       >
         {/* Logo */}
         <div className="h-12 flex items-center px-3 flex-shrink-0 border-b border-white/5">
@@ -129,7 +129,7 @@ export default function Sidebar() {
               style={adAnalysisActive ? { backgroundColor: '#5dd3ff14' } : {}}
             >
               {adAnalysisActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Film className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!adAnalysisActive ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: adAnalysisActive ? '#00aeef' : '#71777a' }} />
+              <Film className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!adAnalysisActive ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: adAnalysisActive ? '#00aeef' : 'var(--muted-foreground)' }} />
               <span className={labelClass} style={{ color: adAnalysisActive ? '#00aeef' : '' }}>Analisar Criativos</span>
             </Link>
             {collapsed && (
@@ -148,9 +148,9 @@ export default function Sidebar() {
               style={dataSourcesActive || dataSourcesOpen ? { backgroundColor: '#5dd3ff14' } : {}}
             >
               {(dataSourcesActive || dataSourcesOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Database className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(dataSourcesActive || dataSourcesOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
+              <Database className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(dataSourcesActive || dataSourcesOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : 'var(--muted-foreground)' }} />
               <span className={`${labelClass} flex-1 text-left`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '' }}>Fontes de dados</span>
-              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '#71777a' }} />
+              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : 'var(--muted-foreground)' }} />
             </button>
             {collapsed && (
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
@@ -163,8 +163,8 @@ export default function Sidebar() {
                 {dataSources.map(({ href, label, icon: Icon }) => {
                   const active = pathname === href
                   return (
-                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : '#71777a' }}>
-                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-white' : ''}`} style={{ color: active ? '#00aeef' : '#71777a' }} />
+                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }}>
+                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-foreground' : ''}`} style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
                       {label}
                     </Link>
                   )
@@ -181,9 +181,9 @@ export default function Sidebar() {
               style={ferramentasActive || ferramentasOpen ? { backgroundColor: '#5dd3ff14' } : {}}
             >
               {(ferramentasActive || ferramentasOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Wrench className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(ferramentasActive || ferramentasOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : '#71777a' }} />
+              <Wrench className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(ferramentasActive || ferramentasOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : 'var(--muted-foreground)' }} />
               <span className={`${labelClass} flex-1 text-left`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : '' }}>Ferramentas</span>
-              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${ferramentasOpen ? 'rotate-180' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : '#71777a' }} />
+              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${ferramentasOpen ? 'rotate-180' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : 'var(--muted-foreground)' }} />
             </button>
             {collapsed && (
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
@@ -196,8 +196,8 @@ export default function Sidebar() {
                 {ferramentas.map(({ href, label, icon: Icon, beta }) => {
                   const active = pathname === href
                   return (
-                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : '#71777a' }}>
-                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-white' : ''}`} style={{ color: active ? '#00aeef' : '#71777a' }} />
+                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }}>
+                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-foreground' : ''}`} style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
                       <span className="flex-1">{label}</span>
                       {beta && <span className="text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-primary/15 text-primary">Beta</span>}
                     </Link>
@@ -215,7 +215,7 @@ export default function Sidebar() {
               style={configActive ? { backgroundColor: '#5dd3ff14' } : {}}
             >
               {configActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Settings className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!configActive ? 'group-hover/item:scale-110 group-hover/item:!text-white' : ''}`} style={{ color: configActive ? '#00aeef' : '#71777a' }} />
+              <Settings className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!configActive ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: configActive ? '#00aeef' : 'var(--muted-foreground)' }} />
               <span className={labelClass} style={{ color: configActive ? '#00aeef' : '' }}>Configurações</span>
             </Link>
             {collapsed && (
@@ -230,7 +230,7 @@ export default function Sidebar() {
 
         {/* Bottom */}
         {collapsed ? (
-          <div className="p-2 mb-3 mx-2 border border-white/5 rounded-xl flex flex-col items-center gap-2" style={{ backgroundColor: '#181e21' }}>
+          <div className="p-2 mb-3 mx-2 border border-white/5 rounded-xl flex flex-col items-center gap-2" style={{ backgroundColor: 'var(--secondary)' }}>
             <button
               onClick={sincronizarTudo}
               disabled={sincronizando}
@@ -244,7 +244,7 @@ export default function Sidebar() {
             </div>
           </div>
         ) : (
-          <div className="p-2 mb-3 mx-2 border border-white/5 rounded-xl space-y-3" style={{ backgroundColor: '#181e21' }}>
+          <div className="p-2 mb-3 mx-2 border border-white/5 rounded-xl space-y-3" style={{ backgroundColor: 'var(--secondary)' }}>
             <button
               onClick={sincronizarTudo}
               disabled={sincronizando}
@@ -273,9 +273,9 @@ export default function Sidebar() {
       <button
         onClick={() => setCollapsed(v => !v)}
         className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full hidden md:flex items-center justify-center transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
-        style={{ backgroundColor: '#181e21', border: '1px solid hsla(0,0%,100%,.08)', color: '#71777a' }}
+        style={{ backgroundColor: 'var(--secondary)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#00aeef'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,174,239,0.4)' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#71777a'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'hsla(0,0%,100%,.08)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)' }}
       >
         {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
       </button>

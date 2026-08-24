@@ -14,11 +14,11 @@ export async function getDashboardData(product: string, startDate: string, endDa
     // Paginação: o PostgREST corta em 1000 linhas por request; sem isso a soma
     // sairia subestimada em períodos com muitas vendas.
     async function fetchVendasReais() {
-      const todas: { valor: number; valor_liquido: number | null; data: string; tipo: string | null; produto: string | null }[] = []
+      const todas: { valor: number; valor_liquido: number | null; data: string; tipo: string | null; produto: string | null; criativo: string | null }[] = []
       for (let offset = 0; ; offset += 1000) {
         let q = supabaseAdmin
           .from('vendas')
-          .select('valor, valor_liquido, data, tipo, produto')
+          .select('valor, valor_liquido, data, tipo, produto, criativo')
           .eq('status', 'approved')
           .not('transaction_id', 'like', 'manual_%')
           .range(offset, offset + 999)
@@ -46,9 +46,9 @@ export async function getDashboardData(product: string, startDate: string, endDa
     // cortados — a sync reinsere os dias recentes com id maior, então eles caíam
     // fora das primeiras 1000 linhas e sumiam do gráfico e do total de gasto.
     async function fetchGastos() {
-      const todas: { valor_gasto: number; data: string }[] = []
+      const todas: { valor_gasto: number; data: string; impressions: number | null }[] = []
       for (let offset = 0; ; offset += 1000) {
-        let q = supabaseAdmin.from('gastos').select('valor_gasto, data').not('ad_id', 'is', null).range(offset, offset + 999)
+        let q = supabaseAdmin.from('gastos').select('valor_gasto, data, impressions').not('ad_id', 'is', null).range(offset, offset + 999)
         if (startDate) q = q.gte('data', isoParaDataLocal(startDate))
         if (endDate) q = q.lte('data', isoParaDataLocal(endDate))
         const { data, error } = await q
@@ -129,6 +129,15 @@ export async function getDashboardData(product: string, startDate: string, endDa
     const salesCount = vendas.length
     const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0
 
+    // CPM médio: gasto ÷ impressões de todas as contas conectadas (vem cru da Meta,
+    // sincronizado junto com o gasto). CPA médio: gasto ÷ vendas de TRÁFEGO PAGO
+    // (venda com `criativo` preenchido) — venda orgânica (`criativo` nulo) fica de
+    // fora, senão o CPA sairia artificialmente mais barato sem ter custo nenhum.
+    const totalImpressions = gastos.reduce((acc, g) => acc + (Number(g.impressions) || 0), 0)
+    const cpmMedio = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0
+    const vendasPagas = vendas.filter((v: any) => !!v.criativo).length
+    const cpaMedio = vendasPagas > 0 ? totalSpend / vendasPagas : 0
+
     // Reembolsos/estornos: valor líquido devolvido + taxa sobre a base de vendas
     // pagas do período (aprovadas + reembolsadas). Não afeta ROAS/Lucro/Faturamento.
     const reembolsoValor = somaLiquido(reembolsos)
@@ -154,7 +163,10 @@ export async function getDashboardData(product: string, startDate: string, endDa
         imposto: imposto,
         reembolso: reembolsoValor,
         reembolsoCount: reembolsoCount,
-        taxaReembolso: taxaReembolso
+        taxaReembolso: taxaReembolso,
+        cpmMedio: cpmMedio,
+        cpaMedio: cpaMedio,
+        vendasPagas: vendasPagas
       },
       vendas: vendasComTipo,
       gastos: gastos

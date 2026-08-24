@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from('organization_invites')
-    .select('token, role, expires_at, accepted_at, created_at')
+    .select('token, role, expires_at, used_at, created_at')
     .eq('org_id', ctx.orgId)
     .order('created_at', { ascending: false })
     .limit(20)
