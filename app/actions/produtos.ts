@@ -1,6 +1,7 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { resolveOrgId } from '@/lib/resolve-org'
 
 export async function getProdutos() {
   const { data, error } = await supabaseAdmin
@@ -17,9 +18,12 @@ export async function getProdutos() {
 }
 
 export async function addProduto(nome: string, tipo: 'front' | 'upsell') {
+  // produtos_mapeamento.org_id é NOT NULL — sem isso o insert falha
+  // ("null value in column org_id") pra QUALQUER produto novo.
+  const orgId = await resolveOrgId()
   const { data, error } = await supabaseAdmin
     .from('produtos_mapeamento')
-    .insert([{ nome_produto: nome, tipo: tipo }])
+    .insert([{ nome_produto: nome, tipo: tipo, org_id: orgId }])
     .select()
 
   if (error) {

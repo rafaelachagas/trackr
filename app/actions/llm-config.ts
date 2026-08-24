@@ -1,13 +1,8 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { resolveOrgId } from '@/lib/resolve-org'
 import { MODELO_PADRAO, parseModelo } from '@/lib/llm-models'
-
-async function resolveOrgId(): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
-  return data?.id ?? null
-}
 
 function mascarar(chave: string): string {
   const s = chave.trim()

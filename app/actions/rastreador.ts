@@ -1,14 +1,9 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { resolveOrgId } from '@/lib/resolve-org'
 import { foldHistoricoAoVivo } from '@/app/actions/rastreador-intel'
 import { registrarAlerta } from '@/lib/alertas'
-
-async function resolveOrgId(): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
-  return data?.id ?? null
-}
 
 export interface BibliotecaRastreada {
   id: string

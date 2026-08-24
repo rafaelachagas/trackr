@@ -1,16 +1,11 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { resolveOrgId } from '@/lib/resolve-org'
 import {
   aplicarLoteHistorico, scoreForca, frequenciaTroca,
   type HistRow, type ClassificacaoTeste,
 } from '@/lib/rastreador-intel'
-
-async function resolveOrgId(): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
-  return data?.id ?? null
-}
 
 // Colunas que persistimos (sem os campos auxiliares tipo _dirty).
 const COLS_HIST = 'ad_archive_id,page_name,headline,body,cta_text,link_url,media_type,video_url,image_url,snapshot_url,start_date,primeiro_visto,ultimo_visto,removido_em,status,copias,pico_copias,dias_no_ar,classificacao,angulo,angulo_resumo,transcricao_hash'

@@ -1,14 +1,9 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { resolveOrgId } from '@/lib/resolve-org'
 import { chamarLLM, extrairJSON, hashTexto, llmDisponivel, modeloSelecionado } from '@/lib/llm'
 import { ANGULOS } from '@/lib/rastreador-intel'
-
-async function resolveOrgId(): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
-  return data?.id ?? null
-}
 
 const IDS_ANGULO: string[] = ANGULOS.map((a) => a.id).filter((a) => a !== 'indefinido')
 

@@ -1,6 +1,7 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { resolveOrgId } from '@/lib/resolve-org'
 import {
   CONFIG_KEY, DEFAULT_WPP_CONFIG, parseWppConfig, WppConfig,
   EVOLUTION_URL, EVOLUTION_INSTANCE, EVOLUTION_APIKEY,
@@ -40,13 +41,12 @@ export async function saveWhatsappConfig(config: WppConfig): Promise<{ success: 
       allowedCommands: Array.isArray(n.allowedCommands) ? n.allowedCommands : undefined,
     })).filter((n) => n.number),
   }
-  // configuracoes.org_id é NOT NULL — resolve a org (single-tenant) pro insert.
-  const { data: org } = await supabaseAdmin
-    .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
+  // configuracoes.org_id é NOT NULL — resolve a org de quem está logado.
+  const orgId = await resolveOrgId()
 
   const { error } = await supabaseAdmin
     .from('configuracoes')
-    .upsert({ chave: CONFIG_KEY, valor: JSON.stringify(limpo), org_id: org?.id }, { onConflict: 'chave' })
+    .upsert({ chave: CONFIG_KEY, valor: JSON.stringify(limpo), org_id: orgId }, { onConflict: 'chave' })
   if (error) return { success: false, error: error.message }
   return { success: true }
 }

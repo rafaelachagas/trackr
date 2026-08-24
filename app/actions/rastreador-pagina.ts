@@ -1,13 +1,8 @@
 'use server'
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { resolveOrgId } from '@/lib/resolve-org'
 import { hashTexto } from '@/lib/llm'
-
-async function resolveOrgId(): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
-  return data?.id ?? null
-}
 
 // Extrai texto legível de um HTML (sem libs): remove script/style e tags.
 function htmlParaTexto(html: string): { titulo: string | null; texto: string } {

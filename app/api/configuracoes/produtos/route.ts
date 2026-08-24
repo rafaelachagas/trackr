@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { resolveOrgId } from '@/lib/resolve-org'
 
 export async function GET() {
   const { data, error } = await supabaseAdmin
@@ -26,9 +27,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'tipo deve ser "front" ou "upsell"' }, { status: 400 })
   }
 
+  const orgId = await resolveOrgId()
   const { data, error } = await supabaseAdmin
     .from('produtos_mapeamento')
-    .upsert({ nome_produto, tipo }, { onConflict: 'nome_produto' })
+    .upsert({ nome_produto, tipo, org_id: orgId }, { onConflict: 'nome_produto' })
     .select()
     .single()
 
