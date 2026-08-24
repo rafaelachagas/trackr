@@ -69,7 +69,8 @@ export default function BlocoById({ id, metrics, chartData, criativos }: {
         <MetricCard
           titulo="Reembolsos"
           valor={`R$ ${metrics.reembolso.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          subtitulo={`${metrics.taxaReembolso.toFixed(1).replace('.', ',')}% • ${metrics.reembolsoCount} venda${metrics.reembolsoCount !== 1 ? 's' : ''}`}
+          valorBadge={`${metrics.taxaReembolso.toFixed(1).replace('.', ',')}%`}
+          subtitulo={`${metrics.reembolsoCount} venda${metrics.reembolsoCount !== 1 ? 's' : ''}`}
           tooltip="Vendas reembolsadas + chargeback no período (valor líquido devolvido). A taxa = reembolsos ÷ (faturamento aprovado + reembolsos) do período. Não é descontado do Faturamento/ROAS/Lucro — que já contam só as vendas aprovadas."
         />
       )
