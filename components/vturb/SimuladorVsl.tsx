@@ -9,7 +9,8 @@
 // cada um representa "se só essa métrica mudasse, tudo mais igual".
 
 import React, { useMemo, useState } from 'react'
-import { X, RotateCcw, TrendingUp, TrendingDown } from 'lucide-react'
+import { X, RotateCcw, TrendingUp, TrendingDown, Sparkles, Loader2 } from 'lucide-react'
+import { gerarInsightSimuladorVsl } from '@/app/actions/vsl'
 
 interface BaseSimulador {
   lpViews: number | null
@@ -65,8 +66,8 @@ function LinhaResultado({ label, real, simulado, formatar, isPrivate }: {
   )
 }
 
-export default function SimuladorVsl({ aberto, onFechar, base, isPrivate }: {
-  aberto: boolean; onFechar: () => void; base: BaseSimulador; isPrivate: boolean
+export default function SimuladorVsl({ aberto, onFechar, base, isPrivate, vslNome }: {
+  aberto: boolean; onFechar: () => void; base: BaseSimulador; isPrivate: boolean; vslNome: string
 }) {
   const playRateBase = base.playRate ?? 0
   const retencaoBase = base.retencaoPitch ?? 0
@@ -75,10 +76,14 @@ export default function SimuladorVsl({ aberto, onFechar, base, isPrivate }: {
   const [playRate, setPlayRate] = useState(playRateBase)
   const [retencao, setRetencao] = useState(retencaoBase)
   const [conversao, setConversao] = useState(conversaoBase)
+  const [iaCarregando, setIaCarregando] = useState(false)
+  const [iaTexto, setIaTexto] = useState<string | null>(null)
+  const [iaErro, setIaErro] = useState<string | null>(null)
 
   // Reabre com os valores reais do período atual sempre que o VSL/período mudar.
   React.useEffect(() => {
     setPlayRate(playRateBase); setRetencao(retencaoBase); setConversao(conversaoBase)
+    setIaTexto(null); setIaErro(null)
   }, [playRateBase, retencaoBase, conversaoBase])
 
   const calc = useMemo(() => {
@@ -102,6 +107,29 @@ export default function SimuladorVsl({ aberto, onFechar, base, isPrivate }: {
   }, [base, playRate, retencao, conversao, playRateBase, retencaoBase, conversaoBase])
 
   const mexeu = playRate !== playRateBase || retencao !== retencaoBase || conversao !== conversaoBase
+
+  // Insight de IA fica desatualizado assim que o usuário mexe de novo — limpa
+  // pra não mostrar texto de uma combinação de sliders diferente da atual.
+  const chaveSliders = `${playRate}|${retencao}|${conversao}`
+  const chaveSlidersRef = React.useRef(chaveSliders)
+  if (chaveSlidersRef.current !== chaveSliders) { chaveSlidersRef.current = chaveSliders; if (iaTexto || iaErro) { setIaTexto(null); setIaErro(null) } }
+
+  async function gerarComIA() {
+    setIaCarregando(true); setIaErro(null)
+    const r = await gerarInsightSimuladorVsl({
+      vslNome,
+      playRateReal: playRateBase, playRateSim: playRate,
+      retencaoReal: retencaoBase, retencaoSim: retencao,
+      conversaoReal: conversaoBase, conversaoSim: conversao,
+      conversoesReal: calc.real.conversoes, conversoesSim: calc.sim.conversoes,
+      receitaReal: calc.real.receita, receitaSim: calc.sim.receita,
+      roasReal: calc.real.roas, roasSim: calc.sim.roas,
+      gasto: base.gasto ?? null,
+    })
+    setIaCarregando(false)
+    if (r.success) setIaTexto(r.texto ?? null)
+    else setIaErro(r.error ?? 'Falha ao gerar.')
+  }
 
   const insight = useMemo(() => {
     if (!mexeu) return null
@@ -148,9 +176,31 @@ export default function SimuladorVsl({ aberto, onFechar, base, isPrivate }: {
           )}
         </div>
 
-        {insight && (
-          <div className="mt-4 rounded-xl p-3.5 text-xs leading-relaxed" style={{ backgroundColor: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)' }}>
-            <span className={isPrivate ? 'blur-sm select-none' : ''}>{isPrivate ? 'Ative "esconder resultados" desligado pra ver o resumo.' : insight}</span>
+        {mexeu && (
+          <div className="mt-4">
+            <button
+              onClick={gerarComIA}
+              disabled={iaCarregando}
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50"
+            >
+              {iaCarregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              {iaCarregando ? 'Gerando com IA...' : iaTexto ? 'Gerar de novo com IA' : 'Gerar comentário com IA'}
+            </button>
+
+            {iaErro && (
+              <p className="mt-2 text-xs text-rose-400">{iaErro}</p>
+            )}
+
+            {iaTexto ? (
+              <div className="mt-3 rounded-xl p-3.5 text-xs leading-relaxed flex gap-2" style={{ backgroundColor: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)' }}>
+                <Sparkles className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                <span className={isPrivate ? 'blur-sm select-none' : ''}>{isPrivate ? 'Desative "esconder resultados" pra ver o comentário.' : iaTexto}</span>
+              </div>
+            ) : insight && (
+              <div className="mt-3 rounded-xl p-3.5 text-xs leading-relaxed" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <span className={isPrivate ? 'blur-sm select-none' : ''}>{isPrivate ? 'Ative "esconder resultados" desligado pra ver o resumo.' : insight}</span>
+              </div>
+            )}
           </div>
         )}
 

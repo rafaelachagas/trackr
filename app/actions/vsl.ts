@@ -3,6 +3,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { createSupabaseServer } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { chamarLLM, llmDisponivel, modeloSelecionado } from '@/lib/llm'
 
 async function resolveOrgId(): Promise<string | null> {
   try {
@@ -120,4 +121,41 @@ export async function listarCampanhasMeta() {
   } catch (e: any) {
     return { success: false, error: e.message, data: [] as CampanhaMeta[] }
   }
+}
+
+// Insight do Simulador "e se?" (Análise de VSL) — traduz os números projetados
+// em texto, usando o provider/modelo configurado em Configurações → IA (hoje
+// Gemini). Chamado só quando o usuário pede ("Gerar com IA"), não a cada
+// arraste de slider — evita custo/latência desnecessários.
+export async function gerarInsightSimuladorVsl(input: {
+  vslNome: string
+  playRateReal: number; playRateSim: number
+  retencaoReal: number; retencaoSim: number
+  conversaoReal: number; conversaoSim: number
+  conversoesReal: number; conversoesSim: number
+  receitaReal: number; receitaSim: number
+  roasReal: number | null; roasSim: number | null
+  gasto: number | null
+}): Promise<{ success: boolean; texto?: string; error?: string; modelo?: string }> {
+  if (!(await llmDisponivel())) {
+    return { success: false, error: 'IA não configurada — escolha um modelo e cole a chave em Configurações → IA.' }
+  }
+  const fmtBRL = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const fmtPct = (n: number) => `${n.toFixed(1).replace('.', ',')}%`
+  const prompt = `Você é um analista de performance de VSL (video sales letter) de infoproduto. O usuário está simulando "e se?" no VSL "${input.vslNome}": ele moveu sliders de Play Rate, Retenção ao Pitch e Taxa de Conversão pra ver o impacto projetado, mantendo fixos o ticket médio e o gasto com anúncios reais do período.
+
+Dados reais do período vs. simulado:
+- Play Rate: ${fmtPct(input.playRateReal)} → ${fmtPct(input.playRateSim)}
+- Retenção ao Pitch: ${fmtPct(input.retencaoReal)} → ${fmtPct(input.retencaoSim)}
+- Taxa de Conversão (por play): ${fmtPct(input.conversaoReal)} → ${fmtPct(input.conversaoSim)}
+- Conversões: ${Math.round(input.conversoesReal)} → ${Math.round(input.conversoesSim)}
+- Receita: ${fmtBRL(input.receitaReal)} → ${fmtBRL(input.receitaSim)}
+${input.roasReal != null && input.roasSim != null ? `- ROAS: ${input.roasReal.toFixed(2)}x → ${input.roasSim.toFixed(2)}x` : ''}
+${input.gasto != null ? `- Gasto com anúncios no período (fixo): ${fmtBRL(input.gasto)}` : ''}
+
+Escreva 2-3 frases curtas, em português do Brasil, direto ao ponto, para uma pessoa não-técnica (dona do infoproduto): traduza a diferença em impacto prático (quanto muda em vendas e faturamento), e se fizer sentido, um comentário breve sobre qual dessas 3 métricas parece o alavanque mais realista de mexer primeiro. Não repita os números brutos que já estão na tela — foque na interpretação. Sem markdown, sem listas, texto corrido.`
+
+  const r = await chamarLLM({ prompt, maxTokens: 400, temperatura: 0.6 })
+  if (!r.ok) return { success: false, error: r.erro || 'Falha ao chamar a IA.' }
+  return { success: true, texto: r.texto, modelo: await modeloSelecionado() }
 }

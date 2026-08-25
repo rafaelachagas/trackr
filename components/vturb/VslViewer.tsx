@@ -240,6 +240,7 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
         aberto={simuladorAberto}
         onFechar={() => setSimuladorAberto(false)}
         isPrivate={isPrivate}
+        vslNome={vsl.vturb_player_name || vsl.nome}
         base={{
           lpViews: mt?.lpViews ?? null,
           gasto: mt?.gasto ?? null,
