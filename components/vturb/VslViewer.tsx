@@ -10,7 +10,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Area, AreaChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, Eye, GitCompareArrows, Loader2, Plus, MoreVertical, Zap } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, Eye, GitCompareArrows, Loader2, Plus, MoreVertical, Zap, SlidersHorizontal } from 'lucide-react'
+import SimuladorVsl from '@/components/vturb/SimuladorVsl'
 import { formatInTimeZone } from 'date-fns-tz'
 import { addDays, subDays, format, startOfMonth, endOfMonth, getDay, getDaysInMonth, addMonths, parseISO, isAfter, isBefore, isSameDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -62,6 +63,7 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
   const [mostrarConv, setMostrarConv] = useState(false)
   const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null)
   const [, setTick] = useState(0)
+  const [simuladorAberto, setSimuladorAberto] = useState(false)
 
   useEffect(() => {
     setCarregando(true)
@@ -133,6 +135,9 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
         <div className="ml-auto flex items-center gap-3">
           <button title="Comparar períodos/VSLs — em breve" className="h-11 px-4 rounded-xl border border-border bg-card text-[15px] font-medium flex items-center gap-2 text-foreground/90 hover:bg-white/5 transition">
             <GitCompareArrows className="w-4 h-4" /> Comparar <ChevronDown className="w-4 h-4" />
+          </button>
+          <button onClick={() => setSimuladorAberto(true)} title="Simular 'e se?' com Play Rate, Retenção e Conversão" className="h-11 px-4 rounded-xl border border-border bg-card text-[15px] font-medium flex items-center gap-2 text-foreground/90 hover:bg-white/5 transition">
+            <SlidersHorizontal className="w-4 h-4" /> Simulador
           </button>
           <SeletorData range={range} onChange={setRange} />
         </div>
@@ -230,6 +235,21 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
           </>
         )}
       </div>
+
+      <SimuladorVsl
+        aberto={simuladorAberto}
+        onFechar={() => setSimuladorAberto(false)}
+        isPrivate={isPrivate}
+        base={{
+          lpViews: mt?.lpViews ?? null,
+          gasto: mt?.gasto ?? null,
+          playRate: r?.playRateReal ?? null,
+          retencaoPitch: vt?.retencaoPitch ?? null,
+          taxaConversao: vt?.taxaConversao ?? null,
+          conversoes: vt?.conversoes ?? null,
+          receita: vt?.receitaVturb ?? null,
+        }}
+      />
     </div>
   )
 }
