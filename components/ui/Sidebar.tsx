@@ -26,8 +26,6 @@ import {
   Brain,
   Video,
   MonitorPlay,
-  FolderSearch,
-  Wand2,
   Bell,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -51,10 +49,12 @@ const dataSources = [
   { href: '/data-sources/vturb', label: 'VTurb', icon: Video },
 ]
 
+// Swipe File e Gerador de Copy ficam fora do menu por enquanto — nenhum dos
+// dois saiu como planejado (o Swipe File viraria um armazenamento interno
+// tipo Google Drive; hoje ele só guarda o que o Rastreador transcreve). O
+// código continua no repo pra quando isso for retomado, só não fica visível.
 const ferramentas = [
   { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars, beta: true },
-  { href: '/ferramentas/swipe-file', label: 'Swipe File', icon: FolderSearch, beta: true },
-  { href: '/ferramentas/gerador-copy', label: 'Gerador de Copy', icon: Wand2, beta: true },
   { href: '/ferramentas/alertas', label: 'Central de Alertas', icon: Bell, beta: true },
   { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
 ]

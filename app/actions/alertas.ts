@@ -2,6 +2,8 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
+import { enviarWhatsapp } from '@/lib/whatsapp-send'
+import { EVOLUTION_APIKEY } from '@/lib/whatsapp'
 
 export interface AlertaLog {
   id: string
@@ -99,4 +101,27 @@ export async function salvarConfigAlertas(cfg: ConfigAlertas) {
   } catch (e: any) {
     return { success: false, error: e.message }
   }
+}
+
+// "Ligado" no toggle só grava a preferência — não prova que o envio funciona
+// (chave do Evolution errada, instância caída, número não é do WhatsApp etc.
+// falham em silêncio dentro de broadcastAlerta). Este botão dispara uma
+// mensagem de teste de verdade pra cada número salvo e reporta o resultado.
+export async function testarWhatsapp(): Promise<{ success: boolean; error?: string; enviados: number; total: number }> {
+  if (!EVOLUTION_APIKEY) {
+    return { success: false, error: 'EVOLUTION_APIKEY não configurada no servidor — o envio nunca vai funcionar até isso ser corrigido.', enviados: 0, total: 0 }
+  }
+  const whats = (await lerJson('alertas_whatsapp')) ?? {}
+  const numeros: string[] = Array.isArray(whats.numeros) ? whats.numeros : []
+  if (!numeros.length) {
+    return { success: false, error: 'Nenhum número salvo pra testar.', enviados: 0, total: 0 }
+  }
+  let ok = 0
+  for (const n of numeros) {
+    if (await enviarWhatsapp(n, '✅ Teste de alerta — The Track. Se você recebeu essa mensagem, o envio de alertas por WhatsApp está funcionando.')) ok++
+  }
+  if (ok === 0) {
+    return { success: false, error: 'Nenhuma mensagem foi entregue — confira se a instância do WhatsApp está conectada e se os números estão corretos.', enviados: 0, total: numeros.length }
+  }
+  return { success: true, enviados: ok, total: numeros.length }
 }

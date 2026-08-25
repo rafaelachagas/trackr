@@ -7,8 +7,7 @@ import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, getTranscricoes
 import { baixarTxt, baixarDocx } from '@/lib/exportDoc'
 import InteligenciaBib from '@/components/rastreador/InteligenciaBib'
 import GeradorCopy from '@/components/inteligencia/GeradorCopy'
-import Radar from '@/components/inteligencia/Radar'
-import { Gauge, Wand2, Radar as RadarIcon } from 'lucide-react'
+import { Gauge, Wand2 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 
 // Placeholder de nome quando o modo privado (isPrivate) está ativo — esconde
@@ -44,7 +43,7 @@ const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1
 
 type Ordem = 'antigos' | 'copias' | 'recentes'
 type Tipo = 'todos' | 'video' | 'image'
-type Aba = 'buscar' | 'bibliotecas' | 'radar'
+type Aba = 'buscar' | 'bibliotecas'
 
 interface Resultado { stats?: { encontrados: number; duplicacoes: number; idade_media_dias: number | null }; criativos?: CriativoRastreado[]; error?: string }
 
@@ -194,7 +193,6 @@ export default function RastreadorPage() {
         {([
           ['buscar', 'Buscar concorrente', null],
           ['bibliotecas', `Bibliotecas${bibliotecas.length ? ` (${bibliotecas.length})` : ''}`, null],
-          ['radar', 'Radar de Nichos', RadarIcon],
         ] as [Aba, string, React.ComponentType<any> | null][]).map(([k, label, Icon]) => (
           <button key={k} onClick={() => { setAba(k); setBibAberta(null) }}
             className={`px-3.5 py-2.5 text-sm font-semibold border-b-2 -mb-px transition flex items-center gap-1.5 whitespace-nowrap ${aba === k ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -202,8 +200,6 @@ export default function RastreadorPage() {
           </button>
         ))}
       </div>
-
-      {aba === 'radar' && <Radar />}
 
       {aba === 'buscar' && (
         <>
@@ -394,7 +390,7 @@ function ModalEditarBib({ bib, imagens, onFechar, onSalvo, isPrivate = false }: 
                 className="w-full px-3 py-2.5 rounded-lg text-sm" style={inputStyle} />
             </div>
           </div>
-          <p className="text-[10px] text-muted-foreground/70 -mt-2">Nicho e oferta alimentam o swipe file (busca) e o radar de concorrentes.</p>
+          <p className="text-[10px] text-muted-foreground/70 -mt-2">Nicho e oferta alimentam o swipe file (busca).</p>
 
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Página de vendas (URL) — pra versionar oferta/preço</label>

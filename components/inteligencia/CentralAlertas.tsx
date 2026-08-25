@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Bell, Loader2, Save, Check, MessageCircle, Plus, X, TriangleAlert } from 'lucide-react'
-import { listarAlertas, marcarAlertasVistos, getConfigAlertas, salvarConfigAlertas, type AlertaLog, type ConfigAlertas } from '@/app/actions/alertas'
+import { listarAlertas, marcarAlertasVistos, getConfigAlertas, salvarConfigAlertas, testarWhatsapp, type AlertaLog, type ConfigAlertas } from '@/app/actions/alertas'
 
 const card = 'bg-card border border-border'
 const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0' }
@@ -20,6 +20,8 @@ export default function CentralAlertas() {
   const [salvando, setSalvando] = useState(false)
   const [salvo, setSalvo] = useState(false)
   const [novoNum, setNovoNum] = useState('')
+  const [testando, setTestando] = useState(false)
+  const [resultadoTeste, setResultadoTeste] = useState<{ ok: boolean; msg: string } | null>(null)
 
   async function carregar() {
     const [a, c] = await Promise.all([listarAlertas(), getConfigAlertas()])
@@ -40,6 +42,16 @@ export default function CentralAlertas() {
   async function marcarTodos() {
     setAlertas((p) => p.map((a) => ({ ...a, visto: true })))
     await marcarAlertasVistos()
+  }
+
+  async function testar() {
+    setTestando(true)
+    setResultadoTeste(null)
+    const r = await testarWhatsapp()
+    setTestando(false)
+    setResultadoTeste(r.success
+      ? { ok: true, msg: `Enviado com sucesso pra ${r.enviados}/${r.total} número(s).` }
+      : { ok: false, msg: r.error ?? 'Falha ao enviar.' })
   }
 
   function addNum() {
@@ -85,10 +97,20 @@ export default function CentralAlertas() {
           <Campo label="Anomalia gasto" val={Math.round(cfg.anomaliaPct * 100)} suf="%" onChange={(v) => setCfg({ ...cfg, anomaliaPct: v / 100 })} />
         </div>
 
-        <button onClick={salvar} disabled={salvando} className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 bg-primary text-white hover:opacity-90 disabled:opacity-50">
-          {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : salvo ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />} {salvo ? 'Salvo' : 'Salvar config'}
-        </button>
-        <p className="text-[10px] text-muted-foreground/70">A fadiga (CTR/CPM) e a anomalia de gasto são checadas 1x/dia. O criativo removido do concorrente e novos anúncios saem na hora do rastreamento.</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={salvar} disabled={salvando} className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 bg-primary text-white hover:opacity-90 disabled:opacity-50">
+            {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : salvo ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />} {salvo ? 'Salvo' : 'Salvar config'}
+          </button>
+          <button onClick={testar} disabled={testando || !cfg.numeros.length} title={!cfg.numeros.length ? 'Adicione um número primeiro' : 'Envia uma mensagem de teste agora, sem esperar um alerta de verdade'} className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-border text-foreground hover:bg-white/5 transition disabled:opacity-50">
+            {testando ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />} Testar envio
+          </button>
+        </div>
+        {resultadoTeste && (
+          <p className={`text-xs font-semibold flex items-center gap-1.5 ${resultadoTeste.ok ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {resultadoTeste.ok ? <Check className="w-3.5 h-3.5" /> : <TriangleAlert className="w-3.5 h-3.5" />} {resultadoTeste.msg}
+          </p>
+        )}
+        <p className="text-[10px] text-muted-foreground/70">A fadiga (CTR/CPM) e a anomalia de gasto são checadas 1x/dia. O criativo removido do concorrente e novos anúncios saem na hora do rastreamento. "Ligado" só salva a preferência — use "Testar envio" pra confirmar que a mensagem está chegando de verdade.</p>
       </div>
 
       {/* Lista de alertas */}
