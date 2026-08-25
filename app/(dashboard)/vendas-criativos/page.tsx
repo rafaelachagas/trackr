@@ -2,28 +2,17 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
-import { formatInTimeZone, toZonedTime } from 'date-fns-tz'
-import { subDays, startOfMonth, format } from 'date-fns'
-import { formatarMoeda } from '@/lib/utils'
+import { formatarMoeda, extrairCriativo } from '@/lib/utils'
 import { ArrowDown, Trophy, ShoppingCart, TrendingUp, Undo2 } from 'lucide-react'
 import type { CriativoBreak } from '@/app/api/dashboard/vendas-breakdown/route'
-
-const TZ = 'America/Sao_Paulo'
+import SeletorPeriodoVturb, { rangeDoPreset, type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
+import ModalPreviewCriativo from '@/components/dashboard/ModalPreviewCriativo'
 
 type SortKey = 'front' | 'upsell' | 'reembolsoCount'
 const SORTS: { key: SortKey; label: string }[] = [
   { key: 'front', label: 'Mais Front' },
   { key: 'upsell', label: 'Mais Upsell' },
   { key: 'reembolsoCount', label: 'Maior Taxa de Reembolso' },
-]
-
-type Periodo = 'hoje' | '3d' | '7d' | 'mes' | 'global'
-const PERIODOS: { key: Periodo; label: string }[] = [
-  { key: 'hoje', label: 'Hoje' },
-  { key: '3d', label: '3 dias' },
-  { key: '7d', label: '7 dias' },
-  { key: 'mes', label: 'Mês' },
-  { key: 'global', label: 'Filtro global' },
 ]
 
 // Taxas proporcionais às vendas do PRÓPRIO criativo (não ao total).
@@ -34,30 +23,12 @@ const taxaReemb = (c: CriativoBreak) => {
 }
 
 export default function VendasCriativosPage() {
-  const { dateRange, lastUpdate, isPrivate } = useDashboard()
+  const { lastUpdate, isPrivate } = useDashboard()
   const [linhas, setLinhas] = useState<CriativoBreak[]>([])
   const [loading, setLoading] = useState(true)
   const [sortKey, setSortKey] = useState<SortKey>('front')
-  const [periodo, setPeriodo] = useState<Periodo>('7d')
-
-  // Range do período local (ancorado em São Paulo). "global" usa o filtro do topo.
-  const range = useMemo(() => {
-    if (periodo === 'global') {
-      try {
-        return {
-          ini: dateRange.start ? formatInTimeZone(dateRange.start, TZ, 'yyyy-MM-dd') : null,
-          fim: dateRange.end ? formatInTimeZone(dateRange.end, TZ, 'yyyy-MM-dd') : null,
-        }
-      } catch { return { ini: null, fim: null } }
-    }
-    const nowSP = toZonedTime(new Date(), TZ)
-    const fim = format(nowSP, 'yyyy-MM-dd')
-    let ini = fim
-    if (periodo === '3d') ini = format(subDays(nowSP, 2), 'yyyy-MM-dd')
-    else if (periodo === '7d') ini = format(subDays(nowSP, 6), 'yyyy-MM-dd')
-    else if (periodo === 'mes') ini = format(startOfMonth(nowSP), 'yyyy-MM-dd')
-    return { ini, fim }
-  }, [periodo, dateRange])
+  const [range, setRange] = useState<RangePeriodo>(() => rangeDoPreset('Últimos 7 dias'))
+  const [modalCriativo, setModalCriativo] = useState<string | null>(null)
 
   useEffect(() => {
     if (!range.ini || !range.fim) return
@@ -90,21 +61,13 @@ export default function VendasCriativosPage() {
   const taxaReembMedia = (totais.front + totais.upsell) > 0 ? (totais.reemb / (totais.front + totais.upsell)) * 100 : 0
 
   return (
-    <div className="pb-12 space-y-6 max-w-[1200px] mx-auto w-full text-foreground px-4 sm:px-6 lg:px-8">
+    <div className="pt-9 pb-12 space-y-6 max-w-[1200px] mx-auto w-full text-foreground px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 text-primary" />
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Vendas × Criativos</h1>
         </div>
-        {/* Seletor de período */}
-        <div className="flex items-center gap-1 flex-wrap bg-card border border-border rounded-xl p-1">
-          {PERIODOS.map((p) => (
-            <button key={p.key} onClick={() => setPeriodo(p.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${periodo === p.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'}`}>
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <SeletorPeriodoVturb range={range} onChange={setRange} />
       </div>
 
       {/* Totais do período */}
@@ -146,10 +109,12 @@ export default function VendasCriativosPage() {
               <tbody>
                 {ordenadas.map((c, i) => {
                   const shareFront = totais.front > 0 ? (c.front / totais.front) * 100 : 0
+                  const codigo = extrairCriativo(c.criativo)
                   return (
-                    <tr key={c.criativo} className="border-t border-border hover:bg-accent/30">
+                    <tr key={c.criativo} onClick={() => codigo && setModalCriativo(codigo)} className={`border-t border-border hover:bg-accent/30 ${codigo ? 'cursor-pointer' : ''}`}>
                       <td className="px-5 py-3 font-semibold text-foreground">
-                        <span className="text-muted-foreground mr-2 tabular-nums">{i + 1}.</span>{c.criativo}
+                        <span className="text-muted-foreground mr-2 tabular-nums">{i + 1}.</span>
+                        <span className={codigo ? 'hover:underline hover:text-primary transition' : ''}>{c.criativo}</span>
                       </td>
                       <Cell n={priv(c.front)} pct={fmtPct(shareFront)} />
                       <Cell n={priv(c.upsell)} pct={c.front > 0 ? fmtPct(taxaUpsell(c)) : '—'} cor="text-cyan-400" />
@@ -163,6 +128,8 @@ export default function VendasCriativosPage() {
           </div>
         )}
       </div>
+
+      <ModalPreviewCriativo codigo={modalCriativo} onFechar={() => setModalCriativo(null)} />
     </div>
   )
 }
