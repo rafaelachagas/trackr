@@ -26,6 +26,7 @@ import {
   Brain,
   Video,
   MonitorPlay,
+  Filter as FilterIcon,
   Bell,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -41,6 +42,7 @@ const navigation = [
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
   { href: '/vsls', label: 'Análise de VSL', icon: MonitorPlay },
+  { href: '/funil', label: 'Análise de Funil', icon: FilterIcon },
 ]
 
 const dataSources = [

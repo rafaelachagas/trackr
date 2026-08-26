@@ -144,6 +144,7 @@ async function sincronizarMeta(request: NextRequest) {
           existente.impressions += parseInt(insight.impressions) || 0
           existente.clicks += parseInt(insight.clicks) || 0
           existente.lp_views += extrairLpViews(insight)
+          existente.checkouts += extrairCheckouts(insight)
         } else {
           mapaRegistros.set(chave, buildRegistro(insight, orgId, fator))
         }
@@ -167,11 +168,16 @@ async function sincronizarMeta(request: NextRequest) {
         .from('gastos')
         .upsert(registros, { onConflict: 'data,ad_name' })
 
-      // Blindagem: se a coluna lp_views ainda não existe (SQL não rodado), repõe
-      // sem o campo pra não deixar o período apagado. Assim que a coluna existir,
-      // o lp_views passa a preencher sozinho no próximo sync.
+      // Blindagem: se alguma coluna opcional ainda não existe (SQL não rodado),
+      // repõe sem ela pra não deixar o período apagado. Assim que a coluna
+      // existir, passa a preencher sozinha no próximo sync.
+      if (erroUpsert && /checkouts/i.test(erroUpsert.message)) {
+        const semCk = registros.map(({ checkouts, ...r }) => r)
+        const retry = await supabaseAdmin.from('gastos').upsert(semCk, { onConflict: 'data,ad_name' })
+        erroUpsert = retry.error
+      }
       if (erroUpsert && /lp_views/i.test(erroUpsert.message)) {
-        const semLp = registros.map(({ lp_views, ...r }) => r)
+        const semLp = registros.map(({ lp_views, checkouts, ...r }) => r)
         const retry = await supabaseAdmin.from('gastos').upsert(semLp, { onConflict: 'data,ad_name' })
         erroUpsert = retry.error
       }
@@ -241,6 +247,14 @@ function extrairLpViews(insight: MetaAdInsight): number {
   return a ? parseInt(a.value) || 0 : 0
 }
 
+// Initiate Checkout (pixel) — coluna "Checkouts" da Análise de Funil. Prefere o
+// action_type específico; omni_initiated_checkout é o agregado (fallback).
+function extrairCheckouts(insight: MetaAdInsight): number {
+  const a = insight.actions?.find((x) => x.action_type === 'initiate_checkout')
+    ?? insight.actions?.find((x) => x.action_type === 'omni_initiated_checkout')
+  return a ? parseInt(a.value) || 0 : 0
+}
+
 function buildRegistro(insight: MetaAdInsight, orgId: string, fator = 1) {
   return {
     org_id: orgId,
@@ -257,6 +271,7 @@ function buildRegistro(insight: MetaAdInsight, orgId: string, fator = 1) {
     clicks: parseInt(insight.clicks) || 0,
     cpc: insight.cpc ? parseFloat(insight.cpc) * fator : null,
     lp_views: extrairLpViews(insight),
+    checkouts: extrairCheckouts(insight),
   }
 }
 

@@ -8,6 +8,7 @@ import {
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
   Wrench, Binoculars, Video, MonitorPlay, Brain, FolderSearch, Wand2, Bell,
+  Filter as FilterIcon,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -21,6 +22,7 @@ const navigation = [
   { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
   { href: '/ad-analysis', label: 'Analisar Criativos', icon: Film },
   { href: '/vsls', label: 'Análise de VSL', icon: MonitorPlay },
+  { href: '/funil', label: 'Análise de Funil', icon: FilterIcon },
 ]
 
 const dataSources = [
