@@ -14,6 +14,7 @@ const TZ = 'America/Sao_Paulo'
 export interface DiaFunil {
   data: string
   investimento: number
+  imposto: number
   impressoes: number
   cliques: number
   lpViews: number
@@ -82,12 +83,35 @@ export async function GET(req: NextRequest) {
       gastos = await fetchAll<GastoRow>(buildGastos('data, valor_gasto, impressions, clicks, lp_views'))
     }
 
+    // Imposto diário da Meta (mapa salvo pelo sync) — mesma fonte da Visão
+    // Geral. Com filtro de campanhas, entra proporcional ao gasto do funil no
+    // dia (o imposto é da conta inteira, não por campanha).
+    let impostoPorDia: Record<string, number> = {}
+    try {
+      const { data: cfgImp } = await supabaseAdmin
+        .from('configuracoes').select('valor').eq('chave', 'meta_imposto_diario').maybeSingle()
+      impostoPorDia = JSON.parse(cfgImp?.valor || '{}')
+    } catch {}
+    let gastoTotalPorDia: Map<string, number> | null = null
+    if (campanhas.length) {
+      gastoTotalPorDia = new Map()
+      const todos = await fetchAll<{ data: string; valor_gasto: number }>((from, to) =>
+        supabaseAdmin.from('gastos').select('data, valor_gasto')
+          .gte('data', dInicio).lte('data', dFim).not('ad_id', 'is', null).range(from, to)
+      )
+      for (const g of todos) gastoTotalPorDia.set(g.data, (gastoTotalPorDia.get(g.data) ?? 0) + (Number(g.valor_gasto) || 0))
+    }
+
     // ---------- Vendas (data é timestamp — bordas do dia em SP) ----------
+    // Exclui as manuais (transaction_id 'manual_%') — mesma regra da Visão
+    // Geral (app/actions/dashboard.ts), senão o faturamento das duas telas
+    // diverge e vira caça-fantasma.
     const { desde, ate } = spRangeISO(dInicio, dFim)
     const vendas = await fetchAll<VendaRow>((from, to) =>
       supabaseAdmin.from('vendas')
         .select('produto, valor, valor_liquido, data, status')
         .in('status', ['approved', 'refunded', 'chargeback'])
+        .not('transaction_id', 'like', 'manual_%')
         .gte('data', desde).lte('data', ate)
         .range(from, to)
     )
@@ -115,7 +139,7 @@ export async function GET(req: NextRequest) {
       let d = dias.get(data)
       if (!d) {
         d = {
-          data, investimento: 0, impressoes: 0, cliques: 0, lpViews: 0, checkouts: 0,
+          data, investimento: 0, imposto: 0, impressoes: 0, cliques: 0, lpViews: 0, checkouts: 0,
           vendasFront: 0, fatFront: 0, fatFunil: 0, vendasTotais: 0,
           orderbumps: Object.fromEntries(orderbumps.map((o) => [o, { qtd: 0, fat: 0 }])),
           upsells: Object.fromEntries(upsells.map((u) => [u, { qtd: 0, fat: 0 }])),
@@ -140,6 +164,17 @@ export async function GET(req: NextRequest) {
       d.cliques += Number(g.clicks) || 0
       d.lpViews += Number(g.lp_views) || 0
       d.checkouts += Number(g.checkouts) || 0
+    }
+
+    for (const d of dias.values()) {
+      const impostoDia = Number(impostoPorDia[d.data]) || 0
+      if (!impostoDia) continue
+      if (gastoTotalPorDia) {
+        const total = gastoTotalPorDia.get(d.data) ?? 0
+        d.imposto = total > 0 ? impostoDia * (d.investimento / total) : 0
+      } else {
+        d.imposto = impostoDia
+      }
     }
 
     for (const v of vendas) {

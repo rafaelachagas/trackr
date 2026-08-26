@@ -75,7 +75,7 @@ export default function FunilPage() {
 
   const tot = useMemo(() => {
     const t = {
-      investimento: 0, impressoes: 0, cliques: 0, lpViews: 0, checkouts: 0,
+      investimento: 0, imposto: 0, impressoes: 0, cliques: 0, lpViews: 0, checkouts: 0,
       vendasFront: 0, fatFront: 0, fatFunil: 0, vendasTotais: 0,
       reembolsos: 0, reembolsoValor: 0,
       obQtd: 0, obFat: 0, upQtd: 0, upFat: 0,
@@ -83,7 +83,7 @@ export default function FunilPage() {
       porUpsell: {} as Record<string, { qtd: number; fat: number }>,
     }
     for (const d of dias) {
-      t.investimento += d.investimento; t.impressoes += d.impressoes; t.cliques += d.cliques
+      t.investimento += d.investimento; t.imposto += d.imposto ?? 0; t.impressoes += d.impressoes; t.cliques += d.cliques
       t.lpViews += d.lpViews; t.checkouts += d.checkouts
       t.vendasFront += d.vendasFront; t.fatFront += d.fatFront; t.fatFunil += d.fatFunil; t.vendasTotais += d.vendasTotais
       t.reembolsos += d.reembolsos; t.reembolsoValor += d.reembolsoValor
@@ -105,7 +105,8 @@ export default function FunilPage() {
     return {
       cpa: div(tot.investimento, tot.vendasFront),
       roi: div(tot.fatFunil, tot.investimento),
-      lucro: tot.fatFunil - tot.investimento,
+      // Mesma fórmula do Lucro da Visão Geral: faturamento − gasto − imposto.
+      lucro: tot.fatFunil - tot.investimento - tot.imposto,
       aov: div(tot.fatFunil, tot.vendasTotais),
       ctr: tot.impressoes > 0 ? (tot.cliques / tot.impressoes) * 100 : null,
       cpm: tot.impressoes > 0 ? (tot.investimento / tot.impressoes) * 1000 : null,
@@ -210,7 +211,7 @@ export default function FunilPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <CardResumo label="Investimento" valor={priv(brl(tot.investimento))} cls={privCls} cor="text-rose-400" />
             <CardResumo label="Fat. Total do Funil" valor={priv(brl(tot.fatFunil))} cls={privCls} cor="text-emerald-400" sub={`front ${pct(derivados.proporcaoFrontFunil)}`} />
-            <CardResumo label="Lucro" valor={priv(brl(derivados.lucro))} cls={privCls} cor={derivados.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'} />
+            <CardResumo label="Lucro" valor={priv(brl(derivados.lucro))} cls={privCls} cor={derivados.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'} sub={tot.imposto > 0 ? `já desconta imposto` : undefined} />
             <CardResumo label="ROI" valor={isPrivate ? '••' : derivados.roi == null ? '—' : `${derivados.roi.toFixed(2).replace('.', ',')}x`} cls={privCls} />
             <CardResumo label="CPA do Funil" valor={priv(derivados.cpa != null ? brl(derivados.cpa) : '—')} cls={privCls} />
             <CardResumo label="AOV" valor={priv(derivados.aov != null ? brl(derivados.aov) : '—')} cls={privCls} sub={`${num(tot.vendasTotais)} vendas`} />
@@ -375,7 +376,7 @@ function LinhaDia({ dia, tot, isPrivate, checkoutsOk, obsOk, funilId }: {
 
   const cpa = div(d.investimento, d.vendasFront)
   const roi = div(d.fatFunil, d.investimento)
-  const lucro = d.fatFunil - d.investimento
+  const lucro = d.fatFunil - d.investimento - (d.imposto ?? 0)
   const aov = div(d.fatFunil, d.vendasTotais)
   const cpm = d.impressoes > 0 ? (d.investimento / d.impressoes) * 1000 : null
   const ctr = d.impressoes > 0 ? (d.cliques / d.impressoes) * 100 : null
