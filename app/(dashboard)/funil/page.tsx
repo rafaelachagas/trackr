@@ -29,6 +29,7 @@ export default function FunilPage() {
   const [precisaSql, setPrecisaSql] = useState(false)
   const [funilId, setFunilId] = useState<string | null>(null)
   const [range, setRange] = useState<RangePeriodo>(() => rangeDoPreset('Últimos 7 dias'))
+  const [fonte, setFonte] = useState<'tudo' | 'pago' | 'organico'>('tudo')
   const [dias, setDias] = useState<DiaFunil[]>([])
   const [checkoutsOk, setCheckoutsOk] = useState(true)
   const [obsOk, setObsOk] = useState(true)
@@ -53,7 +54,7 @@ export default function FunilPage() {
     if (!funilId) { setDias([]); setCarregando(false); return }
     setCarregando(true)
     setIaTexto(null); setIaErro(null)
-    fetch(`/api/funil/diario?funil_id=${funilId}&d_inicio=${range.ini}&d_fim=${range.fim}`, { cache: 'no-store' })
+    fetch(`/api/funil/diario?funil_id=${funilId}&d_inicio=${range.ini}&d_fim=${range.fim}&fonte=${fonte}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((j) => {
         if (j.error) { setDias([]); return }
@@ -63,7 +64,7 @@ export default function FunilPage() {
       })
       .catch(() => setDias([]))
       .finally(() => setCarregando(false))
-  }, [funilId, range.ini, range.fim])
+  }, [funilId, range.ini, range.fim, fonte])
 
   // VTurb da VSL vinculada (uma chamada pro período inteiro).
   useEffect(() => {
@@ -77,7 +78,7 @@ export default function FunilPage() {
     const t = {
       investimento: 0, imposto: 0, impressoes: 0, cliques: 0, lpViews: 0, checkouts: 0,
       vendasFront: 0, fatFront: 0, fatFunil: 0, vendasTotais: 0,
-      reembolsos: 0, reembolsoValor: 0,
+      reembolsos: 0, reembolsoValor: 0, pixAprovados: 0, pixExpirados: 0,
       obQtd: 0, obFat: 0, upQtd: 0, upFat: 0,
       porOrderbump: {} as Record<string, { qtd: number; fat: number }>,
       porUpsell: {} as Record<string, { qtd: number; fat: number }>,
@@ -87,6 +88,7 @@ export default function FunilPage() {
       t.lpViews += d.lpViews; t.checkouts += d.checkouts
       t.vendasFront += d.vendasFront; t.fatFront += d.fatFront; t.fatFunil += d.fatFunil; t.vendasTotais += d.vendasTotais
       t.reembolsos += d.reembolsos; t.reembolsoValor += d.reembolsoValor
+      t.pixAprovados += d.pixAprovados ?? 0; t.pixExpirados += d.pixExpirados ?? 0
       for (const [nome, o] of Object.entries(d.orderbumps)) {
         const p = t.porOrderbump[nome] ?? (t.porOrderbump[nome] = { qtd: 0, fat: 0 })
         p.qtd += o.qtd; p.fat += o.fat; t.obQtd += o.qtd; t.obFat += o.fat
@@ -192,6 +194,16 @@ export default function FunilPage() {
             </div>
           )}
           <button onClick={() => setFormAberto('novo')} className="h-11 px-4 rounded-xl bg-primary text-white text-[15px] font-semibold flex items-center gap-2 hover:opacity-90 transition"><Plus className="w-4 h-4" /> Novo funil</button>
+          {funis.length > 0 && (
+            <div className="flex items-center h-11 rounded-xl border border-border bg-card p-1 gap-0.5" title="Filtra as VENDAS pela origem (atribuição sck last-click). O tráfego/gasto da Meta continua o mesmo.">
+              {([['tudo', 'Tudo'], ['pago', 'Tráfego pago'], ['organico', 'Orgânico']] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setFonte(k)}
+                  className={`h-full px-3 rounded-lg text-[13px] font-semibold transition ${fonte === k ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {funis.length > 0 && <SeletorPeriodoVturb range={range} onChange={setRange} />}
         </div>
       </div>
@@ -229,6 +241,7 @@ export default function FunilPage() {
               <Etapa label="Checkouts" valor={checkoutsOk ? num(tot.checkouts) : '—'} sub={checkoutsOk ? `passagem ${pct(derivados.passagemCheckout)}` : 'rode o SQL + sync'} />
               <Etapa label="Vendas Front" valor={isPrivate ? '••' : num(tot.vendasFront)} sub={`IC→venda ${pct(derivados.checkoutVenda)}`} />
               <Etapa label="Reembolsos" valor={isPrivate ? '••' : num(tot.reembolsos)} sub={`taxa ${pct(derivados.taxaReembolso)}`} />
+              <Etapa label="Conversão de PIX" valor={pct(div((tot.pixAprovados) * 100, tot.pixAprovados + tot.pixExpirados))} sub={`${num(tot.pixAprovados + tot.pixExpirados)} gerados · ${isPrivate ? '••' : num(tot.pixAprovados)} pagos`} />
             </div>
           </div>
 

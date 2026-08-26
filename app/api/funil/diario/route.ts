@@ -27,10 +27,12 @@ export interface DiaFunil {
   upsells: Record<string, { qtd: number; fat: number }>
   reembolsos: number
   reembolsoValor: number
+  pixAprovados: number
+  pixExpirados: number
   obs: string
 }
 
-type VendaRow = { produto: string | null; valor: number; valor_liquido: number | null; data: string; status: string }
+type VendaRow = { produto: string | null; valor: number; valor_liquido: number | null; data: string; status: string; criativo: string | null; metodo_pagamento?: string | null }
 type GastoRow = { data: string; valor_gasto: number; impressions: number | null; clicks: number | null; lp_views: number | null; checkouts?: number | null }
 
 async function fetchAll<T>(build: (from: number, to: number) => any): Promise<T[]> {
@@ -106,15 +108,21 @@ export async function GET(req: NextRequest) {
     // Exclui as manuais (transaction_id 'manual_%') — mesma regra da Visão
     // Geral (app/actions/dashboard.ts), senão o faturamento das duas telas
     // diverge e vira caça-fantasma.
+    // Fonte: tudo (padrão) | pago (criativo != null, atribuição sck last-click)
+    // | organico (criativo null). Filtra só as VENDAS — o tráfego/gasto da Meta
+    // continua o mesmo, é o funil de anúncios de qualquer forma.
+    const fonte = sp.get('fonte') ?? 'tudo'
     const { desde, ate } = spRangeISO(dInicio, dFim)
-    const vendas = await fetchAll<VendaRow>((from, to) =>
-      supabaseAdmin.from('vendas')
-        .select('produto, valor, valor_liquido, data, status')
-        .in('status', ['approved', 'refunded', 'chargeback'])
+    const vendas = await fetchAll<VendaRow>((from, to) => {
+      let q = supabaseAdmin.from('vendas')
+        .select('produto, valor, valor_liquido, data, status, criativo, metodo_pagamento')
+        .in('status', ['approved', 'refunded', 'chargeback', 'expired'])
         .not('transaction_id', 'like', 'manual_%')
         .gte('data', desde).lte('data', ate)
-        .range(from, to)
-    )
+      if (fonte === 'pago') q = q.not('criativo', 'is', null)
+      else if (fonte === 'organico') q = q.is('criativo', null)
+      return q.range(from, to)
+    })
 
     // Razão líquido/bruto global do período (imputação pras linhas sem líquido).
     let liq = 0, bruto = 0
@@ -143,7 +151,7 @@ export async function GET(req: NextRequest) {
           vendasFront: 0, fatFront: 0, fatFunil: 0, vendasTotais: 0,
           orderbumps: Object.fromEntries(orderbumps.map((o) => [o, { qtd: 0, fat: 0 }])),
           upsells: Object.fromEntries(upsells.map((u) => [u, { qtd: 0, fat: 0 }])),
-          reembolsos: 0, reembolsoValor: 0, obs: obsPorDia[data] ?? '',
+          reembolsos: 0, reembolsoValor: 0, pixAprovados: 0, pixExpirados: 0, obs: obsPorDia[data] ?? '',
         }
         dias.set(data, d)
       }
@@ -181,14 +189,22 @@ export async function GET(req: NextRequest) {
       const diaSP = formatInTimeZone(new Date(v.data), TZ, 'yyyy-MM-dd')
       if (diaSP < dInicio || diaSP > dFim) continue
       const d = diaDe(diaSP)
+      const doFunil = v.produto === funil.produto_front || orderbumps.includes(v.produto ?? '') || upsells.includes(v.produto ?? '')
+      const ehPix = v.metodo_pagamento === 'Pix'
+      if (v.status === 'expired') {
+        // PIX gerado que expirou sem pagar — denominador da conversão de PIX.
+        if (doFunil && ehPix) d.pixExpirados += 1
+        continue
+      }
       if (v.status !== 'approved') {
         // Reembolso/chargeback conta no funil só se o produto pertence a ele.
-        if (v.produto === funil.produto_front || orderbumps.includes(v.produto ?? '') || upsells.includes(v.produto ?? '')) {
+        if (doFunil) {
           d.reembolsos += 1
           d.reembolsoValor += liquido(v)
         }
         continue
       }
+      if (doFunil && ehPix) d.pixAprovados += 1
       if (v.produto === funil.produto_front) {
         d.vendasFront += 1
         d.fatFront += liquido(v)
