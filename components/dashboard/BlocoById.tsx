@@ -88,8 +88,8 @@ export default function BlocoById({ id, metrics, chartData, criativos }: {
         <MetricCard
           titulo="CPA médio"
           valor={`R$ ${metrics.cpaMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          subtitulo={`${metrics.vendasPagas} venda${metrics.vendasPagas !== 1 ? 's' : ''} de tráfego pago`}
-          tooltip="Custo por aquisição. CPA = Gastos com anúncios ÷ vendas de TRÁFEGO PAGO no período — não conta venda orgânica (sem criativo/anúncio de origem), senão o CPA sairia artificialmente mais barato."
+          subtitulo={`${metrics.vendasPagas} venda${metrics.vendasPagas !== 1 ? 's' : ''} front de tráfego pago`}
+          tooltip="Custo por aquisição. CPA = Gastos com anúncios ÷ vendas FRONT de tráfego pago no período — não conta venda orgânica (sem criativo de origem) nem upsell (é o mesmo cliente comprando de novo, não uma aquisição nova)."
           alinharTooltipDireita
         />
       )

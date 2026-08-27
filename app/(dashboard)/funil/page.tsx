@@ -35,6 +35,8 @@ export default function FunilPage() {
   const [obsOk, setObsOk] = useState(true)
   const [carregando, setCarregando] = useState(true)
   const [vturb, setVturb] = useState<any>(null)
+  const [aprovacao, setAprovacao] = useState<any>(null)
+  const [aprovacaoCarregando, setAprovacaoCarregando] = useState(false)
   const [formAberto, setFormAberto] = useState<null | Funil | 'novo'>(null)
   const [iaTexto, setIaTexto] = useState<string | null>(null)
   const [iaErro, setIaErro] = useState<string | null>(null)
@@ -65,6 +67,17 @@ export default function FunilPage() {
       .catch(() => setDias([]))
       .finally(() => setCarregando(false))
   }, [funilId, range.ini, range.fim, fonte])
+
+  // % de aprovação de pagamento — via API da Hotmart (o webhook não recebe
+  // cartão recusado; a API lista as transações CANCELLED/EXPIRED).
+  useEffect(() => {
+    setAprovacao(null)
+    if (!funilId) return
+    setAprovacaoCarregando(true)
+    fetch(`/api/funil/aprovacao?funil_id=${funilId}&d_inicio=${range.ini}&d_fim=${range.fim}`, { cache: 'no-store' })
+      .then((r) => r.json()).then((j) => { if (!j.error) setAprovacao(j) }).catch(() => {})
+      .finally(() => setAprovacaoCarregando(false))
+  }, [funilId, range.ini, range.fim])
 
   // VTurb da VSL vinculada (uma chamada pro período inteiro).
   useEffect(() => {
@@ -241,7 +254,16 @@ export default function FunilPage() {
               <Etapa label="Checkouts" valor={checkoutsOk ? num(tot.checkouts) : '—'} sub={checkoutsOk ? `passagem ${pct(derivados.passagemCheckout)}` : 'rode o SQL + sync'} />
               <Etapa label="Vendas Front" valor={isPrivate ? '••' : num(tot.vendasFront)} sub={`IC→venda ${pct(derivados.checkoutVenda)}`} />
               <Etapa label="Reembolsos" valor={isPrivate ? '••' : num(tot.reembolsos)} sub={`taxa ${pct(derivados.taxaReembolso)}`} />
-              <Etapa label="Conversão de PIX" valor={pct(div((tot.pixAprovados) * 100, tot.pixAprovados + tot.pixExpirados))} sub={`${num(tot.pixAprovados + tot.pixExpirados)} gerados · ${isPrivate ? '••' : num(tot.pixAprovados)} pagos`} />
+              <Etapa
+                label="Aprovação Cartão"
+                valor={aprovacaoCarregando ? '...' : pct(aprovacao?.cartao?.taxa ?? null)}
+                sub={aprovacao?.cartao ? `${num(aprovacao.cartao.aprovadas)} aprovadas · ${num(aprovacao.cartao.falhas)} recusadas` : 'via API Hotmart'}
+              />
+              <Etapa
+                label="Aprovação PIX"
+                valor={aprovacaoCarregando ? '...' : pct(aprovacao?.pix?.taxa ?? null)}
+                sub={aprovacao?.pix ? `${num(aprovacao.pix.aprovadas)} pagos · ${num(aprovacao.pix.falhas)} expirados` : 'gerado → pago'}
+              />
             </div>
           </div>
 
