@@ -6,7 +6,8 @@
 // e relatório IA apontando gargalos e projeções.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Filter, Plus, Pencil, Trash2, Loader2, Sparkles, X, ChevronDown } from 'lucide-react'
+import { Filter, Plus, Pencil, Trash2, Loader2, Sparkles, X, ChevronDown, Download } from 'lucide-react'
+import { baixarRelatorioFunilHTML } from '@/lib/reportFunil'
 import { useDashboard } from '@/context/DashboardContext'
 import SeletorPeriodoVturb, { rangeDoPreset, type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
 import {
@@ -167,6 +168,42 @@ export default function FunilPage() {
     if (r.success) setIaTexto(r.texto ?? null); else setIaErro(r.error ?? 'Falha ao gerar.')
   }
 
+  function baixarHtml() {
+    if (!funil) return
+    const fonteLabel = fonte === 'tudo' ? 'Tudo' : fonte === 'pago' ? 'Tráfego pago' : 'Orgânico'
+    baixarRelatorioFunilHTML({
+      nome: funil.nome,
+      periodo: `${range.ini.split('-').reverse().join('/')} – ${range.fim.split('-').reverse().join('/')}`,
+      fonte: fonteLabel,
+      data: new Date().toLocaleDateString('pt-BR'),
+      cards: [
+        { label: 'Investimento', valor: brl(tot.investimento) },
+        { label: 'Fat. Total do Funil', valor: brl(tot.fatFunil), sub: `front ${pct(derivados.proporcaoFrontFunil)}` },
+        { label: 'Lucro', valor: brl(derivados.lucro), sub: 'já desconta imposto' },
+        { label: 'ROI', valor: derivados.roi == null ? '—' : `${derivados.roi.toFixed(2).replace('.', ',')}x` },
+        { label: 'CPA do Funil', valor: derivados.cpa != null ? brl(derivados.cpa) : '—' },
+        { label: 'AOV', valor: derivados.aov != null ? brl(derivados.aov) : '—', sub: `${num(tot.vendasTotais)} vendas` },
+      ],
+      etapas: [
+        { label: 'Impressões', valor: num(tot.impressoes), sub: `CPM ${derivados.cpm != null ? brl(derivados.cpm) : '—'}` },
+        { label: 'Cliques', valor: num(tot.cliques), sub: `CTR ${pct(derivados.ctr)}` },
+        { label: 'LP Views', valor: num(tot.lpViews), sub: `carreg. ${pct(derivados.taxaCarregamento)}` },
+        ...(funil.vsl_id ? [
+          { label: 'Play Rate', valor: pct(derivados.playRate), sub: `ret. pitch ${pct(derivados.retencaoPitch)}` },
+          { label: 'Audiência Pitch', valor: derivados.audienciaPitch != null ? num(Math.round(derivados.audienciaPitch)) : '—', sub: `pitch→IC ${pct(derivados.pitchCheckout)}` },
+        ] : []),
+        { label: 'Checkouts', valor: num(tot.checkouts), sub: `passagem ${pct(derivados.passagemCheckout)}` },
+        { label: 'Vendas Front', valor: num(tot.vendasFront), sub: `IC→venda ${pct(derivados.checkoutVenda)}` },
+        { label: 'Reembolsos', valor: num(tot.reembolsos), sub: `taxa ${pct(derivados.taxaReembolso)}` },
+        ...(aprovacao?.cartao ? [{ label: 'Aprovação Cartão', valor: pct(aprovacao.cartao.taxa), sub: `${num(aprovacao.cartao.aprovadas)} aprovadas · ${num(aprovacao.cartao.falhas)} recusadas` }] : []),
+        ...(aprovacao?.pix ? [{ label: 'Aprovação PIX', valor: pct(aprovacao.pix.taxa), sub: `${num(aprovacao.pix.aprovadas)} pagos · ${num(aprovacao.pix.falhas)} expirados` }] : []),
+      ],
+      orderbumps: Object.entries(tot.porOrderbump).map(([nome, o]: [string, any]) => ({ nome, qtd: o.qtd, fat: brl(o.fat), conversao: pct(tot.vendasFront > 0 ? (o.qtd / tot.vendasFront) * 100 : null) })),
+      upsells: Object.entries(tot.porUpsell).map(([nome, u]: [string, any]) => ({ nome, qtd: u.qtd, fat: brl(u.fat), conversao: pct(tot.vendasFront > 0 ? (u.qtd / tot.vendasFront) * 100 : null) })),
+      iaHtml: iaTexto,
+    })
+  }
+
   const priv = (s: string) => (isPrivate ? '••••' : s)
   const privCls = isPrivate ? 'blur-sm select-none' : ''
 
@@ -285,8 +322,14 @@ export default function FunilPage() {
           <div className="rounded-2xl bg-card border border-border p-5">
             <div className="flex items-center gap-3 flex-wrap">
               <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Relatório IA</p>
+              {!carregando && (
+                <button onClick={baixarHtml} title={iaTexto ? 'Baixa o relatório completo em HTML (números + diagnóstico da IA)' : 'Baixa o relatório em HTML só com os números — gere o relatório IA antes pra incluir o diagnóstico'}
+                  className="ml-auto px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-border text-foreground hover:bg-white/5 transition">
+                  <Download className="w-4 h-4" /> Baixar HTML
+                </button>
+              )}
               <button onClick={gerarIA} disabled={iaCarregando || carregando}
-                className="ml-auto px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50">
+                className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50">
                 {iaCarregando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 {iaCarregando ? 'Analisando o funil...' : iaTexto ? 'Gerar de novo' : 'Gerar relatório'}
               </button>
