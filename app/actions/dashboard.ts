@@ -135,10 +135,10 @@ export async function getDashboardData(product: string, startDate: string, endDa
     // fora, senão o CPA sairia artificialmente mais barato sem ter custo nenhum.
     const totalImpressions = gastos.reduce((acc, g) => acc + (Number(g.impressions) || 0), 0)
     const cpmMedio = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0
-    // Só venda FRONT conta no CPA — upsell não é aquisição nova (é o mesmo
-    // cliente comprando de novo); contar ele junto deixava o CPA ~27% mais
-    // barato do que o custo real de adquirir um cliente.
-    const vendasPagas = vendas.filter((v: any) => !!v.criativo && v.tipo === 'front').length
+    // CPA médio olha o funil como um todo: front + upsell de tráfego pago
+    // (decisão de produto — confirmada em 27/08/26; o CPA só de front existe
+    // na Análise de Funil como "CPA do Funil").
+    const vendasPagas = vendas.filter((v: any) => !!v.criativo).length
     const cpaMedio = vendasPagas > 0 ? totalSpend / vendasPagas : 0
 
     // Reembolsos/estornos: valor líquido devolvido + taxa sobre a base de vendas

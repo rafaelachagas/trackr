@@ -37,6 +37,7 @@ export default function FunilPage() {
   const [vturb, setVturb] = useState<any>(null)
   const [aprovacao, setAprovacao] = useState<any>(null)
   const [aprovacaoCarregando, setAprovacaoCarregando] = useState(false)
+  const [aprovacaoErro, setAprovacaoErro] = useState<string | null>(null)
   const [formAberto, setFormAberto] = useState<null | Funil | 'novo'>(null)
   const [iaTexto, setIaTexto] = useState<string | null>(null)
   const [iaErro, setIaErro] = useState<string | null>(null)
@@ -71,11 +72,12 @@ export default function FunilPage() {
   // % de aprovação de pagamento — via API da Hotmart (o webhook não recebe
   // cartão recusado; a API lista as transações CANCELLED/EXPIRED).
   useEffect(() => {
-    setAprovacao(null)
+    setAprovacao(null); setAprovacaoErro(null)
     if (!funilId) return
     setAprovacaoCarregando(true)
     fetch(`/api/funil/aprovacao?funil_id=${funilId}&d_inicio=${range.ini}&d_fim=${range.fim}`, { cache: 'no-store' })
-      .then((r) => r.json()).then((j) => { if (!j.error) setAprovacao(j) }).catch(() => {})
+      .then((r) => r.json()).then((j) => { if (j.error) setAprovacaoErro(j.error); else setAprovacao(j) })
+      .catch(() => setAprovacaoErro('Falha ao consultar a Hotmart.'))
       .finally(() => setAprovacaoCarregando(false))
   }, [funilId, range.ini, range.fim])
 
@@ -257,12 +259,12 @@ export default function FunilPage() {
               <Etapa
                 label="Aprovação Cartão"
                 valor={aprovacaoCarregando ? '...' : pct(aprovacao?.cartao?.taxa ?? null)}
-                sub={aprovacao?.cartao ? `${num(aprovacao.cartao.aprovadas)} aprovadas · ${num(aprovacao.cartao.falhas)} recusadas` : 'via API Hotmart'}
+                sub={aprovacaoErro ? aprovacaoErro : aprovacao?.cartao ? `${num(aprovacao.cartao.aprovadas)} aprovadas · ${num(aprovacao.cartao.falhas)} recusadas` : 'via API Hotmart'}
               />
               <Etapa
                 label="Aprovação PIX"
                 valor={aprovacaoCarregando ? '...' : pct(aprovacao?.pix?.taxa ?? null)}
-                sub={aprovacao?.pix ? `${num(aprovacao.pix.aprovadas)} pagos · ${num(aprovacao.pix.falhas)} expirados` : 'gerado → pago'}
+                sub={aprovacaoErro ? aprovacaoErro : aprovacao?.pix ? `${num(aprovacao.pix.aprovadas)} pagos · ${num(aprovacao.pix.falhas)} expirados` : 'gerado → pago'}
               />
             </div>
           </div>

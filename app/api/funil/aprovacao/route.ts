@@ -10,7 +10,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 // Boleto:  idem PIX.
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300
 
 const TOKEN_URL = 'https://api-sec-vlc.hotmart.com/security/oauth/token'
 const SALES_URL = 'https://developers.hotmart.com/payments/api/v1/sales/history'
@@ -75,16 +75,36 @@ export async function GET(req: NextRequest) {
       { status: 'EXPIRED', destino: 'falhas' },
     ]
 
+    // Mesmo padrão da reconciliação de SCK (que já roda na Vercel sem tomar
+    // bloqueio): max_results=100 e retry em 429/5xx — o WAF da Hotmart às
+    // vezes recusa a 1ª tentativa vinda de IP de datacenter.
+    const erros: string[] = []
+    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
+    async function fetchPagina(url: string): Promise<Response | null> {
+      for (let tent = 0; tent < 4; tent++) {
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...BROWSER_HEADERS } })
+        if (r.ok) return r
+        if (r.status !== 429 && r.status < 500) {
+          const body = await r.text().catch(() => '')
+          erros.push(`${r.status}${body ? ': ' + body.slice(0, 120) : ''}`)
+          return null
+        }
+        await sleep(800 * (tent + 1))
+        if (tent === 3) erros.push(`${r.status} (após retries)`)
+      }
+      return null
+    }
+
     for (const { status, destino } of consultas) {
       let pageToken: string | null = null
-      for (let page = 0; page < 40; page++) {
+      for (let page = 0; page < 120; page++) {
         const p = new URLSearchParams({
           start_date: String(start), end_date: String(end),
-          transaction_status: status, max_results: '500',
+          transaction_status: status, max_results: '100',
         })
         if (pageToken) p.set('page_token', pageToken)
-        const r = await fetch(`${SALES_URL}?${p}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...BROWSER_HEADERS } })
-        if (!r.ok) break
+        const r = await fetchPagina(`${SALES_URL}?${p}`)
+        if (!r) break
         const j = await r.json()
         for (const it of j.items ?? []) {
           const nomeProduto = it.product?.name
@@ -96,6 +116,13 @@ export async function GET(req: NextRequest) {
         pageToken = j.page_info?.next_page_token ?? null
         if (!pageToken) break
       }
+    }
+
+    // Se TUDO falhou (nenhuma transação vista e houve erro upstream), devolve
+    // erro em vez de zeros — zeros silenciosos parecem "0% de aprovação".
+    const nadaVisto = Object.values(grupos).every((g) => g.aprovadas + g.falhas === 0)
+    if (nadaVisto && erros.length) {
+      return NextResponse.json({ error: `Hotmart recusou a consulta (${erros[0]})` }, { status: 502 })
     }
 
     const taxa = (c: Contagem) => (c.aprovadas + c.falhas > 0 ? (c.aprovadas / (c.aprovadas + c.falhas)) * 100 : null)
