@@ -172,13 +172,28 @@ Orderbumps: ${input.orderbumps.length ? input.orderbumps.map((o) => `${o.nome}: 
 Upsells: ${input.upsells.length ? input.upsells.map((u) => `${u.nome}: ${u.qtd} vendas, ${brl(u.faturamento)}, conversão ${pct(u.conversao)}`).join(' | ') : 'nenhum cadastrado'}.
 Financeiro: investimento ${brl(input.investimento)}, faturamento front ${brl(input.faturamentoFront)}, faturamento total do funil ${brl(input.faturamentoFunil)}, CPA ${input.cpa != null ? brl(input.cpa) : '—'}, ROI ${num(input.roi)}, lucro ${brl(input.lucro)}, AOV ${input.aov != null ? brl(input.aov) : '—'}, ${num(input.reembolsos)} reembolsos (taxa ${pct(input.taxaReembolso)}).
 
-ESCREVA (em português do Brasil, texto corrido com parágrafos curtos, sem markdown, sem tabelas):
-1. Diagnóstico: qual etapa do funil é o maior gargalo hoje e por quê (compare as taxas entre si; benchmarks de VSL no Brasil: CTR 1-2% ok, passagem pro checkout 2-5% da LP, checkout→venda 20-40%, play rate 50-70%, retenção ao pitch 15-30%).
-2. As 2-3 alavancas mais promissoras em ordem de prioridade, e pra cada uma: se melhorar X% (use um número realista), quanto isso adicionaria de faturamento no período, mantendo o investimento fixo — mostre a conta de forma simples.
-3. Uma observação sobre orderbumps/upsell (se os dados existirem): qual está carregando o funil e qual está fraco.
-Máximo ~350 palavras.`
+ESCREVA em português do Brasil, como um FRAGMENTO DE HTML (sem <html>/<head>/<body>, sem markdown, sem cercas de código) usando SOMENTE as tags <h3>, <p>, <ul>, <li>, <b>:
+1. <h3>Diagnóstico</h3> — qual etapa do funil é o maior gargalo hoje e por quê (compare as taxas entre si; benchmarks de VSL no Brasil: CTR 1-2% ok, passagem pro checkout 2-5% da LP, checkout→venda 20-40%, play rate 50-70%, retenção ao pitch 15-30%).
+2. <h3>Alavancas</h3> — as 2-3 melhorias mais promissoras em ordem de prioridade (como <ul>), e pra cada uma: se melhorar X% (número realista), quanto isso adicionaria de faturamento no período, mantendo o investimento fixo — mostre a conta de forma simples e destaque os valores com <b>.
+3. <h3>Orderbumps e Upsell</h3> — (se os dados existirem) qual está carregando o funil e qual está fraco.
+Máximo ~400 palavras. Comece direto no diagnóstico, sem saudação nem introdução.`
 
-  const r = await chamarLLM({ prompt, maxTokens: 1200, temperatura: 0.5 })
+  // Gemini 3.x gasta "thinking" dentro do maxOutputTokens — teto baixo corta o
+  // texto no meio (relatório saía só com a 1ª frase). Folga generosa aqui.
+  const r = await chamarLLM({ prompt, maxTokens: 6000, temperatura: 0.5 })
   if (!r.ok) return { success: false, error: r.erro || 'Falha ao chamar a IA.' }
-  return { success: true, texto: r.texto }
+  return { success: true, texto: sanitizarHtmlRelatorio(r.texto) }
+}
+
+// Só as tags que o prompt permite sobrevivem — qualquer outra (script, img,
+// style, atributos...) é removida antes do dangerouslySetInnerHTML na página.
+function sanitizarHtmlRelatorio(html: string): string {
+  let s = html.trim()
+  const cerca = s.match(/```(?:html)?\s*([\s\S]*?)```/i)
+  if (cerca) s = cerca[1].trim()
+  return s.replace(/<\/?([a-zA-Z0-9]+)([^>]*)>/g, (m, tag) => {
+    const t = String(tag).toLowerCase()
+    if (!['h3', 'p', 'ul', 'li', 'b', 'strong', 'em', 'i', 'br'].includes(t)) return ''
+    return m.startsWith('</') ? `</${t}>` : `<${t}>`
+  })
 }

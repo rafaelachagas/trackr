@@ -293,7 +293,15 @@ export default function FunilPage() {
             </div>
             {iaErro && <p className="mt-3 text-xs text-rose-400">{iaErro}</p>}
             {iaTexto && (
-              <div className={`mt-4 text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap ${privCls}`}>{isPrivate ? 'Desative "esconder resultados" pra ver o relatório.' : iaTexto}</div>
+              isPrivate ? (
+                <div className={`mt-4 text-sm text-foreground/90 ${privCls}`}>Desative "esconder resultados" pra ver o relatório.</div>
+              ) : (
+                <div
+                  className="mt-4 text-sm leading-relaxed text-foreground/90 [&_h3]:text-[13px] [&_h3]:font-bold [&_h3]:uppercase [&_h3]:tracking-widest [&_h3]:text-primary [&_h3]:mt-5 [&_h3]:mb-2 [&_h3:first-child]:mt-0 [&_p]:mb-2.5 [&_ul]:mb-3 [&_ul]:space-y-1.5 [&_ul]:pl-5 [&_li]:list-disc [&_b]:text-foreground [&_strong]:text-foreground"
+                  // Conteúdo passa por sanitizarHtmlRelatorio no servidor — só h3/p/ul/li/b sobrevivem.
+                  dangerouslySetInnerHTML={{ __html: iaTexto }}
+                />
+              )
             )}
             {!iaTexto && !iaErro && !iaCarregando && (
               <p className="mt-3 text-xs text-muted-foreground">A IA analisa as etapas do período, aponta o maior gargalo e projeta quanto de faturamento cada melhoria traria.</p>
