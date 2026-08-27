@@ -144,8 +144,10 @@ export default function FunilPage() {
     }
   }, [tot, vturb])
 
-  async function gerarIA() {
-    if (!funil) return
+  // Uma chamada só de IA compartilhada: o botão "Gerar relatório" mostra na
+  // tela; o "Baixar HTML" gera (se ainda não gerou) e embute no arquivo.
+  async function pedirIA(): Promise<string | null> {
+    if (!funil) return null
     setIaCarregando(true); setIaErro(null)
     const r = await gerarRelatorioFunilIA({
       funilNome: funil.nome,
@@ -165,11 +167,17 @@ export default function FunilPage() {
       } : null,
     })
     setIaCarregando(false)
-    if (r.success) setIaTexto(r.texto ?? null); else setIaErro(r.error ?? 'Falha ao gerar.')
+    if (r.success) { setIaTexto(r.texto ?? null); return r.texto ?? null }
+    setIaErro(r.error ?? 'Falha ao gerar.')
+    return null
   }
 
-  function baixarHtml() {
+  async function gerarIA() { await pedirIA() }
+
+  async function baixarHtml() {
     if (!funil) return
+    // Sempre sai com a opinião da IA dentro — gera na hora se ainda não gerou.
+    const ia = iaTexto ?? (await pedirIA())
     const fonteLabel = fonte === 'tudo' ? 'Tudo' : fonte === 'pago' ? 'Tráfego pago' : 'Orgânico'
     baixarRelatorioFunilHTML({
       nome: funil.nome,
@@ -200,7 +208,7 @@ export default function FunilPage() {
       ],
       orderbumps: Object.entries(tot.porOrderbump).map(([nome, o]: [string, any]) => ({ nome, qtd: o.qtd, fat: brl(o.fat), conversao: pct(tot.vendasFront > 0 ? (o.qtd / tot.vendasFront) * 100 : null) })),
       upsells: Object.entries(tot.porUpsell).map(([nome, u]: [string, any]) => ({ nome, qtd: u.qtd, fat: brl(u.fat), conversao: pct(tot.vendasFront > 0 ? (u.qtd / tot.vendasFront) * 100 : null) })),
-      iaHtml: iaTexto,
+      iaHtml: ia,
     })
   }
 
@@ -323,9 +331,9 @@ export default function FunilPage() {
             <div className="flex items-center gap-3 flex-wrap">
               <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Relatório IA</p>
               {!carregando && (
-                <button onClick={baixarHtml} title={iaTexto ? 'Baixa o relatório completo em HTML (números + diagnóstico da IA)' : 'Baixa o relatório em HTML só com os números — gere o relatório IA antes pra incluir o diagnóstico'}
-                  className="ml-auto px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-border text-foreground hover:bg-white/5 transition">
-                  <Download className="w-4 h-4" /> Baixar HTML
+                <button onClick={baixarHtml} disabled={iaCarregando} title="Gera o diagnóstico da IA (se ainda não gerou) e baixa o relatório completo em HTML"
+                  className="ml-auto px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-border text-foreground hover:bg-white/5 transition disabled:opacity-50">
+                  {iaCarregando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Baixar HTML
                 </button>
               )}
               <button onClick={gerarIA} disabled={iaCarregando || carregando}
