@@ -89,6 +89,14 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const removidos = criativos.filter((c) => c.status === 'removido').sort((a, b) => (b.dias_no_ar || 0) - (a.dias_no_ar || 0))
   const totalAngulos = Object.values(resumo?.porAngulo ?? {}).reduce((s, n) => s + n, 0)
   const angulosClassificados = totalAngulos - (resumo?.porAngulo?.indefinido ?? 0)
+  // Linha completa do campeão (pra mostrar thumbnail e links, não só o texto).
+  const campeaoRow = criativos.length ? [...criativos].sort((a, b) => (b.dias_no_ar || 0) - (a.dias_no_ar || 0))[0] : null
+  // Resumo em uma frase, em português de gente.
+  const fraseResumo = resumo
+    ? `${sl.label} — ${resumo.ativos} criativo${resumo.ativos === 1 ? '' : 's'} no ar agora` +
+      (resumo.campeao ? `, o mais antigo rodando há ${resumo.campeao.dias} dias` : '') +
+      `. Nos últimos ${resumo.diasObservados} dias, trocou em média ${resumo.freqTroca} criativo${Number(resumo.freqTroca) === 1 ? '' : 's'} por dia.`
+    : ''
 
   return (
     <div className="space-y-4">
@@ -110,49 +118,81 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         </div>
       )}
 
-      {/* Score + stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className={`rounded-2xl p-4 ${card}`}>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1"><Gauge className="w-3.5 h-3.5" /> Força</div>
-          <div className="flex items-end gap-1.5"><span className="text-3xl font-black tabular-nums" style={{ color: sl.cor }}>{score}</span><span className="text-xs text-muted-foreground mb-1">/100</span></div>
-          <div className="text-[11px] font-semibold mt-0.5" style={{ color: sl.cor }}>{sl.label}</div>
-        </div>
-        <div className={`rounded-2xl p-4 ${card}`}>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1"><Layers className="w-3.5 h-3.5" /> Variações ativas</div>
-          <div className="text-3xl font-black tabular-nums text-foreground">{resumo?.variacoesAtivas ?? 0}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">pico {resumo?.picoVariacoes ?? 0} simultâneas</div>
-        </div>
-        <div className={`rounded-2xl p-4 ${card}`}>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1"><TrendingUp className="w-3.5 h-3.5" /> Troca</div>
-          <div className="text-3xl font-black tabular-nums text-foreground">{resumo?.freqTroca ?? 0}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">criativos/dia · {resumo?.diasObservados ?? 0}d observados</div>
-        </div>
-        <div className={`rounded-2xl p-4 ${card}`}>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1"><Skull className="w-3.5 h-3.5" /> Ativos / saíram</div>
-          <div className="text-3xl font-black tabular-nums text-foreground">{resumo?.ativos ?? 0}<span className="text-muted-foreground text-lg"> / {resumo?.removidos ?? 0}</span></div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">{criativos.length} criativos no total</div>
+      {/* Hero: anel de força + leitura em palavras + stats */}
+      <div className={`rounded-2xl ${card} p-5 lg:p-6`}>
+        <div className="flex flex-col sm:flex-row items-center gap-5 lg:gap-8">
+          {/* Anel do score */}
+          <div className="relative w-32 h-32 shrink-0">
+            <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" />
+              <circle cx="60" cy="60" r="52" fill="none" stroke={sl.cor} strokeWidth="10" strokeLinecap="round"
+                strokeDasharray={`${(score / 100) * 2 * Math.PI * 52} ${2 * Math.PI * 52}`}
+                style={{ transition: 'stroke-dasharray 0.8s ease' }} />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-4xl font-black tabular-nums leading-none" style={{ color: sl.cor }}>{score}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mt-0.5">Força</span>
+            </div>
+          </div>
+
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <p className="text-lg font-bold" style={{ color: sl.cor }}>{sl.label}</p>
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{fraseResumo}</p>
+            <div className="flex flex-wrap justify-center sm:justify-start gap-x-6 gap-y-3 mt-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Layers className="w-3 h-3" /> Variações ativas</p>
+                <p className="text-xl font-black tabular-nums">{resumo?.variacoesAtivas ?? 0} <span className="text-[11px] font-medium text-muted-foreground">pico {resumo?.picoVariacoes ?? 0}</span></p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Ritmo de troca</p>
+                <p className="text-xl font-black tabular-nums">{resumo?.freqTroca ?? 0} <span className="text-[11px] font-medium text-muted-foreground">criativos/dia</span></p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Skull className="w-3 h-3" /> Ativos · saíram</p>
+                <p className="text-xl font-black tabular-nums">{resumo?.ativos ?? 0} <span className="text-muted-foreground font-bold">· {resumo?.removidos ?? 0}</span> <span className="text-[11px] font-medium text-muted-foreground">de {criativos.length}</span></p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Campeão */}
-      {resumo?.campeao && (
-        <div className={`rounded-2xl p-4 ${card} flex items-center gap-3`}>
-          <Trophy className="w-5 h-5 text-amber-400 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Criativo campeão · {resumo.campeao.dias} dias no ar</p>
-            <p className="text-sm font-semibold text-foreground truncate">{resumo.campeao.headline || '(sem headline)'}</p>
+      {/* Campeão — com a cara do criativo, não só o texto */}
+      {campeaoRow && (
+        <div className={`rounded-2xl ${card} overflow-hidden flex items-stretch`}>
+          {campeaoRow.image_url && (
+            <div className="w-24 sm:w-28 shrink-0 bg-black/40">
+              <img src={campeaoRow.image_url} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+            </div>
+          )}
+          <div className="flex items-center gap-3 p-4 min-w-0 flex-1">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-400 flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Criativo campeão · {campeaoRow.dias_no_ar} dias no ar</p>
+              <p className="text-sm font-semibold text-foreground truncate mt-1">{campeaoRow.headline || '(sem headline)'}</p>
+              {(campeaoRow.body || campeaoRow.angulo_resumo) && <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{campeaoRow.body || campeaoRow.angulo_resumo}</p>}
+            </div>
+            <div className="shrink-0 flex flex-col items-end gap-2">
+              {(() => { const m = CLASSIFICACAO_META[campeaoRow.classificacao as ClassificacaoTeste]; return m ? <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ color: m.cor, backgroundColor: m.bg }}>{m.label}</span> : null })()}
+              {campeaoRow.snapshot_url && (
+                <a href={campeaoRow.snapshot_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-primary transition">
+                  <ExternalLink className="w-3 h-3" /> Ver na Meta
+                </a>
+              )}
+            </div>
           </div>
-          {(() => { const m = CLASSIFICACAO_META[resumo.campeao.classificacao as ClassificacaoTeste]; return m ? <span className="text-[11px] font-bold px-2 py-1 rounded-full shrink-0" style={{ color: m.cor, backgroundColor: m.bg }}>{m.label}</span> : null })()}
         </div>
       )}
 
       {/* Classificação por tempo de teste */}
-      <div className={`rounded-2xl p-4 ${card}`}>
-        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Classificação por tempo no ar</p>
-        <div className="space-y-2">
+      <div className={`rounded-2xl p-5 ${card}`}>
+        <div className="mb-4">
+          <p className="text-sm font-bold text-foreground">Quanto tempo os criativos aguentam no ar</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Criativo que fica muito tempo rodando é criativo que dá lucro. Clique numa faixa pra ver quais são.</p>
+        </div>
+        <div className="space-y-1">
           {ORDEM_CLASS.map((cl) => {
             const n = resumo?.porClassificacao?.[cl] ?? 0
             const m = CLASSIFICACAO_META[cl]
+            const faixa = { espetacular: '30+ dias no ar', bom: '15–30 dias', mediano: '7–15 dias', em_teste: 'ainda em teste', reprovado: 'saiu em menos de 7 dias' }[cl]
             const pct = criativos.length ? (n / criativos.length) * 100 : 0
             const aberta = classAberta === cl
             return (
@@ -160,17 +200,20 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
                 key={cl}
                 onClick={() => n > 0 && setClassAberta(aberta ? null : cl)}
                 disabled={n === 0}
-                className={`w-full flex items-center gap-3 py-0.5 rounded-lg transition ${n > 0 ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}
+                className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl transition group ${n > 0 ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default opacity-40'}`}
                 title={n > 0 ? `Ver os ${n} criativo(s) ${m.label.toLowerCase()}` : undefined}
               >
-                <span className="text-xs font-semibold w-24 shrink-0 text-left" style={{ color: m.cor }}>{m.label}</span>
-                <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: m.cor }} /></div>
-                <span className="text-xs tabular-nums text-muted-foreground w-8 text-right shrink-0">{n}</span>
+                <span className="w-28 shrink-0 text-left">
+                  <span className="block text-xs font-bold" style={{ color: m.cor }}>{m.label}</span>
+                  <span className="block text-[10px] text-muted-foreground">{faixa}</span>
+                </span>
+                <div className="flex-1 h-2.5 rounded-full bg-white/5 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${Math.max(pct, n > 0 ? 3 : 0)}%`, backgroundColor: m.cor, transition: 'width 0.6s ease' }} /></div>
+                <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full shrink-0" style={n > 0 ? { color: m.cor, backgroundColor: m.bg } : { color: 'var(--muted-foreground, #7c858c)' }}>{n}</span>
+                <ExternalLink className={`w-3.5 h-3.5 shrink-0 text-muted-foreground transition ${n > 0 ? 'opacity-0 group-hover:opacity-100' : 'opacity-0'}`} />
               </button>
             )
           })}
         </div>
-        <p className="text-[10px] text-muted-foreground/70 mt-3">Regra: &lt;7d reprovado · 7–15d mediano · 15–30d bom · 30d+ espetacular.</p>
       </div>
 
       {/* Modal: criativos da classificação clicada, em cards (mesmo visual do "Movimento") */}
@@ -205,34 +248,62 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
       })()}
 
       {/* Ângulos (IA) */}
-      <div className={`rounded-2xl p-4 ${card}`}>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Ângulos de copy (IA)</p>
-          <span className="text-[10px] text-muted-foreground/70">{angulosClassificados}/{totalAngulos} classificados</span>
+      <div className={`rounded-2xl p-5 ${card}`}>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <p className="text-sm font-bold text-foreground">Que ângulo de copy ele mais usa</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">A IA agrupa os ganchos dos anúncios por tipo de apelo. Onde ele concentra é onde ele acredita.</p>
+          </div>
+          <span className="text-[10px] text-muted-foreground/70 shrink-0 mt-1">{angulosClassificados}/{totalAngulos} classificados</span>
         </div>
         {angulosClassificados === 0 ? (
           <p className="text-xs text-muted-foreground">Clique em <b className="text-violet-300">Analisar ângulos (IA)</b> pra agrupar os ganchos por ângulo (dor, prova social, urgência, oferta...).</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {ANGULOS.filter((a) => (resumo?.porAngulo?.[a.id] ?? 0) > 0).sort((a, b) => (resumo?.porAngulo?.[b.id] ?? 0) - (resumo?.porAngulo?.[a.id] ?? 0)).map((a) => {
-              const n = resumo?.porAngulo?.[a.id] ?? 0
-              return <span key={a.id} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border" style={{ color: a.cor, borderColor: `${a.cor}44`, backgroundColor: `${a.cor}12` }}>{a.label} · {n}</span>
-            })}
-          </div>
-        )}
+        ) : (() => {
+          const lista = ANGULOS
+            .filter((a) => (resumo?.porAngulo?.[a.id] ?? 0) > 0)
+            .sort((a, b) => (resumo?.porAngulo?.[b.id] ?? 0) - (resumo?.porAngulo?.[a.id] ?? 0))
+          return (
+            <>
+              {/* Barra empilhada com a proporção de cada ângulo */}
+              <div className="flex h-3 rounded-full overflow-hidden bg-white/5 mb-4">
+                {lista.map((a) => {
+                  const n = resumo?.porAngulo?.[a.id] ?? 0
+                  return <div key={a.id} title={`${a.label} · ${n}`} style={{ width: `${(n / Math.max(angulosClassificados, 1)) * 100}%`, backgroundColor: a.cor }} />
+                })}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {lista.map((a) => {
+                  const n = resumo?.porAngulo?.[a.id] ?? 0
+                  const pctA = Math.round((n / Math.max(angulosClassificados, 1)) * 100)
+                  return (
+                    <span key={a.id} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border inline-flex items-center gap-1.5" style={{ color: a.cor, borderColor: `${a.cor}44`, backgroundColor: `${a.cor}12` }}>
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: a.cor }} />{a.label} · {n} <span className="opacity-70">({pctA}%)</span>
+                    </span>
+                  )
+                })}
+              </div>
+            </>
+          )
+        })()}
       </div>
 
       {/* Cemitério — criativos removidos que passaram no teste */}
       {removidos.length > 0 && (
-        <div className={`rounded-2xl p-4 ${card}`}>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5"><Skull className="w-4 h-4" /> Saíram do ar ({removidos.length})</p>
-          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+        <div className={`rounded-2xl p-5 ${card}`}>
+          <div className="mb-4">
+            <p className="text-sm font-bold text-foreground flex items-center gap-1.5"><Skull className="w-4 h-4 text-muted-foreground" /> Saíram do ar ({removidos.length})</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">O que ele desligou — e quanto tempo cada um durou antes de cair.</p>
+          </div>
+          <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
             {removidos.slice(0, 30).map((c) => {
               const m = CLASSIFICACAO_META[c.classificacao as ClassificacaoTeste]
               return (
-                <div key={c.ad_archive_id} className="flex items-center gap-3 text-sm py-1.5 border-b border-white/5 last:border-0">
-                  <span className="text-xs tabular-nums text-muted-foreground w-14 shrink-0 flex items-center gap-1"><Clock className="w-3 h-3" />{c.dias_no_ar}d</span>
+                <div key={c.ad_archive_id} className="flex items-center gap-3 text-sm py-1.5 px-1 rounded-lg hover:bg-white/[0.03] transition">
+                  {c.image_url
+                    ? <img src={c.image_url} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0 bg-black/40" loading="lazy" referrerPolicy="no-referrer" />
+                    : <div className="w-9 h-9 rounded-lg bg-white/5 shrink-0 flex items-center justify-center"><Binoculars className="w-4 h-4 text-muted-foreground" /></div>}
                   <span className="flex-1 min-w-0 truncate text-foreground/90">{c.headline || c.angulo_resumo || '(sem título)'}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground shrink-0 flex items-center gap-1"><Clock className="w-3 h-3" />{c.dias_no_ar}d</span>
                   {m && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ color: m.cor, backgroundColor: m.bg }}>{m.label}</span>}
                 </div>
               )
@@ -242,8 +313,11 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
       )}
 
       {/* Versionamento da página de vendas */}
-      <div className={`rounded-2xl p-4 ${card}`}>
-        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5"><Globe className="w-4 h-4" /> Página de vendas do concorrente</p>
+      <div className={`rounded-2xl p-5 ${card}`}>
+        <div className="mb-4">
+          <p className="text-sm font-bold text-foreground flex items-center gap-1.5"><Globe className="w-4 h-4 text-muted-foreground" /> Página de vendas do concorrente</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Guarda uma versão a cada captura — quando ele mudar preço, bônus ou oferta, você vê a diferença aqui.</p>
+        </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://pagina-do-concorrente.com/oferta" className="flex-1 px-3 py-2.5 rounded-lg text-sm font-mono" style={inputStyle} />
           <button onClick={capturar} disabled={capturando || (!url.trim() && !landingUrl)} className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 disabled:opacity-50 whitespace-nowrap">
@@ -274,7 +348,6 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             ))}
           </div>
         )}
-        <p className="text-[10px] text-muted-foreground/70 mt-2">Cada captura guarda uma versão. Quando o concorrente muda preço, bônus ou oferta, aparece aqui.</p>
       </div>
 
       {/* Modal de transcrição (leitura + copiar + .txt) */}
