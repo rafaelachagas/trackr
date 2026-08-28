@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
-import { capturarPaginaCore, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, acharVslUrl, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
 // O trabalho pesado mora em lib/vigia-pagina.ts (compartilhado com o cron do
@@ -12,6 +12,23 @@ export async function capturarPagina(bibliotecaId: string, urlOverride?: string)
     const orgId = await resolveOrgId()
     if (!orgId) throw new Error('Organização não encontrada')
     return await capturarPaginaCore(orgId, bibliotecaId, urlOverride)
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+}
+
+// Acha a URL reproduzível da VSL na última versão salva da página do
+// concorrente (mp4/m3u8 direto ou resolvendo o player VTurb). O cliente usa
+// essa URL na fila de transcrição (/api/rastreador/transcrever).
+export async function acharVslConcorrente(bibliotecaId: string): Promise<{ success: boolean; url?: string; origem?: string; error?: string }> {
+  try {
+    const { data: ultima } = await supabaseAdmin
+      .from('rastreador_paginas_hist').select('html')
+      .eq('biblioteca_id', bibliotecaId).order('capturado_em', { ascending: false }).limit(1).maybeSingle()
+    if (!ultima?.html) return { success: false, error: 'Ainda não capturei a página desse concorrente — o vigia roda de hora em hora, ou clique em Capturar/versionar.' }
+    const vsl = await acharVslUrl(ultima.html)
+    if (!vsl) return { success: false, error: 'Não achei vídeo reproduzível nessa página (player pode carregar o vídeo só depois de interação).' }
+    return { success: true, url: vsl.url, origem: vsl.origem }
   } catch (e: any) {
     return { success: false, error: e.message }
   }

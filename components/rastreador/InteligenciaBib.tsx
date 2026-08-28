@@ -8,7 +8,7 @@ import { transcreverNaFila } from '@/lib/fila-transcricao'
 import { baixarTxt, baixarDocx, baixarMd, baixarPdf } from '@/lib/exportDoc'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
-import { capturarPagina, listarVersoesPagina, type VersaoPagina } from '@/app/actions/rastreador-pagina'
+import { capturarPagina, listarVersoesPagina, acharVslConcorrente, type VersaoPagina } from '@/app/actions/rastreador-pagina'
 import { baixarRelatorioHTML, relatorioParaMarkdown, relatorioParaTexto } from '@/lib/reportConcorrente'
 import { CLASSIFICACAO_META, ANGULOS, anguloMeta, scoreLabel, type ClassificacaoTeste } from '@/lib/rastreador-intel'
 
@@ -28,6 +28,8 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const [cacheT, setCacheT] = useState<Record<string, string>>({})
   const [modalT, setModalT] = useState<{ titulo: string; texto: string } | null>(null)
   const [modalFormato, setModalFormato] = useState(false)
+  const [vslStatus, setVslStatus] = useState<string | null>(null)   // "Achando a VSL..." / "Na fila..." / "Transcrevendo..."
+  const [vslErro, setVslErro] = useState<string | null>(null)
 
   // Página de vendas
   const [url, setUrl] = useState(landingUrl ?? '')
@@ -42,10 +44,10 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     if (v.success) setVersoes(v.data)
     setLoading(false)
     // Cache de transcrições já feitas (mesma tabela usada no "Movimento").
-    if (c.success && c.data.length) {
-      const t = await getTranscricoes(c.data.map((x) => x.ad_archive_id).filter(Boolean))
-      if (t.success) setCacheT(t.data)
-    }
+    // Inclui a da VSL da página, guardada sob a chave sintética vsl:<bibId>.
+    const idsT = [...c.data.map((x) => x.ad_archive_id).filter(Boolean), `vsl:${bibId}`]
+    const t = await getTranscricoes(idsT)
+    if (t.success) setCacheT(t.data)
   }
   useEffect(() => { carregar() }, [bibId])
 
@@ -79,6 +81,25 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     else if (formato === 'docx') baixarDocx(nomeBase, tituloDoc, relatorioParaTexto(d))
     else baixarPdf(nomeBase, tituloDoc, relatorioParaTexto(d))
     setMsg(`Relatório gerado e baixado (.${formato}).`)
+  }
+
+  // Transcreve a VSL embutida na página do concorrente (acha o vídeo na
+  // última versão salva, manda pro Whisper da VPS via fila, cacheia).
+  async function transcreverVsl() {
+    if (vslStatus) return
+    const cacheado = cacheT[`vsl:${bibId}`]
+    if (cacheado) { setModalT({ titulo: 'VSL da página de vendas', texto: cacheado }); return }
+    setVslErro(null)
+    setVslStatus('Achando a VSL na página...')
+    const achado = await acharVslConcorrente(bibId)
+    if (!achado.success || !achado.url) { setVslStatus(null); setVslErro(achado.error ?? 'VSL não encontrada.'); return }
+    const r = await transcreverNaFila(achado.url, setVslStatus)
+    setVslStatus(null)
+    if (r.error) { setVslErro(r.error); return }
+    const texto = r.texto!
+    setCacheT((m) => ({ ...m, [`vsl:${bibId}`]: texto }))
+    salvarTranscricao(`vsl:${bibId}`, achado.url, texto)
+    setModalT({ titulo: 'VSL da página de vendas', texto })
   }
 
   async function capturar() {
@@ -333,7 +354,13 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
           <button onClick={capturar} disabled={capturando || (!url.trim() && !landingUrl)} className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 disabled:opacity-50 whitespace-nowrap">
             {capturando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />} Capturar / versionar
           </button>
+          <button onClick={transcreverVsl} disabled={!!vslStatus} title="Acha a VSL embutida na página e transcreve com o Whisper da VPS"
+            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-50 whitespace-nowrap">
+            {vslStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            {vslStatus ?? (cacheT[`vsl:${bibId}`] ? 'Ver transcrição da VSL' : 'Transcrever VSL')}
+          </button>
         </div>
+        {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
         {versoes.length > 0 && (
           <div className="mt-3 space-y-2">
             {versoes.map((v) => (

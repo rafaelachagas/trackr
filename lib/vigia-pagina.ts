@@ -239,6 +239,34 @@ export async function capturarPaginaCore(orgId: string, bibliotecaId: string, ur
   }
 }
 
+// Acha a URL REPRODUZÍVEL da VSL embutida numa página (pra transcrever).
+// 1º tenta mp4/m3u8 direto no HTML; se só houver player VTurb, busca o
+// player.js/embed do converteai e extrai a mídia de lá.
+export async function acharVslUrl(html: string): Promise<{ url: string; origem: string } | null> {
+  // mp4/m3u8 cravados no HTML.
+  for (const m of html.matchAll(/["'](https?:\/\/[^"']+\.(?:mp4|m3u8)(?:\?[^"']*)?)["']/gi)) {
+    const u = m[1]
+    if (/thumb|poster|preview|\.jpg|\.png/i.test(u)) continue
+    return { url: u, origem: 'html' }
+  }
+  // Player VTurb: o script do player aponta pra mídia no CDN do converteai.
+  const players = new Set<string>()
+  for (const m of html.matchAll(/https?:\/\/scripts\.converteai\.net\/[a-z0-9-]+\/players\/[a-f0-9-]{10,}\/[\w./-]*player\.js/gi)) players.add(m[0])
+  for (const m of html.matchAll(/https?:\/\/scripts\.converteai\.net\/[a-z0-9-]+\/players\/[a-f0-9-]{10,}/gi)) players.add(`${m[0]}/player.js`)
+  for (const pj of [...players].slice(0, 3)) {
+    try {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 15000)
+      const r = await fetch(pj, { signal: ctrl.signal, cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0' } }).finally(() => clearTimeout(t))
+      if (!r.ok) continue
+      const js = await r.text()
+      const media = js.match(/["'](https?:\/\/[^"']+\.(?:m3u8|mp4)(?:\?[^"']*)?)["']/i)
+      if (media) return { url: media[1], origem: 'vturb' }
+    } catch { /* tenta o próximo player */ }
+  }
+  return null
+}
+
 // URL de destino dominante entre os criativos de um snapshot (a "página de
 // vendas dos anúncios"). Normaliza tirando querystring/UTM pra comparar.
 export function urlDominante(criativos: any[]): string | null {

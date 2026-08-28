@@ -1,4 +1,5 @@
 import os
+import subprocess
 import tempfile
 import threading
 import requests
@@ -25,6 +26,20 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 
 
 def baixar(video_url: str) -> str:
+    # m3u8 (streaming HLS — padrão da VTurb) não é um arquivo: o ffmpeg junta os
+    # segmentos e extrai só o áudio (wav 16k mono, o que o Whisper quer).
+    if ".m3u8" in video_url.lower():
+        fd, path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        cmd = [
+            "ffmpeg", "-y", "-user_agent", UA, "-i", video_url,
+            "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", path,
+        ]
+        r = subprocess.run(cmd, capture_output=True, timeout=600)
+        if r.returncode != 0 or os.path.getsize(path) < 1000:
+            os.path.exists(path) and os.remove(path)
+            raise RuntimeError(f"ffmpeg falhou no m3u8: {r.stderr[-300:].decode(errors='ignore')}")
+        return path
     r = requests.get(video_url, headers={"User-Agent": UA}, stream=True, timeout=60)
     r.raise_for_status()
     fd, path = tempfile.mkstemp(suffix=".mp4")
