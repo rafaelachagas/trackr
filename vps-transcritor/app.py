@@ -1,5 +1,6 @@
 import os
 import tempfile
+import threading
 import requests
 from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel
@@ -17,6 +18,8 @@ app = Flask(__name__)
 print(f"[transcritor] carregando modelo {MODEL_SIZE} ({COMPUTE})...", flush=True)
 model = WhisperModel(MODEL_SIZE, device="cpu", compute_type=COMPUTE)
 print("[transcritor] pronto.", flush=True)
+
+TRANSCRIBE_LOCK = threading.Lock()
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 
@@ -50,6 +53,10 @@ def transcribe():
     if not video_url:
         return jsonify(error="video_url ausente"), 400
 
+    # CPU não aguenta duas transcrições ao mesmo tempo (as duas estouram o
+    # timeout). Trava global: uma roda, as outras esperam a vez (até 4 min).
+    if not TRANSCRIBE_LOCK.acquire(timeout=240):
+        return jsonify(error="transcritor ocupado — tente de novo em instantes"), 503
     path = None
     try:
         path = baixar(video_url)
@@ -59,6 +66,7 @@ def transcribe():
     except Exception as e:
         return jsonify(error=f"falha ao transcrever: {e}"), 500
     finally:
+        TRANSCRIBE_LOCK.release()
         if path and os.path.exists(path):
             os.remove(path)
 

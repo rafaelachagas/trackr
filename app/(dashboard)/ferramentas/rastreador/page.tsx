@@ -4,6 +4,7 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download, Copy, PlayCircle, Bookmark, Trash2, RotateCw, FileText, Loader2, ArrowLeft, X, Save, Check, Clock, Pencil, Bell } from 'lucide-react'
 import { extrairPageId, type CriativoRastreado } from '@/lib/rastreador'
 import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, getTranscricoes, salvarTranscricao, salvarSnapshot, listarSnapshots, atualizarBiblioteca, listarNovidades, marcarNovidadesVistas, type BibliotecaRastreada, type SnapshotRastreador, type NovidadeRastreador } from '@/app/actions/rastreador'
+import { transcreverNaFila } from '@/lib/fila-transcricao'
 import { baixarTxt, baixarDocx } from '@/lib/exportDoc'
 import InteligenciaBib from '@/components/rastreador/InteligenciaBib'
 import GeradorCopy from '@/components/inteligencia/GeradorCopy'
@@ -640,7 +641,9 @@ function DetalheBiblioteca({ bib, onVoltar, onPuxarAgora, onAbrirTranscricao, on
 }
 
 function CardCriativo({ c, inicial, onAbrir, novo, isPrivate = false }: { c: CriativoRastreado; inicial?: string; onAbrir: (texto: string) => void; novo?: boolean; isPrivate?: boolean }) {
-  const [transcrevendo, setTranscrevendo] = useState(false)
+  // status: null = parado; string = "Na fila (2º)..." / "Transcrevendo..."
+  const [status, setStatus] = useState<string | null>(null)
+  const transcrevendo = status !== null
   const [texto, setTexto] = useState<string | null>(inicial ?? null)
   const [erroT, setErroT] = useState<string | null>(null)
   const [tocando, setTocando] = useState(false)
@@ -648,28 +651,17 @@ function CardCriativo({ c, inicial, onAbrir, novo, isPrivate = false }: { c: Cri
   useEffect(() => { if (inicial) setTexto(inicial) }, [inicial])
 
   async function transcrever() {
-    if (!c.video_url) return
+    if (!c.video_url || transcrevendo) return
     // Já tem transcrição em cache → abre direto no modal.
     if (texto) { onAbrir(texto); return }
-    setTranscrevendo(true); setErroT(null)
-    try {
-      const r = await fetch('/api/rastreador/transcrever', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_url: c.video_url }),
-      })
-      const j = await r.json()
-      if (j.error) setErroT(j.error)
-      else {
-        const t = j.texto || '(sem fala detectada)'
-        setTexto(t)
-        if (c.ad_archive_id) salvarTranscricao(c.ad_archive_id, c.video_url, t)
-        onAbrir(t)
-      }
-    } catch {
-      setErroT('Falha ao transcrever.')
-    } finally {
-      setTranscrevendo(false)
-    }
+    setErroT(null)
+    const r = await transcreverNaFila(c.video_url, setStatus)
+    setStatus(null)
+    if (r.error) { setErroT(r.error); return }
+    const t = r.texto!
+    setTexto(t)
+    if (c.ad_archive_id) salvarTranscricao(c.ad_archive_id, c.video_url, t)
+    onAbrir(t)
   }
 
   const podeTocar = c.media_type === 'video' && !!c.video_url
@@ -723,7 +715,7 @@ function CardCriativo({ c, inicial, onAbrir, novo, isPrivate = false }: { c: Cri
             <button onClick={transcrever} disabled={transcrevendo}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50">
               {transcrevendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-              {transcrevendo ? 'Transcrevendo...' : texto ? 'Ver transcrição' : 'Transcrever'}
+              {status ?? (texto ? 'Ver transcrição' : 'Transcrever')}
             </button>
           )}
         </div>

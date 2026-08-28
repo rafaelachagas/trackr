@@ -1,8 +1,10 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink, X, PlayCircle, Download, Copy, Binoculars } from 'lucide-react'
+import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink, X, PlayCircle, Download, Copy, Binoculars, FileText, Check } from 'lucide-react'
 import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, type ResumoInteligencia, type CriativoHist } from '@/app/actions/rastreador-intel'
+import { getTranscricoes, salvarTranscricao } from '@/app/actions/rastreador'
+import { transcreverNaFila } from '@/lib/fila-transcricao'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
 import { capturarPagina, listarVersoesPagina, type VersaoPagina } from '@/app/actions/rastreador-pagina'
@@ -22,6 +24,8 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const [gerando, setGerando] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [classAberta, setClassAberta] = useState<ClassificacaoTeste | null>(null)
+  const [cacheT, setCacheT] = useState<Record<string, string>>({})
+  const [modalT, setModalT] = useState<{ titulo: string; texto: string } | null>(null)
 
   // Página de vendas
   const [url, setUrl] = useState(landingUrl ?? '')
@@ -35,6 +39,11 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     if (c.success) setCriativos(c.data)
     if (v.success) setVersoes(v.data)
     setLoading(false)
+    // Cache de transcrições já feitas (mesma tabela usada no "Movimento").
+    if (c.success && c.data.length) {
+      const t = await getTranscricoes(c.data.map((x) => x.ad_archive_id).filter(Boolean))
+      if (t.success) setCacheT(t.data)
+    }
   }
   useEffect(() => { carregar() }, [bibId])
 
@@ -181,7 +190,12 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
                   <p className="text-center text-sm text-muted-foreground py-10">Nenhum criativo nessa faixa.</p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {lista.map((c) => <CardCriativoHist key={c.ad_archive_id} c={c} isPrivate={isPrivate} />)}
+                    {lista.map((c) => (
+                      <CardCriativoHist key={c.ad_archive_id} c={c} isPrivate={isPrivate}
+                        inicial={cacheT[c.ad_archive_id]}
+                        onSalvar={(texto) => setCacheT((m) => ({ ...m, [c.ad_archive_id]: texto }))}
+                        onAbrir={(texto) => setModalT({ titulo: c.headline || c.page_name || 'Anúncio', texto })} />
+                    ))}
                   </div>
                 )}
               </div>
@@ -262,6 +276,66 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         )}
         <p className="text-[10px] text-muted-foreground/70 mt-2">Cada captura guarda uma versão. Quando o concorrente muda preço, bônus ou oferta, aparece aqui.</p>
       </div>
+
+      {/* Modal de transcrição (leitura + copiar + .txt) */}
+      {modalT && <ModalTranscricaoHist titulo={modalT.titulo} texto={modalT.texto} onFechar={() => setModalT(null)} />}
+    </div>
+  )
+}
+
+function ModalTranscricaoHist({ titulo, texto, onFechar }: { titulo: string; texto: string; onFechar: () => void }) {
+  const [copiado, setCopiado] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onFechar])
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(texto)
+      setCopiado(true); setTimeout(() => setCopiado(false), 2000)
+    } catch { /* clipboard bloqueado */ }
+  }
+
+  function baixarTxt() {
+    const blob = new Blob([texto], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transcricao-${titulo.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.txt`
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={onFechar}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div onClick={(e) => e.stopPropagation()} className={`relative w-full max-w-2xl rounded-2xl ${card} shadow-2xl flex flex-col max-h-[85vh]`}>
+        <div className="flex items-start gap-3 p-5 border-b border-border">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: '#1a2022' }}>
+            <FileText className="w-5 h-5 text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-bold truncate">Transcrição</h3>
+            <p className="text-xs text-muted-foreground truncate">{titulo}</p>
+          </div>
+          <button onClick={onFechar} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 overflow-y-auto">
+          <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">{texto}</p>
+          <p className="text-[11px] text-muted-foreground mt-2">{texto.trim().split(/\s+/).filter(Boolean).length} palavras</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap p-5 border-t border-border">
+          <button onClick={copiar} className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
+            {copiado ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />} {copiado ? 'Copiado!' : 'Copiar tudo'}
+          </button>
+          <button onClick={baixarTxt} className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
+            <Download className="w-4 h-4" /> .txt
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -269,9 +343,33 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
 // Card de criativo a partir do histórico (mesmo visual do "Movimento", mas
 // lendo de CriativoHist em vez do snapshot ao vivo — dá pra abrir mesmo pra
 // um criativo que já saiu do ar).
-function CardCriativoHist({ c, isPrivate = false }: { c: CriativoHist; isPrivate?: boolean }) {
+function CardCriativoHist({ c, isPrivate = false, inicial, onAbrir, onSalvar }: {
+  c: CriativoHist
+  isPrivate?: boolean
+  inicial?: string
+  onAbrir: (texto: string) => void
+  onSalvar: (texto: string) => void
+}) {
   const [tocando, setTocando] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)   // "Na fila (2º)..." / "Transcrevendo..."
+  const [texto, setTexto] = useState<string | null>(inicial ?? null)
+  const [erroT, setErroT] = useState<string | null>(null)
   const podeTocar = c.media_type === 'video' && !!c.video_url
+
+  useEffect(() => { if (inicial) setTexto(inicial) }, [inicial])
+
+  async function transcrever() {
+    if (!c.video_url || status) return
+    if (texto) { onAbrir(texto); return }
+    setErroT(null)
+    const r = await transcreverNaFila(c.video_url, setStatus)
+    setStatus(null)
+    if (r.error) { setErroT(r.error); return }
+    const t = r.texto!
+    setTexto(t)
+    if (c.ad_archive_id) { salvarTranscricao(c.ad_archive_id, c.video_url, t); onSalvar(t) }
+    onAbrir(t)
+  }
 
   return (
     <div className="rounded-2xl overflow-hidden flex flex-col bg-card border border-border">
@@ -330,7 +428,15 @@ function CardCriativoHist({ c, isPrivate = false }: { c: CriativoHist; isPrivate
               <Download className="w-3.5 h-3.5" /> Vídeo
             </a>
           )}
+          {c.video_url && (
+            <button onClick={transcrever} disabled={!!status}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50">
+              {status ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+              {status ?? (texto ? 'Ver transcrição' : 'Transcrever')}
+            </button>
+          )}
         </div>
+        {erroT && <p className="mt-2 text-[11px] text-rose-300/90">{erroT}</p>}
       </div>
     </div>
   )
