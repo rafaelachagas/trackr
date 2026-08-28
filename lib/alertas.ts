@@ -5,7 +5,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { broadcastAlerta } from '@/lib/whatsapp-send'
 
-export type TipoAlerta = 'fadiga' | 'anomalia_gasto' | 'concorrente_removido' | 'concorrente_novo'
+export type TipoAlerta = 'fadiga' | 'anomalia_gasto' | 'concorrente_removido' | 'concorrente_novo' | 'pagina_mudou' | 'pagina_url'
 export type Severidade = 'info' | 'atencao' | 'critico'
 
 const EMOJI: Record<TipoAlerta, string> = {
@@ -13,6 +13,8 @@ const EMOJI: Record<TipoAlerta, string> = {
   anomalia_gasto: '💸',
   concorrente_removido: '🪦',
   concorrente_novo: '🆕',
+  pagina_mudou: '🎥',
+  pagina_url: '🔀',
 }
 
 // Registra um alerta (idempotente). Se for inédito, envia pro WhatsApp.

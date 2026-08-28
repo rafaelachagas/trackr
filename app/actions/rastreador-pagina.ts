@@ -2,121 +2,18 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
-import { hashTexto } from '@/lib/llm'
-
-// Extrai texto legível de um HTML (sem libs): remove script/style e tags.
-function htmlParaTexto(html: string): { titulo: string | null; texto: string } {
-  const tituloMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
-  const titulo = tituloMatch ? tituloMatch[1].trim().slice(0, 200) : null
-  const texto = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return { titulo, texto }
-}
-
-// Detecta preços no texto (R$ 97, 12x de 9,70, R$1.997,00...).
-function detectarPrecos(texto: string): string[] {
-  const rx = /(?:R\$\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})?)|(?:\d{1,2}x\s?(?:de\s?)?R?\$?\s?\d{1,3}(?:,\d{2})?)/gi
-  const achados = (texto.match(rx) ?? []).map((s) => s.replace(/\s+/g, ' ').trim())
-  return [...new Set(achados)].slice(0, 25)
-}
-
-// Detecta o "stack" da página (ferramentas) por assinatura nos scripts/HTML.
-const ASSINATURAS: { id: string; label: string; rx: RegExp }[] = [
-  { id: 'vturb', label: 'VTurb', rx: /vturb|converteai|scripts\.converteai|player\.vturb/i },
-  { id: 'hotmart', label: 'Hotmart', rx: /hotmart|hmg\.hotmart|checkout\.hotmart|pay\.hotmart/i },
-  { id: 'kiwify', label: 'Kiwify', rx: /kiwify/i },
-  { id: 'eduzz', label: 'Eduzz', rx: /eduzz|myeduzz/i },
-  { id: 'meta_pixel', label: 'Pixel Meta', rx: /fbevents\.js|connect\.facebook\.net\/[^"']*\/fbevents|\bfbq\(/i },
-  { id: 'google', label: 'Google/GTM', rx: /googletagmanager|gtag\/js|google-analytics/i },
-  { id: 'tiktok_pixel', label: 'Pixel TikTok', rx: /analytics\.tiktok\.com|ttq\.load/i },
-  { id: 'escassez', label: 'Escassez', rx: /provely|useproof|\bfomo\b|notifica[çc][aã]o de compra|scarcity/i },
-  { id: 'typebot', label: 'Typebot', rx: /typebot/i },
-  { id: 'manychat', label: 'ManyChat', rx: /manychat/i },
-]
-function detectarStack(html: string): { id: string; label: string }[] {
-  return ASSINATURAS.filter((a) => a.rx.test(html)).map(({ id, label }) => ({ id, label }))
-}
-
-function resumirMudanca(anterior: { texto: string | null; precos: string[] } | null, atualTexto: string, atualPrecos: string[]): string {
-  if (!anterior) return 'Primeira captura da página.'
-  const partes: string[] = []
-  const antes = new Set(anterior.precos ?? [])
-  const agora = new Set(atualPrecos)
-  const novos = atualPrecos.filter((p) => !antes.has(p))
-  const sumiram = (anterior.precos ?? []).filter((p) => !agora.has(p))
-  if (novos.length) partes.push(`Preços novos: ${novos.join(', ')}`)
-  if (sumiram.length) partes.push(`Preços que sumiram: ${sumiram.join(', ')}`)
-  const dTam = atualTexto.length - (anterior.texto?.length ?? 0)
-  if (Math.abs(dTam) > 200) partes.push(`Conteúdo ${dTam > 0 ? 'aumentou' : 'diminuiu'} ~${Math.abs(dTam)} caracteres`)
-  return partes.length ? partes.join(' · ') : 'Mudança detectada no conteúdo da página.'
-}
+import { capturarPaginaCore, type ResultadoCaptura } from '@/lib/vigia-pagina'
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
-export async function capturarPagina(bibliotecaId: string, urlOverride?: string) {
+// O trabalho pesado mora em lib/vigia-pagina.ts (compartilhado com o cron do
+// vigia 24/7); aqui só resolvemos a organização da sessão.
+export async function capturarPagina(bibliotecaId: string, urlOverride?: string): Promise<ResultadoCaptura> {
   try {
     const orgId = await resolveOrgId()
     if (!orgId) throw new Error('Organização não encontrada')
-
-    const { data: bib } = await supabaseAdmin
-      .from('rastreador_bibliotecas').select('landing_url').eq('id', bibliotecaId).maybeSingle()
-    const url = (urlOverride || bib?.landing_url || '').trim()
-    if (!url) return { success: false, error: 'Cadastre a URL da página de vendas do concorrente primeiro.' }
-
-    // Se veio override, salva como landing_url oficial.
-    if (urlOverride && urlOverride.trim()) {
-      await supabaseAdmin.from('rastreador_bibliotecas').update({ landing_url: urlOverride.trim() }).eq('id', bibliotecaId)
-    }
-
-    const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 20000)
-    let html = ''
-    try {
-      const r = await fetch(url, {
-        signal: ctrl.signal, cache: 'no-store',
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TheTrackBot/1.0)' },
-      })
-      if (!r.ok) return { success: false, error: `A página respondeu ${r.status}.` }
-      html = await r.text()
-    } finally { clearTimeout(t) }
-
-    const { titulo, texto } = htmlParaTexto(html)
-    const precos = detectarPrecos(texto)
-    const stack = detectarStack(html)
-    const hash = hashTexto(texto)
-
-    // Injeta <base> pra imagens/CSS relativos resolverem quando reabrirmos o HTML salvo.
-    let htmlSalvar = html
-    if (!/<base\s/i.test(htmlSalvar)) {
-      htmlSalvar = htmlSalvar.replace(/<head([^>]*)>/i, `<head$1><base href="${url}">`)
-    }
-    htmlSalvar = htmlSalvar.slice(0, 900000) // ~900 KB de teto por versão
-
-    // Última versão salva.
-    const { data: ultima } = await supabaseAdmin
-      .from('rastreador_paginas_hist').select('conteudo_hash, texto, precos')
-      .eq('biblioteca_id', bibliotecaId).order('capturado_em', { ascending: false }).limit(1).maybeSingle()
-
-    if (ultima && ultima.conteudo_hash === hash) {
-      return { success: true, mudou: false }
-    }
-
-    const resumo = resumirMudanca(
-      ultima ? { texto: ultima.texto, precos: (ultima.precos as string[]) ?? [] } : null, texto, precos)
-
-    const { error } = await supabaseAdmin.from('rastreador_paginas_hist').insert({
-      org_id: orgId, biblioteca_id: bibliotecaId, url, titulo,
-      conteudo_hash: hash, texto: texto.slice(0, 20000), precos, resumo_mudanca: resumo,
-      html: htmlSalvar, stack,
-    })
-    if (error) throw error
-    return { success: true, mudou: true, resumo, precos, stack }
+    return await capturarPaginaCore(orgId, bibliotecaId, urlOverride)
   } catch (e: any) {
-    return { success: false, error: e?.name === 'AbortError' ? 'A página demorou demais para responder.' : e.message }
+    return { success: false, error: e.message }
   }
 }
 

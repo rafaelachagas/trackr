@@ -10,6 +10,7 @@ const inputStyle: React.CSSProperties = { backgroundColor: '#1a2022', border: '1
 const TIPO_LABEL: Record<string, string> = {
   fadiga: 'Fadiga de criativo', anomalia_gasto: 'Anomalia de gasto',
   concorrente_removido: 'Concorrente removeu criativo', concorrente_novo: 'Concorrente novo anúncio',
+  pagina_mudou: 'Página de vendas mudou', pagina_url: 'URL dos anúncios mudou',
 }
 const SEV_COR: Record<string, string> = { info: '#60a5fa', atencao: '#fbbf24', critico: '#f87171' }
 

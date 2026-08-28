@@ -6,6 +6,6 @@
     { "path": "/api/meta/sync?dias=90", "schedule": "0 6 * * *" },
     { "path": "/api/rastreador/cron", "schedule": "0 7 * * *" },
     { "path": "/api/alertas/cron", "schedule": "0 8 * * *" },
-    { "path": "/api/rastreador/radar", "schedule": "0 9 * * *" }
+    { "path": "/api/rastreador/vigia", "schedule": "30 * * * *" }
   ]
 }
