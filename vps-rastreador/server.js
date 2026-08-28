@@ -223,6 +223,34 @@ app.get('/scrape', async (req, res) => {
   }
 })
 
+// Screenshot de página inteira (o "print" do vigia de páginas do The Track).
+// GET /screenshot?url=https://...&key=APIKEY → image/jpeg (fullPage, qualidade 70).
+app.get('/screenshot', async (req, res) => {
+  const key = req.query.key || req.headers['x-api-key']
+  if (APIKEY && key !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
+  const url = String(req.query.url || '')
+  if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'url inválida' })
+  let ctx = null
+  try {
+    const b = await getBrowser()
+    ctx = await b.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      viewport: { width: 1366, height: 900 },
+      locale: 'pt-BR',
+    })
+    const page = await ctx.newPage()
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {})
+    await page.waitForTimeout(2500) // dá tempo de players/fontes/animações assentarem
+    const buf = await page.screenshot({ fullPage: true, type: 'jpeg', quality: 70 })
+    res.set('Content-Type', 'image/jpeg').send(buf)
+  } catch (err) {
+    console.error('[screenshot]', err)
+    res.status(500).json({ error: String(err && err.message || err) })
+  } finally {
+    if (ctx) await ctx.close().catch(() => {})
+  }
+})
+
 app.post('/scrape', async (req, res) => {
   if (APIKEY && req.headers['x-api-key'] !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
   const { url, maxScrolls, debug } = req.body || {}

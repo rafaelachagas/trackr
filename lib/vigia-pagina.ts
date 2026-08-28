@@ -4,6 +4,50 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { hashTexto } from '@/lib/llm'
+import { RASTREADOR_URL, RASTREADOR_APIKEY } from '@/lib/rastreador'
+
+// Bucket público onde ficam os prints (screenshot real) de cada versão da
+// página. Caminho determinístico: <bibliotecaId>/<conteudo_hash>.jpg — assim a
+// UI acha o print só com os campos que a tabela já tem, sem coluna nova.
+export const BUCKET_PRINTS = 'rastreador-prints'
+let bucketOk = false
+async function garantirBucket() {
+  if (bucketOk) return
+  try {
+    const { data } = await supabaseAdmin.storage.getBucket(BUCKET_PRINTS)
+    if (!data) await supabaseAdmin.storage.createBucket(BUCKET_PRINTS, { public: true })
+    bucketOk = true
+  } catch {
+    try { await supabaseAdmin.storage.createBucket(BUCKET_PRINTS, { public: true }); bucketOk = true } catch { /* segue sem print */ }
+  }
+}
+
+// Fotografa a página via Chromium da VPS (endpoint /screenshot do scraper) e
+// sobe pro Storage. Falha aqui nunca derruba a captura — o print é um extra.
+async function salvarPrint(bibliotecaId: string, hash: string, url: string): Promise<string | null> {
+  try {
+    if (!RASTREADOR_APIKEY) return null
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 60000)
+    let buf: ArrayBuffer
+    try {
+      const r = await fetch(`${RASTREADOR_URL}/screenshot?url=${encodeURIComponent(url)}&key=${encodeURIComponent(RASTREADOR_APIKEY)}`, {
+        signal: ctrl.signal, cache: 'no-store',
+      })
+      if (!r.ok) return null
+      buf = await r.arrayBuffer()
+    } finally { clearTimeout(t) }
+    if (!buf || buf.byteLength < 1000) return null
+    await garantirBucket()
+    const caminho = `${bibliotecaId}/${hash}.jpg`
+    const { error } = await supabaseAdmin.storage.from(BUCKET_PRINTS)
+      .upload(caminho, buf, { contentType: 'image/jpeg', upsert: true })
+    if (error) return null
+    return supabaseAdmin.storage.from(BUCKET_PRINTS).getPublicUrl(caminho).data.publicUrl
+  } catch {
+    return null
+  }
+}
 
 // Extrai texto legível de um HTML (sem libs): remove script/style e tags.
 export function htmlParaTexto(html: string): { titulo: string | null; texto: string } {
@@ -119,6 +163,7 @@ export interface ResultadoCaptura {
   stack?: { id: string; label: string }[]
   hash?: string
   url?: string
+  printUrl?: string
 }
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
@@ -184,7 +229,11 @@ export async function capturarPaginaCore(orgId: string, bibliotecaId: string, ur
       html: htmlSalvar, stack,
     })
     if (error) throw error
-    return { success: true, mudou: true, resumo, precos, stack, hash, url }
+
+    // Print real da página (Chromium na VPS) — best-effort, nunca bloqueia.
+    const printUrl = await salvarPrint(bibliotecaId, hash, url)
+
+    return { success: true, mudou: true, resumo, precos, stack, hash, url, printUrl: printUrl ?? undefined }
   } catch (e: any) {
     return { success: false, error: e?.name === 'AbortError' ? 'A página demorou demais para responder.' : e.message }
   }

@@ -339,6 +339,12 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             {versoes.map((v) => (
               <div key={v.id} className="rounded-lg p-2.5 border border-white/5 bg-white/[0.02]">
                 <div className="flex items-center gap-2 text-xs">
+                  {v.print_url && (
+                    <a href={v.print_url} target="_blank" rel="noreferrer" title="Ver o print (screenshot real) desta versão" className="shrink-0">
+                      <img src={v.print_url} alt="" className="w-9 h-9 rounded object-cover object-top bg-black/40 border border-white/10 hover:border-primary/50 transition"
+                        loading="lazy" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }} />
+                    </a>
+                  )}
                   <span className="text-muted-foreground shrink-0">{new Date(v.capturado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                   {v.precos?.length > 0 && <span className="text-emerald-300 font-semibold truncate">{v.precos.slice(0, 4).join(' · ')}</span>}
                   <a href={`/api/rastreador/pagina/${v.id}`} target="_blank" rel="noreferrer"
