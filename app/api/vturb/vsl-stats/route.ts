@@ -196,6 +196,62 @@ export async function GET(request: NextRequest) {
     if (data.length < 1000) break
   }
 
+  // 4) Upsells do funil vinculado a esta VSL (funis.vsl_id) — vendas reais da
+  //    Hotmart no período (só leitura em `vendas`; exclui manuais, igual ao
+  //    Overview). Conversão do upsell = vendas do upsell ÷ vendas do front.
+  let upsell: {
+    funilNome: string
+    vendasFront: number
+    itens: { nome: string; qtd: number; receita: number; conversao: number | null }[]
+    totalQtd: number
+    totalReceita: number
+    conversao: number | null
+  } | null = null
+  try {
+    const { data: funil } = await supabaseAdmin
+      .from('funis').select('nome, produto_front, upsells')
+      .eq('vsl_id', vslId).limit(1).maybeSingle()
+    const upsells: string[] = Array.isArray(funil?.upsells) ? funil.upsells : []
+    if (funil && upsells.length > 0) {
+      const produtos = [funil.produto_front, ...upsells]
+      const porProduto: Record<string, { qtd: number; receita: number }> = {}
+      // Bordas do dia em SP — vendas.data é timestamptz.
+      const iniISO = `${dInicio}T00:00:00-03:00`
+      const fimISO = `${dFim}T23:59:59.999-03:00`
+      for (let off = 0; ; off += 1000) {
+        const { data, error } = await supabaseAdmin
+          .from('vendas').select('produto, valor')
+          .gte('data', iniISO).lte('data', fimISO)
+          .eq('status', 'approved')
+          .not('transaction_id', 'like', 'manual_%')
+          .in('produto', produtos)
+          .range(off, off + 999)
+        if (error || !data || data.length === 0) break
+        for (const v of data) {
+          const p = (v as any).produto
+          if (!porProduto[p]) porProduto[p] = { qtd: 0, receita: 0 }
+          porProduto[p].qtd += 1
+          porProduto[p].receita += Number((v as any).valor) || 0
+        }
+        if (data.length < 1000) break
+      }
+      const vendasFront = porProduto[funil.produto_front]?.qtd ?? 0
+      const itens = upsells.map((nome) => {
+        const d = porProduto[nome] ?? { qtd: 0, receita: 0 }
+        return { nome, qtd: d.qtd, receita: d.receita, conversao: vendasFront > 0 ? (d.qtd / vendasFront) * 100 : null }
+      })
+      const totalQtd = itens.reduce((a, i) => a + i.qtd, 0)
+      upsell = {
+        funilNome: funil.nome,
+        vendasFront,
+        itens,
+        totalQtd,
+        totalReceita: itens.reduce((a, i) => a + i.receita, 0),
+        conversao: vendasFront > 0 ? (totalQtd / vendasFront) * 100 : null,
+      }
+    }
+  } catch { /* sem tabela funis ainda — segue sem upsell */ }
+
   // Play Rate REAL: plays únicos (VTurb) ÷ LP views (Meta).
   const playRateReal = lpViews > 0 ? (playsUnicos / lpViews) * 100 : null
   const custoPorPlay = playsUnicos > 0 ? gasto / playsUnicos : null
@@ -215,6 +271,7 @@ export async function GET(request: NextRequest) {
       viewsUnicas: visualizacoesUnicas,
     },
     meta: { lpViews, gasto },
+    upsell,
     real: { playRateReal, custoPorPlay, custoPorLp, roas, cpa },
     retencao: pontos.map((p) => ({ t: p.t, pct: p.pct })),
     retencaoTotal: totalCurva,

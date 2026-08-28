@@ -219,6 +219,30 @@ export default function VslViewer({ vsl, onVoltar }: { vsl: VSL; onVoltar: () =>
                 {cardsTrack.map((c) => <CardMetrica key={c.l} valor={c.v} label={c.l} sub={c.sub} destaque={c.destaque} verde={c.verde} isPrivate={isPrivate} />)}
               </div>
             </div>
+
+            {/* ---------- Upsell (vem do funil vinculado a esta VSL) ---------- */}
+            {(() => {
+              const up = dados?.upsell
+              if (!up) return null
+              const fmtConv = (n: number | null) => (n == null ? '—' : `${n.toFixed(2).replace('.', ',')}%`)
+              return (
+                <div className="mt-10">
+                  <h3 className="text-[22px] font-medium mb-1">Upsell</h3>
+                  <p className="text-[13px] text-muted-foreground mb-5">
+                    Vendas reais da Hotmart no período, via funil <b className="text-foreground/80">{up.funilNome}</b> — conversão = vendas do upsell ÷ {isPrivate ? '••••' : up.vendasFront} venda(s) do front.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+                    <CardMetrica valor={fmtConv(up.conversao)} label="Conversão de Upsell" sub="total de upsells ÷ vendas front" destaque isPrivate={isPrivate} />
+                    <CardMetrica valor={isPrivate ? '••••' : fmtNum(up.totalQtd)} label="Vendas de Upsell" isPrivate={isPrivate} />
+                    <CardMetrica valor={isPrivate ? '••••' : fmtBRL(up.totalReceita)} label="Receita de Upsell" isPrivate={isPrivate} />
+                    {up.itens.map((i: { nome: string; qtd: number; receita: number; conversao: number | null }) => (
+                      <CardMetrica key={i.nome} valor={fmtConv(i.conversao)} label={i.nome}
+                        sub={isPrivate ? '••••' : `${fmtNum(i.qtd)} venda(s) · ${fmtBRL(i.receita)}`} isPrivate={isPrivate} />
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
           </>
         )}
       </div>

@@ -33,7 +33,8 @@ function esc(s: string | null | undefined): string {
 }
 
 const PRIO_LABEL: Record<string, string> = { alta: 'PRIORIDADE ALTA', media: 'PRIORIDADE MÉDIA', baixa: 'PRIORIDADE BAIXA' }
-const PRIO_COR: Record<string, string> = { alta: '#c97a4a', media: '#8891a8', baixa: '#5b6472' }
+// Cores da ID do The Track: primária ciano + escala neutra.
+const PRIO_COR: Record<string, string> = { alta: '#00aeef', media: '#8891a8', baixa: '#5b6472' }
 
 export function renderRelatorioHTML(r: RelatorioConcorrente): string {
   const inicial = (r.nome || '?').trim().slice(0, 1).toUpperCase()
@@ -79,7 +80,7 @@ export function renderRelatorioHTML(r: RelatorioConcorrente): string {
 <title>Relatório · ${esc(r.nome)}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  :root { --bg:#0a0d0f; --card:#11161a; --card2:#0e1316; --bd:rgba(255,255,255,0.07); --fg:#e8ecef; --muted:#7c858c; --accent:#e8ecef; }
+  :root { --bg:#0a0d0f; --card:#11161a; --card2:#0e1316; --bd:rgba(255,255,255,0.07); --fg:#e8ecef; --muted:#7c858c; --accent:#00aeef; }
   body { background:var(--bg); color:var(--fg); font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; line-height:1.6; -webkit-font-smoothing:antialiased; }
   .mono { font-family:'JetBrains Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace; letter-spacing:0.08em; }
   .muted { color:var(--muted); }
@@ -88,7 +89,7 @@ export function renderRelatorioHTML(r: RelatorioConcorrente): string {
   .hero { background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%); border:1px solid var(--bd); border-radius:24px; padding:48px 44px; }
   .hero-top { display:flex; justify-content:space-between; align-items:center; font-size:12px; }
   .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#37d67a; margin-right:8px; vertical-align:middle; }
-  .tag { display:inline-block; border:1px solid var(--bd); border-radius:8px; padding:8px 16px; font-size:12px; margin:32px 0 20px; }
+  .tag { display:inline-block; border:1px solid rgba(0,174,239,0.35); color:var(--accent); background:rgba(0,174,239,0.08); border-radius:8px; padding:8px 16px; font-size:12px; margin:32px 0 20px; }
   h1 { font-size:clamp(44px,7vw,92px); font-weight:800; letter-spacing:-0.03em; line-height:0.95; }
   .sub { color:var(--muted); max-width:640px; margin-top:20px; font-size:16px; }
   .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:40px; }
@@ -96,31 +97,31 @@ export function renderRelatorioHTML(r: RelatorioConcorrente): string {
   .stat .big { font-size:26px; font-weight:700; margin-top:10px; }
   section { margin-top:72px; }
   .sec-head { display:flex; align-items:baseline; gap:20px; border-bottom:1px solid var(--bd); padding-bottom:20px; margin-bottom:32px; }
-  .sec-head .n { color:var(--muted); font-size:13px; }
+  .sec-head .n { color:var(--accent); font-size:13px; }
   .sec-head h2 { font-size:34px; font-weight:700; letter-spacing:-0.02em; }
   .sec-head .r { margin-left:auto; color:var(--muted); font-size:12px; }
   .grid2 { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
   .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
   .card { background:var(--card); border:1px solid var(--bd); border-radius:16px; padding:24px; }
   .ins { display:flex; gap:16px; }
-  .ins-badge { width:34px; height:34px; border-radius:9px; border:1px solid var(--bd); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex-shrink:0; }
+  .ins-badge { width:34px; height:34px; border-radius:9px; border:1px solid rgba(0,174,239,0.35); color:var(--accent); background:rgba(0,174,239,0.08); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex-shrink:0; }
   .cri .thumb { position:relative; aspect-ratio:1; border-radius:12px; overflow:hidden; background:#000; display:flex; align-items:center; justify-content:center; }
   .cri .thumb img { width:100%; height:100%; object-fit:cover; }
   .thumb-tag { position:absolute; bottom:8px; left:8px; font-size:10px; background:rgba(0,0,0,0.7); padding:3px 7px; border-radius:5px; }
   .cri-title { font-weight:700; font-size:16px; margin-top:8px; }
-  .cta { display:inline-block; border:1px solid var(--bd); border-radius:8px; padding:8px 16px; font-size:12px; margin-top:14px; }
+  .cta { display:inline-block; border:1px solid rgba(0,174,239,0.35); color:var(--accent); border-radius:8px; padding:8px 16px; font-size:12px; margin-top:14px; }
   .cri-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:20px; padding-top:18px; border-top:1px solid var(--bd); }
   .cri-stats .big { font-size:22px; font-weight:700; margin-top:4px; } .cri-stats .big.sm{font-size:15px;} .cri-stats .d{font-size:13px;color:var(--muted);}
   .pad-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
   .pad-head h4 { font-size:17px; font-weight:700; } .pad p { margin:14px 0 16px; }
-  .quote { background:rgba(255,255,255,0.02); border-left:2px solid var(--bd); border-radius:6px; padding:12px 14px; font-size:12.5px; margin-top:8px; color:#c3cace; }
+  .quote { background:rgba(0,174,239,0.04); border-left:2px solid var(--accent); border-radius:6px; padding:12px 14px; font-size:12.5px; margin-top:8px; color:#c3cace; }
   .rec { display:flex; align-items:center; gap:24px; margin-bottom:16px; }
-  .rec-num { font-size:30px; font-weight:700; color:#8891a8; flex-shrink:0; width:44px; }
+  .rec-num { font-size:30px; font-weight:700; color:var(--accent); flex-shrink:0; width:44px; }
   .rec-body { flex:1; } .rec-body h4 { font-size:18px; font-weight:700; margin-bottom:6px; }
   .prio { border:1px solid; border-radius:8px; padding:8px 14px; font-size:11px; flex-shrink:0; white-space:nowrap; }
   footer { margin-top:72px; padding-top:32px; border-top:1px solid var(--bd); display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted); }
   .foot-brand { display:flex; align-items:center; gap:12px; }
-  .foot-badge { width:34px; height:34px; border-radius:9px; border:1px solid var(--bd); display:flex; align-items:center; justify-content:center; font-weight:800; }
+  .foot-badge { width:34px; height:34px; border-radius:9px; border:1px solid rgba(0,174,239,0.35); color:var(--accent); background:rgba(0,174,239,0.08); display:flex; align-items:center; justify-content:center; font-weight:800; }
   @media (max-width:820px){ .stats,.grid2,.grid3{grid-template-columns:1fr;} .rec{flex-wrap:wrap;gap:12px;} h1{font-size:52px;} .wrap{padding:24px 16px 60px;} .hero{padding:32px 24px;} }
 </style></head><body>
 <div class="wrap">
@@ -162,6 +163,51 @@ export function renderRelatorioHTML(r: RelatorioConcorrente): string {
     <div class="mono" style="text-align:right"><div>RELATÓRIO GERADO · ${esc(r.data)}</div><div>FONTE · FACEBOOK AD LIBRARY</div></div>
   </footer>
 </div></body></html>`
+}
+
+// Versão Markdown do relatório (sem o título — quem baixa põe o H1).
+// Base pros formatos .md, .txt, .docx e .pdf.
+export function relatorioParaMarkdown(r: RelatorioConcorrente): string {
+  const linhas: string[] = []
+  linhas.push(`Varredura da Biblioteca de Anúncios da Meta em ${r.data}. ${r.totalAnalisados} criativo(s) analisados (limite ${r.limite}).`)
+  linhas.push('')
+  if (r.resumoExecutivo.length) {
+    linhas.push('## 01 · Resumo executivo', '')
+    for (const it of r.resumoExecutivo) linhas.push(`**${it.label}:** ${it.texto}`, '')
+  }
+  if (r.criativos.length) {
+    linhas.push('## 02 · Criativos analisados', '')
+    for (const c of r.criativos) {
+      linhas.push(`- **AD ${c.ad}** (${c.formato}${c.rodando != null ? `, rodando há ${c.rodando}d` : ''}, ${c.ativos} ativo(s)): ${c.titulo}${c.cta ? ` — CTA: ${c.cta}` : ''}`)
+    }
+    linhas.push('')
+  }
+  if (r.padroes.length) {
+    linhas.push('## 03 · Padrões criativos', '')
+    for (const p of r.padroes) {
+      linhas.push(`### ${p.nome} (${p.freq})`, '', p.descricao, '')
+      for (const ex of p.exemplos.slice(0, 3)) linhas.push(`> ${ex}`)
+      linhas.push('')
+    }
+  }
+  if (r.recomendacoes.length) {
+    linhas.push('## 04 · Recomendações táticas', '')
+    r.recomendacoes.forEach((rec, i) => {
+      linhas.push(`${i + 1}. **${rec.titulo}** [${PRIO_LABEL[rec.prioridade] || 'PRIORIDADE'}]`, '', `   ${rec.texto}`, '')
+    })
+  }
+  linhas.push('---', `powered by The Track · Intel · Espionar Concorrente · ${r.data}`)
+  return linhas.join('\n')
+}
+
+// Versão texto puro (pra .txt, .docx e .pdf): markdown sem a sintaxe.
+export function relatorioParaTexto(r: RelatorioConcorrente): string {
+  return relatorioParaMarkdown(r)
+    .replace(/^#{2,3} /gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/^> /gm, '  “')
+    .replace(/^(\s*“.*)$/gm, (m) => `${m}”`)
+    .replace(/^---$/gm, '––––––––––––––––––––')
 }
 
 // Dispara o download do report.html no navegador.

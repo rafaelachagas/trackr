@@ -5,7 +5,7 @@ import { Binoculars, Link2, Search, CalendarClock, Info, ExternalLink, Download,
 import { extrairPageId, type CriativoRastreado } from '@/lib/rastreador'
 import { listarBibliotecas, salvarBiblioteca, removerBiblioteca, getTranscricoes, salvarTranscricao, salvarSnapshot, listarSnapshots, atualizarBiblioteca, listarNovidades, marcarNovidadesVistas, type BibliotecaRastreada, type SnapshotRastreador, type NovidadeRastreador } from '@/app/actions/rastreador'
 import { transcreverNaFila } from '@/lib/fila-transcricao'
-import { baixarTxt, baixarDocx } from '@/lib/exportDoc'
+import { baixarTxt, baixarDocx, baixarMd, baixarPdf } from '@/lib/exportDoc'
 import InteligenciaBib from '@/components/rastreador/InteligenciaBib'
 import GeradorCopy from '@/components/inteligencia/GeradorCopy'
 import { Gauge, Wand2 } from 'lucide-react'
@@ -809,14 +809,17 @@ function ModalTranscricao({ modal, onFechar, onSalvar }: {
             className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
             {copiado ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />} {copiado ? 'Copiado!' : 'Copiar tudo'}
           </button>
-          <button onClick={() => baixarTxt(nomeBase, texto)}
-            className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
-            <Download className="w-4 h-4" /> .txt
-          </button>
-          <button onClick={() => baixarDocx(nomeBase, `Transcrição — ${c.page_name || 'Anúncio'}`, texto)}
-            className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
-            <Download className="w-4 h-4" /> .docx
-          </button>
+          {([
+            ['.txt', () => baixarTxt(nomeBase, texto)],
+            ['.docx', () => baixarDocx(nomeBase, `Transcrição — ${c.page_name || 'Anúncio'}`, texto)],
+            ['.md', () => baixarMd(nomeBase, `Transcrição — ${c.page_name || 'Anúncio'}`, texto)],
+            ['.pdf', () => baixarPdf(nomeBase, `Transcrição — ${c.page_name || 'Anúncio'}`, texto)],
+          ] as [string, () => void][]).map(([ext, fn]) => (
+            <button key={ext} onClick={fn}
+              className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
+              <Download className="w-4 h-4" /> {ext}
+            </button>
+          ))}
           {c.snapshot_url && (
             <a href={c.snapshot_url} target="_blank" rel="noreferrer" className="ml-auto px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-muted-foreground hover:text-primary hover:border-primary/40 transition">
               <ExternalLink className="w-4 h-4" /> Ver na Meta

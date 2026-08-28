@@ -5,10 +5,11 @@ import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Cl
 import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, type ResumoInteligencia, type CriativoHist } from '@/app/actions/rastreador-intel'
 import { getTranscricoes, salvarTranscricao } from '@/app/actions/rastreador'
 import { transcreverNaFila } from '@/lib/fila-transcricao'
+import { baixarTxt, baixarDocx, baixarMd, baixarPdf } from '@/lib/exportDoc'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
 import { capturarPagina, listarVersoesPagina, type VersaoPagina } from '@/app/actions/rastreador-pagina'
-import { baixarRelatorioHTML } from '@/lib/reportConcorrente'
+import { baixarRelatorioHTML, relatorioParaMarkdown, relatorioParaTexto } from '@/lib/reportConcorrente'
 import { CLASSIFICACAO_META, ANGULOS, anguloMeta, scoreLabel, type ClassificacaoTeste } from '@/lib/rastreador-intel'
 
 const card = 'bg-card border border-border'
@@ -26,6 +27,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const [classAberta, setClassAberta] = useState<ClassificacaoTeste | null>(null)
   const [cacheT, setCacheT] = useState<Record<string, string>>({})
   const [modalT, setModalT] = useState<{ titulo: string; texto: string } | null>(null)
+  const [modalFormato, setModalFormato] = useState(false)
 
   // Página de vendas
   const [url, setUrl] = useState(landingUrl ?? '')
@@ -62,13 +64,21 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     carregar()
   }
 
-  async function gerarRelatorio() {
+  async function gerarRelatorio(formato: 'html' | 'docx' | 'md' | 'txt' | 'pdf') {
+    setModalFormato(false)
     setGerando(true); setMsg(null)
     const r = await gerarRelatorioConcorrente(bibId)
     setGerando(false)
     if (!r.success || !r.data) { setMsg(r.error || 'Falha ao gerar relatório.'); return }
-    baixarRelatorioHTML(r.data)
-    setMsg('Relatório gerado e baixado (report.html).')
+    const d = r.data
+    const nomeBase = `report-${d.slug || 'concorrente'}-${d.data.replace(/\//g, '-')}`
+    const tituloDoc = `Relatório de Inteligência — ${d.nome}`
+    if (formato === 'html') baixarRelatorioHTML(d)
+    else if (formato === 'md') baixarMd(nomeBase, tituloDoc, relatorioParaMarkdown(d))
+    else if (formato === 'txt') baixarTxt(nomeBase, `${tituloDoc}\n\n${relatorioParaTexto(d)}`)
+    else if (formato === 'docx') baixarDocx(nomeBase, tituloDoc, relatorioParaTexto(d))
+    else baixarPdf(nomeBase, tituloDoc, relatorioParaTexto(d))
+    setMsg(`Relatório gerado e baixado (.${formato}).`)
   }
 
   async function capturar() {
@@ -106,7 +116,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         <button onClick={analisarAngulos} disabled={clusterizando} className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition disabled:opacity-50">
           {clusterizando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Analisar ângulos (IA)
         </button>
-        <button onClick={gerarRelatorio} disabled={gerando} className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50">
+        <button onClick={() => setModalFormato(true)} disabled={gerando} className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50">
           {gerando ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Gerar relatório (IA)
         </button>
         <button onClick={reconstruir} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition" title="Reconstruir histórico dos snapshots"><RefreshCw className="w-4 h-4" /></button>
@@ -350,8 +360,31 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         )}
       </div>
 
-      {/* Modal de transcrição (leitura + copiar + .txt) */}
+      {/* Modal de transcrição (leitura + copiar + downloads) */}
       {modalT && <ModalTranscricaoHist titulo={modalT.titulo} texto={modalT.texto} onFechar={() => setModalT(null)} />}
+
+      {/* Modal: escolher o formato do relatório IA */}
+      {modalFormato && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={() => setModalFormato(false)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div onClick={(e) => e.stopPropagation()} className={`relative w-full max-w-sm rounded-2xl ${card} shadow-2xl p-6`}>
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h3 className="text-base font-bold flex items-center gap-2"><FileDown className="w-5 h-5 text-primary" /> Gerar relatório</h3>
+              <button onClick={() => setModalFormato(false)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Você deseja gerar o relatório em qual formato?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['html', 'pdf', 'docx', 'md', 'txt'] as const).map((f) => (
+                <button key={f} onClick={() => gerarRelatorio(f)}
+                  className={`px-3 py-2.5 rounded-xl text-sm font-bold border transition ${f === 'html' ? 'col-span-2 border-primary/40 bg-primary/10 text-primary hover:bg-primary/20' : 'border-white/10 text-foreground hover:bg-white/5'}`}>
+                  .{f}{f === 'html' ? ' (visual completo)' : ''}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 mt-3">O .html mantém o layout com thumbnails; os demais levam o conteúdo em texto estruturado.</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -372,15 +405,7 @@ function ModalTranscricaoHist({ titulo, texto, onFechar }: { titulo: string; tex
     } catch { /* clipboard bloqueado */ }
   }
 
-  function baixarTxt() {
-    const blob = new Blob([texto], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `transcricao-${titulo.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.txt`
-    document.body.appendChild(a); a.click(); a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
+  const nomeBase = `transcricao-${titulo}`
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={onFechar}>
@@ -404,9 +429,17 @@ function ModalTranscricaoHist({ titulo, texto, onFechar }: { titulo: string; tex
           <button onClick={copiar} className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
             {copiado ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />} {copiado ? 'Copiado!' : 'Copiar tudo'}
           </button>
-          <button onClick={baixarTxt} className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
-            <Download className="w-4 h-4" /> .txt
-          </button>
+          {([
+            ['.txt', () => baixarTxt(nomeBase, texto)],
+            ['.docx', () => baixarDocx(nomeBase, `Transcrição — ${titulo}`, texto)],
+            ['.md', () => baixarMd(nomeBase, `Transcrição — ${titulo}`, texto)],
+            ['.pdf', () => baixarPdf(nomeBase, `Transcrição — ${titulo}`, texto)],
+          ] as [string, () => void][]).map(([ext, fn]) => (
+            <button key={ext} onClick={fn}
+              className="px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 border border-white/10 text-foreground hover:bg-white/5 transition">
+              <Download className="w-4 h-4" /> {ext}
+            </button>
+          ))}
         </div>
       </div>
     </div>
