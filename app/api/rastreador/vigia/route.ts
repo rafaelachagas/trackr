@@ -35,6 +35,22 @@ export async function GET(request: NextRequest) {
     const nome = b.nome_custom?.trim() || b.page_name?.trim() || `Página ${b.page_id}`
     const r: any = { biblioteca: nome }
 
+    // Sem landing_url cadastrada? Adota a URL de destino dominante dos
+    // anúncios do último snapshot — o vigia começa a trabalhar sozinho.
+    if (!b.landing_url) {
+      try {
+        const { data: ultimo } = await supabaseAdmin
+          .from('rastreador_snapshots').select('criativos')
+          .eq('biblioteca_id', b.id).order('puxado_em', { ascending: false }).limit(1).maybeSingle()
+        const dominante = urlDominante((ultimo as any)?.criativos ?? [])
+        if (dominante) {
+          await supabaseAdmin.from('rastreador_bibliotecas').update({ landing_url: dominante }).eq('id', b.id)
+          b.landing_url = dominante
+          r.landingAdotada = dominante
+        }
+      } catch { /* segue sem página */ }
+    }
+
     // ---- 1) Página de vendas: recaptura + diff ----
     if (b.landing_url) {
       try {
