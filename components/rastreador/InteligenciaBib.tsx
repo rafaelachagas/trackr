@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink, X, PlayCircle, Download, Copy, Binoculars, FileText, Check } from 'lucide-react'
-import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, serieEscala, type ResumoInteligencia, type CriativoHist, type PontoEscala } from '@/app/actions/rastreador-intel'
+import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, serieEscala, listarTrafegoManual, salvarTrafegoManual, type ResumoInteligencia, type CriativoHist, type PontoEscala, type LeituraTrafego } from '@/app/actions/rastreador-intel'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts'
 import { getTranscricoes, salvarTranscricao } from '@/app/actions/rastreador'
 import { transcreverNaFila } from '@/lib/fila-transcricao'
@@ -38,14 +38,18 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const [capturando, setCapturando] = useState(false)
 
   const [escala, setEscala] = useState<PontoEscala[]>([])
+  const [trafego, setTrafego] = useState<LeituraTrafego[]>([])
+  const [trafegoMes, setTrafegoMes] = useState(() => new Date().toISOString().slice(0, 7))
+  const [trafegoVisitas, setTrafegoVisitas] = useState('')
 
   async function carregar() {
     setLoading(true)
-    const [r, c, v, e] = await Promise.all([resumoInteligencia(bibId), listarCriativosHist(bibId), listarVersoesPagina(bibId), serieEscala(bibId)])
+    const [r, c, v, e, tr] = await Promise.all([resumoInteligencia(bibId), listarCriativosHist(bibId), listarVersoesPagina(bibId), serieEscala(bibId), listarTrafegoManual(bibId)])
     if (r.success) setResumo(r.data)
     if (c.success) setCriativos(c.data)
     if (v.success) setVersoes(v.data)
     if (e.success) setEscala(e.data)
+    if (tr.success) setTrafego(tr.data)
     setLoading(false)
     // Cache de transcrições já feitas (mesma tabela usada no "Movimento").
     // Inclui a da VSL da página, guardada sob a chave sintética vsl:<bibId>.
@@ -344,6 +348,39 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
               </ResponsiveContainer>
             </div>
             <p className="text-[10px] text-muted-foreground/70 mt-2">Linha cheia: anúncios no ar (com cópias/duplicações). Tracejada: criativos únicos.</p>
+
+            {/* Tráfego estimado (leituras manuais da extensão do SimilarWeb) */}
+            <div className="mt-4 pt-4 border-t border-white/5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-bold text-muted-foreground shrink-0">Tráfego estimado (SimilarWeb):</span>
+                {trafego.length === 0 && <span className="text-[11px] text-muted-foreground/60">nenhuma leitura registrada ainda</span>}
+                {trafego.map((l, i) => {
+                  const ant = trafego[i - 1]
+                  const d = ant && ant.visitas > 0 ? ((l.visitas - ant.visitas) / ant.visitas) * 100 : null
+                  return (
+                    <span key={l.mes} className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-white/5 tabular-nums">
+                      {`${l.mes.slice(5, 7)}/${l.mes.slice(2, 4)}`}: {l.visitas >= 1000 ? `${(l.visitas / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}K` : l.visitas}
+                      {d != null && <span className={d >= 0 ? 'text-emerald-300' : 'text-rose-300'}> {d >= 0 ? '+' : ''}{d.toFixed(0)}%</span>}
+                    </span>
+                  )
+                })}
+                <span className="ml-auto flex items-center gap-1.5">
+                  <input type="month" value={trafegoMes} onChange={(e) => setTrafegoMes(e.target.value)}
+                    className="px-2 py-1 rounded-lg text-[11px]" style={inputStyle} />
+                  <input type="number" min={1} placeholder="visitas/mês" value={trafegoVisitas} onChange={(e) => setTrafegoVisitas(e.target.value)}
+                    className="w-24 px-2 py-1 rounded-lg text-[11px]" style={inputStyle} />
+                  <button onClick={async () => {
+                    const v = Number(trafegoVisitas)
+                    if (!v || !trafegoMes) return
+                    const r = await salvarTrafegoManual(bibId, trafegoMes, v)
+                    if (r.success) { setTrafego(r.data); setTrafegoVisitas('') } else setMsg(r.error ?? 'Falha ao salvar leitura.')
+                  }} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition">
+                    Registrar
+                  </button>
+                </span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70 mt-1.5">Anote aqui a leitura da extensão do SimilarWeb quando olhar — cruzada com o gráfico acima, mostra se a escala de anúncios está virando tráfego de verdade.</p>
+            </div>
           </div>
         )
       })()}

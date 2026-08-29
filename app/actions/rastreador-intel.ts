@@ -212,6 +212,41 @@ export async function serieEscala(bibliotecaId: string): Promise<{ success: bool
   }
 }
 
+// ---- Tráfego estimado (leituras manuais do SimilarWeb) ----
+// A extensão do SimilarWeb dá visitas/mês estimadas do domínio; a gente não
+// tem como puxar isso por API grátis, então o usuário registra a leitura e o
+// painel cruza com a pressão de escala. Guardado em configuracoes (JSON).
+
+export interface LeituraTrafego { mes: string; visitas: number }  // mes: yyyy-MM
+
+export async function listarTrafegoManual(bibliotecaId: string): Promise<{ success: boolean; data: LeituraTrafego[] }> {
+  try {
+    const { data } = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', `sw_trafego_${bibliotecaId}`).maybeSingle()
+    const arr = data?.valor ? JSON.parse(data.valor) : []
+    return { success: true, data: Array.isArray(arr) ? arr : [] }
+  } catch {
+    return { success: true, data: [] }
+  }
+}
+
+export async function salvarTrafegoManual(bibliotecaId: string, mes: string, visitas: number): Promise<{ success: boolean; error?: string; data: LeituraTrafego[] }> {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    if (!/^\d{4}-\d{2}$/.test(mes)) throw new Error('Mês inválido.')
+    if (!(visitas > 0)) throw new Error('Informe o número de visitas.')
+    const { data: atual } = await listarTrafegoManual(bibliotecaId)
+    const novo = [...atual.filter((l) => l.mes !== mes), { mes, visitas }].sort((a, b) => a.mes.localeCompare(b.mes)).slice(-24)
+    const { error } = await supabaseAdmin.from('configuracoes').upsert(
+      { chave: `sw_trafego_${bibliotecaId}`, valor: JSON.stringify(novo), org_id: orgId, updated_at: new Date().toISOString() },
+      { onConflict: 'chave' })
+    if (error) throw error
+    return { success: true, data: novo }
+  } catch (e: any) {
+    return { success: false, error: e.message, data: [] }
+  }
+}
+
 // Grava o ângulo/resumo de um criativo (usado pela clusterização por IA).
 export async function salvarAngulo(bibliotecaId: string, adArchiveId: string, angulo: string, resumo: string | null, transcricaoHash: string | null) {
   try {
