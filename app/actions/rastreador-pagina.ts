@@ -158,8 +158,8 @@ export async function detectarAbVslConcorrente(bibliotecaId: string): Promise<{ 
 // sessões novas (via Chromium da VPS) e lê o texto de cada headline — inclusive
 // quando ela é uma IMAGEM (OCR pela IA). É o único jeito de ver esses testes,
 // porque a headline desses funis é injetada por JS e some do HTML cru.
-export type { HeadlineVariante }
-
+// NÃO reexportar tipos daqui: este arquivo é 'use server' e só pode exportar
+// funções async. Quem precisa do tipo importa de '@/lib/vigia-pagina'.
 export async function detectarHeadlinesConcorrente(bibliotecaId: string): Promise<{ success: boolean; variantes: HeadlineVariante[]; sessoes: number; error?: string }> {
   try {
     const { data: bib } = await supabaseAdmin
