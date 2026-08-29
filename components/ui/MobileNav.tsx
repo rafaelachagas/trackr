@@ -17,11 +17,11 @@ const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/sales', label: 'Vendas', icon: ShoppingCart },
   // Criativos e Lançamento (cadastro manual) ocultos — puxados automaticamente.
-  { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
+  { href: '/sales-creatives', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { href: '/ad-analysis', label: 'Analisar Criativos', icon: Film },
   { href: '/vsls', label: 'Análise de VSL', icon: MonitorPlay },
-  { href: '/funil', label: 'Análise de Funil', icon: FilterIcon },
+  { href: '/funnel', label: 'Análise de Funil', icon: FilterIcon },
 ]
 
 const dataSources = [
@@ -31,12 +31,12 @@ const dataSources = [
 ]
 
 const ferramentas = [
-  { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars },
-  { href: '/ferramentas/analisar-pagina', label: 'Analisador de Páginas', icon: Search },
-  { href: '/ferramentas/swipe-file', label: 'Swipe File', icon: FolderSearch },
-  { href: '/ferramentas/gerador-copy', label: 'Gerador de Copy', icon: Wand2 },
-  { href: '/ferramentas/alertas', label: 'Central de Alertas', icon: Bell },
-  { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp },
+  { href: '/tools/ad-tracker', label: 'Rastreador de Anúncios', icon: Binoculars },
+  { href: '/tools/page-analyzer', label: 'Analisador de Páginas', icon: Search },
+  { href: '/tools/swipe-file', label: 'Swipe File', icon: FolderSearch },
+  { href: '/tools/copy-generator', label: 'Gerador de Copy', icon: Wand2 },
+  { href: '/tools/alerts', label: 'Central de Alertas', icon: Bell },
+  { href: '/tools/simulator', label: 'Simulador de Funil', icon: TrendingUp },
 ]
 
 export default function MobileNav() {
@@ -185,12 +185,12 @@ export default function MobileNav() {
             {/* Integrações */}
             <div className="pt-2 mt-2 border-t border-white/5">
               <Link
-                href="/configuracoes"
+                href="/settings"
                 onClick={() => setOpen(false)}
-                className={itemClass(pathname === '/configuracoes')}
-                style={pathname === '/configuracoes' ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
+                className={itemClass(pathname === '/settings')}
+                style={pathname === '/settings' ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
               >
-                <Settings className="w-5 h-5 flex-shrink-0" style={{ color: pathname === '/configuracoes' ? '#00aeef' : 'var(--muted-foreground)' }} />
+                <Settings className="w-5 h-5 flex-shrink-0" style={{ color: pathname === '/settings' ? '#00aeef' : 'var(--muted-foreground)' }} />
                 Configurações
               </Link>
             </div>

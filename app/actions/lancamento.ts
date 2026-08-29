@@ -61,7 +61,7 @@ export async function adicionarVenda(payload: {
     org_id: orgId,
   })
   if (error) return { success: false, error: error.message }
-  revalidatePath('/lancamento')
+  revalidatePath('/launch')
   return { success: true }
 }
 
@@ -100,7 +100,7 @@ export async function adicionarGasto(payload: {
     org_id: orgId,
   })
   if (error) return { success: false, error: error.message }
-  revalidatePath('/lancamento')
+  revalidatePath('/launch')
   return { success: true }
 }
 
@@ -117,7 +117,7 @@ export async function editarVenda(id: string, payload: { valor: number; produto:
     .update(update)
     .eq('id', id)
   if (error) return { success: false, error: error.message }
-  revalidatePath('/lancamento')
+  revalidatePath('/launch')
   return { success: true }
 }
 
@@ -127,7 +127,7 @@ export async function editarGasto(id: string, payload: { valor_gasto: number; da
     .update({ valor_gasto: payload.valor_gasto, data: payload.data })
     .eq('id', id)
   if (error) return { success: false, error: error.message }
-  revalidatePath('/lancamento')
+  revalidatePath('/launch')
   return { success: true }
 }
 
@@ -146,7 +146,7 @@ export async function trocarDiaDosLancamentos(tipo: 'vendas' | 'gastos', ids: st
       .in('id', ids)
       .like('transaction_id', 'manual_%')
     if (error) return { success: false, error: error.message }
-    revalidatePath('/lancamento')
+    revalidatePath('/launch')
     return { success: true, movidos: count ?? 0 }
   }
 
@@ -156,7 +156,7 @@ export async function trocarDiaDosLancamentos(tipo: 'vendas' | 'gastos', ids: st
     .in('id', ids)
     .is('ad_id', null)
   if (error) return { success: false, error: error.message }
-  revalidatePath('/lancamento')
+  revalidatePath('/launch')
   return { success: true, movidos: count ?? 0 }
 }
 
@@ -323,7 +323,7 @@ export async function importarLancamentosEmLote(payload: {
     }
   }
 
-  revalidatePath('/lancamento')
+  revalidatePath('/launch')
   return { success: resumo.erros.length === 0, resumo }
 }
 

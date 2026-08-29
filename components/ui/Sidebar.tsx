@@ -41,10 +41,10 @@ const navigation = [
   // Criativos e Lançamento (cadastro MANUAL) ocultos — hoje criativos e
   // lançamentos são puxados automaticamente. As páginas seguem acessíveis por
   // URL, só saíram do menu.
-  { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
+  { href: '/sales-creatives', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { href: '/vsls', label: 'Análise de VSL', icon: MonitorPlay },
-  { href: '/funil', label: 'Análise de Funil', icon: FilterIcon },
+  { href: '/funnel', label: 'Análise de Funil', icon: FilterIcon },
 ]
 
 const dataSources = [
@@ -58,10 +58,10 @@ const dataSources = [
 // tipo Google Drive; hoje ele só guarda o que o Rastreador transcreve). O
 // código continua no repo pra quando isso for retomado, só não fica visível.
 const ferramentas = [
-  { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars, beta: true },
-  { href: '/ferramentas/analisar-pagina', label: 'Analisador de Páginas', icon: Search, beta: true },
-  { href: '/ferramentas/alertas', label: 'Central de Alertas', icon: Bell, beta: true },
-  { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
+  { href: '/tools/ad-tracker', label: 'Rastreador de Anúncios', icon: Binoculars, beta: true },
+  { href: '/tools/page-analyzer', label: 'Analisador de Páginas', icon: Search, beta: true },
+  { href: '/tools/alerts', label: 'Central de Alertas', icon: Bell, beta: true },
+  { href: '/tools/simulator', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
 ]
 
 export default function Sidebar() {
@@ -71,8 +71,8 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [dataSourcesOpen, setDataSourcesOpen] = useState(pathname.startsWith('/data-sources'))
   const dataSourcesActive = pathname.startsWith('/data-sources')
-  const [ferramentasOpen, setFerramentasOpen] = useState(pathname.startsWith('/ferramentas'))
-  const ferramentasActive = pathname.startsWith('/ferramentas')
+  const [ferramentasOpen, setFerramentasOpen] = useState(pathname.startsWith('/tools'))
+  const ferramentasActive = pathname.startsWith('/tools')
 
   const labelClass = `overflow-hidden whitespace-nowrap transition-all duration-300 ${
     collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[200px] opacity-100 ml-3'
@@ -105,7 +105,7 @@ export default function Sidebar() {
   }
 
   const adAnalysisActive = pathname === '/ad-analysis'
-  const configActive = pathname === '/configuracoes'
+  const configActive = pathname === '/settings'
 
   return (
     <>
@@ -219,7 +219,7 @@ export default function Sidebar() {
           {/* Configurações */}
           <div className="relative group/item">
             <Link
-              href="/configuracoes"
+              href="/settings"
               className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
               style={configActive ? { backgroundColor: '#5dd3ff14' } : {}}
             >

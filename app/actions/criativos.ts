@@ -95,8 +95,8 @@ export async function criarCriativo(payload: NovoCriativo) {
     status: 'ativo',
   })
   if (error) return { success: false, error: error.message }
-  revalidatePath('/criativos')
-  revalidatePath('/lancamento')
+  revalidatePath('/creatives')
+  revalidatePath('/launch')
   return { success: true }
 }
 
@@ -113,22 +113,22 @@ export async function editarCriativo(id: string, payload: NovoCriativo) {
     thumbnail_url: payload.thumbnail_url || null,
   }).eq('id', id)
   if (error) return { success: false, error: error.message }
-  revalidatePath('/criativos')
-  revalidatePath('/lancamento')
+  revalidatePath('/creatives')
+  revalidatePath('/launch')
   return { success: true }
 }
 
 export async function toggleStatusCriativo(id: string, novoStatus: 'ativo' | 'pausado') {
   const { error } = await supabaseAdmin.from('criativos').update({ status: novoStatus }).eq('id', id)
   if (error) return { success: false, error: error.message }
-  revalidatePath('/criativos')
+  revalidatePath('/creatives')
   return { success: true }
 }
 
 export async function deletarCriativo(id: string) {
   const { error } = await supabaseAdmin.from('criativos').delete().eq('id', id)
   if (error) return { success: false, error: error.message }
-  revalidatePath('/criativos')
-  revalidatePath('/lancamento')
+  revalidatePath('/creatives')
+  revalidatePath('/launch')
   return { success: true }
 }

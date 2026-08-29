@@ -16,7 +16,7 @@ type Novidade = {
 }
 
 // Mesmo dado do banner "Novos anúncios detectados" do Rastreador de Anúncios
-// (app/(dashboard)/ferramentas/rastreador/page.tsx), só que visível no painel
+// (app/(dashboard)/tools/ad-tracker/page.tsx), só que visível no painel
 // inteiro via Topbar — não precisa estar na página do Rastreador pra saber.
 const POLL_MS = 60_000
 
@@ -60,7 +60,7 @@ export default function SinoNotificacoes() {
   function abrir(n: Novidade) {
     marcarVista(n.id)
     setAberto(false)
-    router.push('/ferramentas/rastreador')
+    router.push('/tools/ad-tracker')
   }
 
   return (
