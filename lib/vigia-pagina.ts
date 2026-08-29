@@ -459,25 +459,29 @@ export async function extrairHeadlinePagina(html: string): Promise<string | null
 // sessões novas e devolver as imagens do topo de cada uma. Agrupamos as sessões
 // por "impressão digital" (quais imagens vieram) → cada grupo é uma variante.
 
-interface SessaoRender { imgs: { src: string; top: number; w: number; h: number }[]; htext: string }
+interface SessaoRender { imgs: { src: string; top: number; w: number; h: number }[]; htext: string; vids?: string[]; shot?: string | null }
+interface RenderResp { sessoes: SessaoRender[]; errosMsg: string[]; erroFetch?: string }
 
-async function renderSessoesVps(url: string, n = 6): Promise<SessaoRender[]> {
-  if (!RASTREADOR_APIKEY) return []
+async function renderSessoesVps(url: string, n = 5): Promise<RenderResp> {
+  if (!RASTREADOR_APIKEY) return { sessoes: [], errosMsg: [], erroFetch: 'RASTREADOR_APIKEY não configurada no ambiente.' }
   try {
     const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 120000)
+    const t = setTimeout(() => ctrl.abort(), 240000)
     const r = await fetch(`${RASTREADOR_URL}/render?url=${encodeURIComponent(url)}&key=${encodeURIComponent(RASTREADOR_APIKEY)}&n=${n}`, {
       signal: ctrl.signal, cache: 'no-store',
     }).finally(() => clearTimeout(t))
-    if (!r.ok) return []
+    if (!r.ok) return { sessoes: [], errosMsg: [], erroFetch: `render respondeu ${r.status}` }
     const j = await r.json()
-    return Array.isArray(j?.sessoes) ? j.sessoes : []
-  } catch { return [] }
+    return { sessoes: Array.isArray(j?.sessoes) ? j.sessoes : [], errosMsg: Array.isArray(j?.errosMsg) ? j.errosMsg : [] }
+  } catch (e: any) {
+    return { sessoes: [], errosMsg: [], erroFetch: e?.name === 'AbortError' ? 'render demorou demais (timeout 240s)' : e?.message }
+  }
 }
 
 export interface HeadlineVariante {
-  texto: string          // texto lido (OCR da imagem ou h1/h2)
+  texto: string          // texto lido (OCR da imagem ou h1/h2); '' se sem headline
   imagem: string | null  // imagem da headline (se for imagem)
+  print: string | null   // screenshot (data URI) da tela dessa variante
   vezes: number          // em quantas sessões apareceu
   pct: number            // proporção entre as variantes
 }
@@ -500,32 +504,51 @@ export interface DebugHeadlines {
   ocrFalhou: number
   amostraImg?: string       // 1ª imagem-headline (pra inspeção)
   motivo?: string           // por que veio vazio, em português
+  errosMsg?: string[]       // erros por sessão vindos da VPS
+  erroFetch?: string        // erro ao chamar a VPS
 }
 
-// Detecta quantas headlines o concorrente está testando, lendo o texto de cada
-// uma (OCR pela IA quando é imagem). Renderiza a página em N sessões novas.
-export async function headlinesEmTeste(url: string, n = 6): Promise<{ variantes: HeadlineVariante[]; sessoes: number; debug: DebugHeadlines }> {
-  const sessoes = await renderSessoesVps(url, n)
-  const dbg: DebugHeadlines = { sessoes: sessoes.length, imgsTopo: 0, htextVisto: 0, candidatasImg: 0, ocrTentado: 0, ocrFalhou: 0 }
-  for (const s of sessoes) { dbg.imgsTopo += s.imgs.length; if (s.htext) dbg.htextVisto++ }
-  if (!sessoes.length) { dbg.motivo = 'O render da VPS não retornou nenhuma sessão (endpoint fora do ar, timeout ou página bloqueou o robô).'; return { variantes: [], sessoes: 0, debug: dbg } }
+// Assinatura visual de uma sessão — o que define "a mesma variante". Prioriza a
+// imagem-headline; senão o h1/h2; senão o 1º vídeo; senão as imagens do topo.
+function assinaturaVariante(s: SessaoRender): string {
+  const img = imagemHeadline(s)
+  if (img) return 'img:' + img
+  if (s.htext) return 'txt:' + s.htext.slice(0, 80).toLowerCase()
+  if (s.vids && s.vids.length) return 'vid:' + s.vids[0]
+  if (s.imgs.length) return 'top:' + s.imgs.slice(0, 3).map((i) => i.src).join('|')
+  return '∅'
+}
 
-  // Agrupa sessões por variante. A "chave" da variante é a imagem-headline
-  // (ou, se não houver imagem, o texto do h1/h2). Sessões iguais somam.
-  const grupos = new Map<string, { imagem: string | null; htext: string; vezes: number }>()
+// Detecta quantas VARIAÇÕES da página o concorrente está testando (headline,
+// design, vídeo). Renderiza N sessões novas, agrupa por variante e devolve o
+// PRINT da tela de cada uma + o texto da headline (OCR quando é imagem).
+export async function headlinesEmTeste(url: string, n = 5): Promise<{ variantes: HeadlineVariante[]; sessoes: number; debug: DebugHeadlines }> {
+  const resp = await renderSessoesVps(url, n)
+  const sessoes = resp.sessoes
+  const dbg: DebugHeadlines = { sessoes: sessoes.length, imgsTopo: 0, htextVisto: 0, candidatasImg: 0, ocrTentado: 0, ocrFalhou: 0, errosMsg: resp.errosMsg, erroFetch: resp.erroFetch }
+  for (const s of sessoes) { dbg.imgsTopo += s.imgs.length; if (s.htext) dbg.htextVisto++ }
+  if (!sessoes.length) {
+    dbg.motivo = resp.erroFetch
+      ? `O render da VPS falhou: ${resp.erroFetch}`
+      : 'O render da VPS não retornou nenhuma sessão (a página pode ter bloqueado o robô).'
+    return { variantes: [], sessoes: 0, debug: dbg }
+  }
+
+  // Agrupa sessões por variante visual. Mantém a 1ª sessão como representante
+  // (guarda o print e a imagem-headline dela).
+  const grupos = new Map<string, { imagem: string | null; htext: string; print: string | null; vezes: number }>()
   for (const s of sessoes) {
-    const img = imagemHeadline(s)
-    const chave = img || s.htext || '∅'
+    const chave = assinaturaVariante(s)
     if (chave === '∅') continue
     const g = grupos.get(chave)
     if (g) g.vezes++
-    else grupos.set(chave, { imagem: img, htext: s.htext, vezes: 1 })
+    else grupos.set(chave, { imagem: imagemHeadline(s), htext: s.htext, print: s.shot ?? null, vezes: 1 })
   }
 
   dbg.candidatasImg = [...grupos.values()].filter((g) => g.imagem).length
   dbg.amostraImg = [...grupos.values()].find((g) => g.imagem)?.imagem ?? undefined
 
-  // Para cada variante distinta, lê o texto (OCR da imagem, senão o h1/h2).
+  // Para cada variante distinta: OCR da headline (se imagem) + o print.
   const variantes: HeadlineVariante[] = []
   const totalSessoes = sessoes.length
   for (const g of [...grupos.values()].sort((a, b) => b.vezes - a.vezes).slice(0, 6)) {
@@ -536,8 +559,9 @@ export async function headlinesEmTeste(url: string, n = 6): Promise<{ variantes:
       if (ocr.ok && ocr.texto && ocr.texto !== '—') texto = ocr.texto.replace(/\s+/g, ' ').trim()
       else dbg.ocrFalhou++
     }
-    if (!texto) continue
-    variantes.push({ texto: texto.slice(0, 400), imagem: g.imagem, vezes: g.vezes, pct: Math.round((g.vezes / totalSessoes) * 100) })
+    // Mantém a variante mesmo SEM headline em texto (o print já mostra a tela;
+    // "teste sem headline" é justamente um dos casos que o usuário quer ver).
+    variantes.push({ texto: (texto || '').slice(0, 400), imagem: g.imagem, print: g.print, vezes: g.vezes, pct: Math.round((g.vezes / totalSessoes) * 100) })
   }
   if (!variantes.length) {
     dbg.motivo = dbg.imgsTopo === 0 && dbg.htextVisto === 0
@@ -626,8 +650,8 @@ export async function atualizarDiarioAb(orgId: string, bibId: string, html: stri
   let headlineAtual = estadoAnt?.headline
   if (url) {
     try {
-      const { variantes } = await headlinesEmTeste(url, 6)
-      const textos = variantes.map((v) => v.texto)
+      const { variantes } = await headlinesEmTeste(url, 5)
+      const textos = variantes.map((v) => v.texto).filter((t) => t && t.length > 3)
       if (textos.length) {
         headlinesAtual = textos
         headlineAtual = textos[0]

@@ -264,7 +264,7 @@ app.get('/render', async (req, res) => {
   if (APIKEY && key !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
   const url = String(req.query.url || '')
   if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'url inválida' })
-  const n = Math.min(Math.max(Number(req.query.n) || 6, 1), 10)
+  const n = Math.min(Math.max(Number(req.query.n) || 5, 1), 8)
 
   const UAS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
@@ -272,45 +272,50 @@ app.get('/render', async (req, res) => {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
     'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36',
   ]
-  // Coleta, no DOM já renderizado, as imagens VISÍVEIS do topo da página (onde
-  // mora a headline). Ignora ícones pequenos, pixels e data-uri minúsculos.
-  const COLETOR = `() => {
+
+  // Coletor rodado NO NAVEGADOR — função real (passar string pro page.evaluate
+  // NÃO chama a função, só a serializa; era por isso que voltava vazio).
+  function coletor() {
     const out = []
-    const push = (src, r) => {
-      if (!src || src.startsWith('data:,')) return
-      const top = r.top + (window.scrollY || 0)
-      if (r.width < 120 || r.height < 24) return          // ícone/selo pequeno
-      if (top > 1800) return                              // só o topo da página
-      out.push({ src, top: Math.round(top), w: Math.round(r.width), h: Math.round(r.height) })
+    const push = (src, r, top) => {
+      if (!src || src.indexOf('data:,') === 0) return
+      if (r.width < 120 || r.height < 24) return
+      if (top > 2000) return
+      out.push({ src: src, top: Math.round(top), w: Math.round(r.width), h: Math.round(r.height) })
     }
-    // 1) <img> visíveis do topo.
     for (const im of Array.from(document.images || [])) {
-      push(im.currentSrc || im.src || '', im.getBoundingClientRect())
+      const r = im.getBoundingClientRect()
+      push(im.currentSrc || im.src || '', r, r.top + (window.scrollY || 0))
     }
-    // 2) background-image (GreatPages/Elementor às vezes põe a headline como BG).
     for (const el of Array.from(document.querySelectorAll('*'))) {
       const r = el.getBoundingClientRect()
       const top = r.top + (window.scrollY || 0)
-      if (r.width < 120 || r.height < 24 || top > 1800) continue
-      const bg = getComputedStyle(el).backgroundImage || ''
-      const m = bg.match(/url\\(["']?([^"')]+)["']?\\)/)
-      if (m && /\\.(png|jpe?g|webp|gif)/i.test(m[1])) push(m[1], r)
+      if (r.width < 120 || r.height < 24 || top > 2000) continue
+      const bg = window.getComputedStyle(el).backgroundImage || ''
+      const m = bg.match(/url\(["']?([^"')]+)["']?\)/)
+      if (m && /\.(png|jpe?g|webp|gif)/i.test(m[1])) push(m[1], r, top)
     }
-    // 3) texto de headline em <h1>/<h2> reais (caso não seja imagem).
     let htext = ''
-    for (const tag of ['h1','h2']) {
+    for (const tag of ['h1', 'h2']) {
       const el = document.querySelector(tag)
-      if (el && el.innerText && el.innerText.trim().length > 8) { htext = el.innerText.trim().slice(0,300); break }
+      if (el && el.innerText && el.innerText.trim().length > 8) { htext = el.innerText.trim().slice(0, 300); break }
     }
-    // Dedup por src, mantém o do topo.
+    // Assinaturas de vídeo VTurb no DOM renderizado (pra pegar A/B de VSL
+    // page-level: cada variante da página pode embutir um player diferente).
+    const vids = []; const vseen = {}
+    const outer = document.documentElement.innerHTML
+    const rxv = /(?:scripts|cdn)\.converteai\.net\/([a-z0-9-]+)\/(?:players\/)?([a-f0-9]{16,})/gi
+    let vm
+    while ((vm = rxv.exec(outer))) { const kk = vm[1] + '/' + vm[2]; if (!vseen[kk]) { vseen[kk] = 1; vids.push(kk) } }
     const vistos = new Set(); const uniq = []
-    out.sort((a,b) => a.top - b.top)
+    out.sort((a, b) => a.top - b.top)
     for (const it of out) { if (vistos.has(it.src)) continue; vistos.add(it.src); uniq.push(it) }
-    return { imgs: uniq.slice(0, 8), htext }
-  }`
+    return { imgs: uniq.slice(0, 8), htext: htext, vids: vids.slice(0, 6) }
+  }
 
   const sessoes = []
   let erros = 0
+  const errosMsg = []
   try {
     const b = await getBrowser()
     for (let i = 0; i < n; i++) {
@@ -318,34 +323,33 @@ app.get('/render', async (req, res) => {
       try {
         ctx = await b.newContext({
           userAgent: UAS[i % UAS.length],
-          viewport: { width: 1366, height: 900 },
+          viewport: { width: 1080, height: 1350 },
           locale: 'pt-BR',
-          bypassCSP: true,
         })
-        // Contexto novo já vem sem cookie/cache; garante estado limpo.
-        await ctx.clearCookies().catch(() => {})
         const page = await ctx.newPage()
-        // NÃO usar networkidle: páginas de VSL (player + pixels) nunca ficam
-        // idle e travariam os 45s do timeout por sessão. domcontentloaded +
-        // espera fixa é rápido e já pega as imagens injetadas por JS.
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
-        await page.waitForTimeout(4000) // deixa o construtor injetar as imagens/headline
-        // rola um tico pra disparar lazy-load do topo, e espera mais um pouco
-        await page.evaluate(() => window.scrollTo(0, 300)).catch(() => {})
-        await page.waitForTimeout(1200)
-        const r = await page.evaluate(COLETOR).catch(() => ({ imgs: [], htext: '' }))
-        sessoes.push({ imgs: r.imgs || [], htext: r.htext || '' })
-      } catch (_) {
-        erros++
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch((e) => { errosMsg.push('goto: ' + e.message) })
+        await page.waitForTimeout(3500) // deixa o construtor injetar as imagens/headline
+        await page.evaluate(() => window.scrollTo(0, 200)).catch(() => {})
+        await page.waitForTimeout(800)
+        const r = await page.evaluate(coletor).catch((e) => { errosMsg.push('evaluate: ' + e.message); return { imgs: [], htext: '', vids: [] } })
+        // Print do topo da página (viewport) — é o que o usuário quer ver.
+        let shot = null
+        try {
+          const buf = await page.screenshot({ type: 'jpeg', quality: 55 })
+          shot = 'data:image/jpeg;base64,' + buf.toString('base64')
+        } catch (e) { errosMsg.push('shot: ' + e.message) }
+        sessoes.push({ imgs: r.imgs || [], htext: r.htext || '', vids: r.vids || [], shot: shot })
+      } catch (e) {
+        erros++; errosMsg.push('sessao: ' + (e && e.message || e))
       } finally {
         if (ctx) await ctx.close().catch(() => {})
       }
     }
   } catch (err) {
     console.error('[render]', err)
-    return res.status(500).json({ error: String(err && err.message || err) })
+    return res.status(500).json({ error: String(err && err.message || err), sessoes: sessoes, erros: erros, errosMsg: errosMsg.slice(0, 8) })
   }
-  res.json({ ok: true, sessoes, n, erros })
+  res.json({ ok: true, sessoes: sessoes, n: n, erros: erros, errosMsg: errosMsg.slice(0, 8) })
 })
 
 app.post('/scrape', async (req, res) => {

@@ -625,35 +625,40 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
       </div>
 
-      {/* 1.5) HEADLINES EM TESTE — o A/B mais comum desses funis (headline = imagem) */}
+      {/* 1.5) VARIAÇÕES EM TESTE — print da tela de cada variante + headline (OCR) */}
       {headlines && headlines.length > 0 && (
         <div className={`rounded-2xl p-5 ${card}`}>
           <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
             <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-muted-foreground" />
-              {headlines.length > 1 ? `${headlines.length} headlines em teste A/B` : 'Headline no ar'}
+              {headlines.length > 1 ? `${headlines.length} variações da página em teste` : 'Variação no ar'}
             </p>
-            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-500/10 text-violet-300">lido por IA{headlinesSessoes ? ` · ${headlinesSessoes} sessões` : ''}</span>
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-500/10 text-violet-300">print + OCR{headlinesSessoes ? ` · ${headlinesSessoes} sessões` : ''}</span>
           </div>
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {headlines.map((h, i) => (
-              <div key={i} className="rounded-xl border border-white/10 p-3 flex items-start gap-3">
-                {headlines.length > 1 && (
-                  <span className="text-xs font-black w-6 h-6 rounded-full bg-violet-500/15 text-violet-300 flex items-center justify-center shrink-0 mt-0.5">{String.fromCharCode(65 + i)}</span>
-                )}
-                {h.imagem && (
-                  <a href={h.imagem} target="_blank" rel="noreferrer" className="shrink-0">
-                    <img src={h.imagem} alt="" className="w-14 h-14 rounded object-cover object-top bg-black/40 border border-white/10 hover:border-primary/50 transition" loading="lazy" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none' }} />
+              <div key={i} className="rounded-xl border border-white/10 overflow-hidden bg-black/20 flex flex-col">
+                {h.print ? (
+                  <a href={h.print} target="_blank" rel="noreferrer" className="block relative">
+                    <img src={h.print} alt="" className="w-full max-h-64 object-cover object-top hover:opacity-90 transition" loading="lazy" />
+                    <span className="absolute top-1.5 left-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-black/70 text-white">{headlines.length > 1 ? `Variante ${String.fromCharCode(65 + i)}` : 'Variante'} · {h.pct}%</span>
                   </a>
+                ) : h.imagem ? (
+                  <a href={h.imagem} target="_blank" rel="noreferrer"><img src={h.imagem} alt="" className="w-full max-h-64 object-cover object-top" loading="lazy" /></a>
+                ) : (
+                  <div className="w-full h-40 flex items-center justify-center text-[11px] text-muted-foreground">sem print</div>
                 )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-foreground leading-snug">“{h.texto}”</p>
-                  {headlines.length > 1 && <p className="text-[10px] text-muted-foreground mt-1 tabular-nums">apareceu em {h.pct}% das visitas</p>}
+                <div className="p-2.5">
+                  {h.texto ? (
+                    <p className="text-xs text-foreground leading-snug line-clamp-4">“{h.texto}”</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">sem headline em texto (só vídeo/imagem)</p>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-          {headlines.length === 1 && <p className="mt-2 text-[11px] text-muted-foreground">Só uma headline apareceu nas {headlinesSessoes} sessões — sem teste A/B de headline agora.</p>}
+          {headlines.length === 1 && <p className="mt-2 text-[11px] text-muted-foreground">Só uma variação apareceu nas {headlinesSessoes} sessões — sem teste A/B de página agora.</p>}
         </div>
       )}
 
@@ -674,6 +679,15 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             <a href={headlinesDebug.amostraImg} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-primary hover:underline">
               ver a imagem que o robô pegou no topo
             </a>
+          )}
+          {headlinesDebug.erroFetch && <p className="mt-2 text-[11px] text-rose-300/90">Erro ao chamar a VPS: {headlinesDebug.erroFetch}</p>}
+          {Array.isArray(headlinesDebug.errosMsg) && headlinesDebug.errosMsg.length > 0 && (
+            <details className="mt-2">
+              <summary className="text-[11px] text-muted-foreground cursor-pointer">erros por sessão ({headlinesDebug.errosMsg.length})</summary>
+              <ul className="mt-1 space-y-0.5">
+                {headlinesDebug.errosMsg.map((m: string, i: number) => <li key={i} className="text-[10px] font-mono text-rose-300/70">{m}</li>)}
+              </ul>
+            </details>
           )}
         </div>
       )}
