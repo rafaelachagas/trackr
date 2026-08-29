@@ -635,6 +635,7 @@ export async function coletarVariacoes(orgId: string, bibId: string, url: string
   }
 
   let novas = 0
+  const novasTextos: string[] = []
   for (const [sig, g] of atuais) {
     const ja = porSig.get(sig)
     if (ja) {
@@ -643,25 +644,34 @@ export async function coletarVariacoes(orgId: string, bibId: string, url: string
       if (!ja.printUrl && g.print) ja.printUrl = await salvarPrintDataUri(bibId, `var_${hashTexto(sig)}`, g.print)
       continue
     }
-    // Variante NOVA: lê a headline (OCR) e guarda o print no Storage.
+    // Variante NOVA: guarda o print no Storage e a IA LÊ O PRINT pra tirar a
+    // headline (é o que o usuário quer — ler depois de já ter o print).
+    const printUrl = g.print ? await salvarPrintDataUri(bibId, `var_${hashTexto(sig)}`, g.print) : null
     let texto = g.htext
-    if (g.imagem) {
+    const INSTR_PRINT = 'Esta é a captura de tela do TOPO de uma página de vendas. Leia APENAS a HEADLINE principal (a chamada grande em destaque no topo), exatamente como está escrita, incluindo quebras naturais numa linha só. Ignore avisos de "atenção", botões, legendas do player de vídeo, rodapé e textos pequenos. Se não houver headline legível, responda apenas "—".'
+    if (!texto && printUrl) {
       dbg.ocrTentado++
-      const ocr = await lerTextoDaImagem(g.imagem)
+      const ocr = await lerTextoDaImagem(printUrl, INSTR_PRINT)
       if (ocr.ok && ocr.texto && ocr.texto !== '—') texto = ocr.texto.replace(/\s+/g, ' ').trim()
       else dbg.ocrFalhou++
     }
-    const printUrl = g.print ? await salvarPrintDataUri(bibId, `var_${hashTexto(sig)}`, g.print) : null
+    if (!texto && g.imagem) {
+      const ocr = await lerTextoDaImagem(g.imagem)
+      if (ocr.ok && ocr.texto && ocr.texto !== '—') texto = ocr.texto.replace(/\s+/g, ' ').trim()
+    }
     const nova: VariacaoPagina = { sig, printUrl, texto: (texto || '').slice(0, 400), imagem: g.imagem, vezes: g.vezes, primeiraVez: agoraISO, ultimaVez: agoraISO }
     stored.push(nova); porSig.set(sig, nova); novas++
+    novasTextos.push(texto ? `“${texto.slice(0, 110)}”` : '(sem headline em texto — só vídeo/imagem)')
   }
 
   await gravarJson(orgId, `variacoes_${bibId}`, stored.slice(-40))
 
-  // Registra no diário quando aparece variação nova.
+  // Registra no diário CADA variação nova, com a headline que a IA leu do print.
   if (novas > 0) {
     const diario = await lerJson<EventoDiario[]>(`ab_diario_${bibId}`, [])
-    diario.push({ em: agoraISO, tipo: 'headline', titulo: `${novas} nova(s) variação(ões) de página capturada(s)`, detalhe: `Já vistas ${stored.length} variações diferentes no total. Veja os prints na aba Página & VSL.` })
+    for (const t of novasTextos) {
+      diario.push({ em: agoraISO, tipo: 'headline', titulo: 'Nova variação de página capturada', detalhe: `${t} · print salvo na aba Página & VSL (total: ${stored.length} variações já vistas).` })
+    }
     await gravarJson(orgId, `ab_diario_${bibId}`, diario.slice(-100))
   }
 

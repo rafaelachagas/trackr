@@ -146,7 +146,7 @@ async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: str
 // OCR de imagem via IA com visão — lê o texto de uma headline em imagem.
 // Usa o provider configurado (Gemini tem visão nativa; Anthropic idem).
 // Recebe a URL da imagem; baixa e manda inline (base64). Devolve só o texto.
-export async function lerTextoDaImagem(imageUrl: string): Promise<{ ok: boolean; texto: string; erro?: string }> {
+export async function lerTextoDaImagem(imageUrl: string, instrucaoCustom?: string): Promise<{ ok: boolean; texto: string; erro?: string }> {
   const cfg = await getLLMConfig()
   try {
     const ctrl = new AbortController()
@@ -156,7 +156,7 @@ export async function lerTextoDaImagem(imageUrl: string): Promise<{ ok: boolean;
     const mime = img.headers.get('content-type')?.split(';')[0] || 'image/jpeg'
     if (!/^image\//.test(mime)) return { ok: false, texto: '', erro: 'não é imagem' }
     const b64 = Buffer.from(await img.arrayBuffer()).toString('base64')
-    const instrucao = 'Extraia APENAS o texto que aparece nesta imagem (headline, chamada, oferta), exatamente como está escrito, sem comentar nada. Se não houver texto legível, responda apenas "—".'
+    const instrucao = instrucaoCustom || 'Extraia APENAS o texto que aparece nesta imagem (headline, chamada, oferta), exatamente como está escrito, sem comentar nada. Se não houver texto legível, responda apenas "—".'
 
     if (cfg.provider === 'gemini') {
       if (!cfg.geminiKey) return { ok: false, texto: '', erro: 'Chave do Gemini não configurada.' }

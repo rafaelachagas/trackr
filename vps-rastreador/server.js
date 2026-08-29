@@ -330,10 +330,25 @@ app.get('/render', async (req, res) => {
           locale: 'pt-BR',
           serviceWorkers: 'block',            // sem SW = sem cache de variante
           extraHTTPHeaders: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
-          deviceScaleFactor: 1 + (i % 3) * 0.5, // varia o fingerprint entre sessões
         })
-        // Zera qualquer storage antes de qualquer script rodar.
-        await ctx.addInitScript(() => { try { localStorage.clear(); sessionStorage.clear() } catch (e) {} })
+        // STEALTH: o split deles serve variante fixa pra BOT. Disfarçamos de
+        // navegador real (webdriver off, plugins, chrome, webgl) pra receber o
+        // mesmo sorteio aleatório que um humano recebe. + limpa storage.
+        await ctx.addInitScript(() => {
+          try { localStorage.clear(); sessionStorage.clear() } catch (e) {}
+          try { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) } catch (e) {}
+          try { Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] }) } catch (e) {}
+          try { Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] }) } catch (e) {}
+          try { window.chrome = { runtime: {} } } catch (e) {}
+          try {
+            const q = window.navigator.permissions && window.navigator.permissions.query
+            if (q) window.navigator.permissions.query = (p) => (p && p.name === 'notifications' ? Promise.resolve({ state: Notification.permission }) : q(p))
+          } catch (e) {}
+          try {
+            const gp = WebGLRenderingContext.prototype.getParameter
+            WebGLRenderingContext.prototype.getParameter = function (p) { if (p === 37445) return 'Intel Inc.'; if (p === 37446) return 'Intel Iris OpenGL Engine'; return gp.call(this, p) }
+          } catch (e) {}
+        })
         const page = await ctx.newPage()
         // Cache-buster único por sessão: derruba qualquer cache/CDN que estivesse
         // servindo sempre a mesma variante pro nosso IP.

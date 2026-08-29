@@ -733,9 +733,9 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
                         Variante {String.fromCharCode(65 + i)}
                         {lider && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">maior peso</span>}
                       </p>
-                      <p className="text-[10px] font-mono text-muted-foreground">
-                        vídeo #{vid}
-                        {dupDe !== undefined && <span className="text-amber-300/80"> · mesmo vídeo da Variante {String.fromCharCode(65 + dupDe)}</span>}
+                      <p className="text-[10px] font-mono text-muted-foreground break-all select-all" title={v.url}>
+                        {v.url.replace(/^https?:\/\//, '')}
+                        {dupDe !== undefined && <span className="text-amber-300/80"> · = Variante {String.fromCharCode(65 + dupDe)}</span>}
                       </p>
                     </div>
                     <button onClick={() => transcreverItem(v)} disabled={!!vslStatus}
@@ -752,7 +752,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             })()}
           </div>
           <p className="mt-2 text-[10px] text-muted-foreground/80">
-            O "vídeo #id" é o arquivo do player (VTurb/converteai, formato .m3u8) — não é um link que abre no navegador. Para assistir, use <b>Baixar</b> (vem em mp4) ou <b>Transcrever</b> pra ler o roteiro.
+            É o arquivo .m3u8 do player (VTurb/converteai) — dá pra copiar o link. Pra assistir, use <b>Baixar</b> (vem em mp4) ou <b>Transcrever</b> pra ler o roteiro.
           </p>
           <button onClick={escolherNaPagina} disabled={versoes.length === 0}
             className="mt-2 text-[11px] text-muted-foreground hover:text-primary transition inline-flex items-center gap-1 disabled:opacity-40">
