@@ -663,26 +663,53 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             {abInline.abVturb && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-500/10 text-amber-300">A/B nativo VTurb · peso real</span>}
           </div>
           <div className="space-y-2">
-            {abInline.videos.map((v, i) => (
-              <div key={v.url} className="rounded-xl border border-white/10 p-3 flex items-center gap-3">
-                <span className="text-sm font-black tabular-nums w-12 text-center shrink-0" style={{ color: i === 0 ? '#37d67a' : '#fbbf24' }}>{Math.round(v.pct)}%</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-foreground">Variante {String.fromCharCode(65 + i)}</p>
-                  <p className="text-[10px] font-mono text-muted-foreground truncate" title={v.url}>{v.url.replace(/^https?:\/\//, '').slice(0, 60)}</p>
-                </div>
-                <button onClick={() => transcreverItem(v)} disabled={!!vslStatus}
-                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-50 transition inline-flex items-center gap-1">
-                  {vslStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />} Transcrever
-                </button>
-                <a href={v.download} target="_blank" rel="noreferrer"
-                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-foreground/90 hover:bg-white/5 transition inline-flex items-center gap-1">
-                  <Download className="w-3.5 h-3.5" /> Baixar
-                </a>
-              </div>
-            ))}
+            {(() => {
+              const pesos = abInline.videos.map((v) => v.pct)
+              const maxPeso = Math.max(...pesos)
+              // Todos com o mesmo peso? Então NÃO há vencedora — nada de pintar
+              // a primeira de verde como se liderasse.
+              const empatado = pesos.every((p) => Math.abs(p - maxPeso) < 0.5)
+              // "id" do vídeo no player (mediaKey do CDN) — pra distinguir as
+              // variantes e detectar quando duas são o MESMO vídeo.
+              const idVideo = (u: string) => (u.match(/converteai\.net\/[a-z0-9-]+\/([a-f0-9]{6,})/i)?.[1] || u).slice(-10)
+              const primeiro: Record<string, number> = {}
+              return abInline.videos.map((v, i) => {
+                const vid = idVideo(v.url)
+                const dupDe = primeiro[vid]
+                if (dupDe === undefined) primeiro[vid] = i
+                const lider = !empatado && v.pct === maxPeso
+                const cor = lider ? '#37d67a' : empatado ? '#9aa4b2' : '#fbbf24'
+                return (
+                  <div key={i} className="rounded-xl border border-white/10 p-3 flex items-center gap-3">
+                    <span className="text-sm font-black tabular-nums w-12 text-center shrink-0" style={{ color: cor }}>{Math.round(v.pct)}%</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        Variante {String.fromCharCode(65 + i)}
+                        {lider && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">maior peso</span>}
+                      </p>
+                      <p className="text-[10px] font-mono text-muted-foreground">
+                        vídeo #{vid}
+                        {dupDe !== undefined && <span className="text-amber-300/80"> · mesmo vídeo da Variante {String.fromCharCode(65 + dupDe)}</span>}
+                      </p>
+                    </div>
+                    <button onClick={() => transcreverItem(v)} disabled={!!vslStatus}
+                      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-50 transition inline-flex items-center gap-1">
+                      {vslStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />} Transcrever
+                    </button>
+                    <a href={v.download} target="_blank" rel="noreferrer" title="Baixar o vídeo (mp4) — os links do player não abrem direto no navegador"
+                      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-foreground/90 hover:bg-white/5 transition inline-flex items-center gap-1">
+                      <Download className="w-3.5 h-3.5" /> Baixar
+                    </a>
+                  </div>
+                )
+              })
+            })()}
           </div>
+          <p className="mt-2 text-[10px] text-muted-foreground/80">
+            O "vídeo #id" é o arquivo do player (VTurb/converteai, formato .m3u8) — não é um link que abre no navegador. Para assistir, use <b>Baixar</b> (vem em mp4) ou <b>Transcrever</b> pra ler o roteiro.
+          </p>
           <button onClick={escolherNaPagina} disabled={versoes.length === 0}
-            className="mt-3 text-[11px] text-muted-foreground hover:text-primary transition inline-flex items-center gap-1 disabled:opacity-40">
+            className="mt-2 text-[11px] text-muted-foreground hover:text-primary transition inline-flex items-center gap-1 disabled:opacity-40">
             <PlayCircle className="w-3 h-3" /> não achou o vídeo certo? escolher clicando na página
           </button>
         </div>
