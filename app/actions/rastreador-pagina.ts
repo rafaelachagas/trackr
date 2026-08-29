@@ -36,7 +36,7 @@ export async function acharVslConcorrente(bibliotecaId: string): Promise<{ succe
 
 // Lista TODOS os vídeos achados na última versão salva da página (pro
 // seletor: o usuário escolhe qual transcrever/baixar quando há mais de um).
-export interface VslCandidata { url: string; origem: string; download: string }
+export interface VslCandidata { url: string; origem: string; download: string; peso?: number }
 export async function listarVslsConcorrente(bibliotecaId: string): Promise<{ success: boolean; itens: VslCandidata[]; error?: string }> {
   try {
     const { data: ultima } = await supabaseAdmin
@@ -61,7 +61,8 @@ export interface AnalisePaginaAvulsa {
   headline: string | null
   precos: string[]
   stack: { id: string; label: string }[]
-  videos: VslCandidata[]
+  videos: (VslCandidata & { peso?: number })[]
+  abVturb: boolean   // true = as variantes vêm de um teste A/B nativo da VTurb
 }
 
 export async function analisarPaginaAvulsa(url: string): Promise<{ success: boolean; data?: AnalisePaginaAvulsa; error?: string }> {
@@ -85,6 +86,7 @@ export async function analisarPaginaAvulsa(url: string): Promise<{ success: bool
         precos: detectarPrecos(texto),
         stack: detectarStack(html),
         videos: achados.map((a) => ({ ...a, download: linkProxyVsl(a.url) })),
+        abVturb: achados.some((a) => a.origem === 'vturb-ab'),
       },
     }
   } catch (e: any) {

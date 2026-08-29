@@ -252,37 +252,84 @@ export async function capturarPaginaCore(orgId: string, bibliotecaId: string, ur
   }
 }
 
-// Acha TODAS as URLs reproduzíveis de vídeo embutidas numa página (mp4/m3u8
-// direto no HTML + players VTurb resolvidos via player.js do converteai).
-export async function acharVslUrls(html: string): Promise<{ url: string; origem: string }[]> {
-  const achados: { url: string; origem: string }[] = []
+async function baixarTexto(url: string, ms = 15000): Promise<string | null> {
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), ms)
+    const r = await fetch(url, { signal: ctrl.signal, cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36' } }).finally(() => clearTimeout(t))
+    return r.ok ? await r.text() : null
+  } catch { return null }
+}
+
+// Extrai o m3u8/mp4 de um player VTurb. O player.js "raiz" às vezes redireciona
+// pra notfound.js; a config real com a mídia mora em players/<id>/v4/player.js.
+async function midiaDoPlayerVturb(oid: string, playerId: string): Promise<string | null> {
+  for (const u of [
+    `https://scripts.converteai.net/${oid}/players/${playerId}/v4/player.js`,
+    `https://scripts.converteai.net/${oid}/players/${playerId}/player.js`,
+  ]) {
+    const js = await baixarTexto(u)
+    const m = js?.match(/["'](https?:\/\/[^"']+\.(?:m3u8|mp4)(?:\?[^"']*)?)["']/i)
+    if (m) return m[1]
+  }
+  return null
+}
+
+// Acha TODAS as URLs reproduzíveis de vídeo embutidas numa página:
+//  - mp4/m3u8 cravados no HTML
+//  - players VTurb normais (scripts.converteai.net/<oid>/players/<id>/...)
+//  - testes A/B da VTurb (scripts.converteai.net/<oid>/ab-test/<id>/player.js):
+//    o script do A/B lista as variantes (children) com peso; resolvemos a
+//    mídia de CADA uma — é assim que a gente pega as duas VSLs do split.
+export async function acharVslUrls(html: string): Promise<{ url: string; origem: string; peso?: number }[]> {
+  const achados: { url: string; origem: string; peso?: number }[] = []
   const vistos = new Set<string>()
-  const add = (url: string, origem: string) => {
-    // Dedup por "base" (mesmo vídeo em mp4 e m3u8 conta uma vez? não — formatos
-    // diferentes podem interessar; dedup só por URL exata).
+  const add = (url: string, origem: string, peso?: number) => {
     if (vistos.has(url)) return
     vistos.add(url)
-    achados.push({ url, origem })
+    achados.push({ url, origem, peso })
   }
+
   for (const m of html.matchAll(/["'](https?:\/\/[^"']+\.(?:mp4|m3u8)(?:\?[^"']*)?)["']/gi)) {
     const u = m[1]
     if (/thumb|poster|preview|\.jpg|\.png/i.test(u)) continue
     add(u, 'html')
   }
-  const players = new Set<string>()
-  for (const m of html.matchAll(/https?:\/\/scripts\.converteai\.net\/[a-z0-9-]+\/players\/[a-f0-9-]{10,}\/[\w./-]*player\.js/gi)) players.add(m[0])
-  for (const m of html.matchAll(/https?:\/\/scripts\.converteai\.net\/[a-z0-9-]+\/players\/[a-f0-9-]{10,}/gi)) players.add(`${m[0]}/player.js`)
-  for (const pj of [...players].slice(0, 5)) {
-    try {
-      const ctrl = new AbortController()
-      const t = setTimeout(() => ctrl.abort(), 15000)
-      const r = await fetch(pj, { signal: ctrl.signal, cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0' } }).finally(() => clearTimeout(t))
-      if (!r.ok) continue
-      const js = await r.text()
-      const media = js.match(/["'](https?:\/\/[^"']+\.(?:m3u8|mp4)(?:\?[^"']*)?)["']/i)
-      if (media) add(media[1], 'vturb')
-    } catch { /* tenta o próximo player */ }
+
+  // 1) Testes A/B (embed dedicado) — precisa vir antes pra rotular como ab.
+  const abTests = new Set<string>()
+  for (const m of html.matchAll(/https?:\/\/scripts\.converteai\.net\/([a-z0-9-]+)\/ab-test\/([a-f0-9]{10,})/gi)) {
+    abTests.add(`${m[1]}::${m[2]}`)
   }
+  for (const key of [...abTests].slice(0, 3)) {
+    const [oid, abId] = key.split('::')
+    const js = await baixarTexto(`https://scripts.converteai.net/${oid}/ab-test/${abId}/player.js`)
+    if (!js) continue
+    // children:[{id:"<variantId>",step:5,weight:50,config:{...,id:"<mediaKey>"...
+    // Cada variante é um player: resolvemos players/<variantId>/v4/player.js.
+    const variantes = [...js.matchAll(/id:"([a-f0-9]{20,})",step:\d+,weight:(\d+)/g)]
+    for (const v of variantes.slice(0, 6)) {
+      const media = await midiaDoPlayerVturb(oid, v[1])
+      if (media) add(media, 'vturb-ab', Number(v[2]))
+    }
+  }
+
+  // 2) Players VTurb normais.
+  const players = new Set<string>()
+  for (const m of html.matchAll(/scripts\.converteai\.net\/([a-z0-9-]+)\/players\/([a-f0-9-]{10,})/gi)) {
+    players.add(`${m[1]}::${m[2]}`)
+  }
+  for (const m of html.matchAll(/<vturb-smartplayer[^>]*id="(?:vid[-_])?([a-f0-9]{10,})"/gi)) {
+    // sem oid no atributo; tenta casar com algum oid já visto
+    const oid = [...abTests, ...players][0]?.split('::')[0]
+    if (oid) players.add(`${oid}::${m[1]}`)
+  }
+  for (const key of [...players].slice(0, 5)) {
+    const [oid, pid] = key.split('::')
+    const media = await midiaDoPlayerVturb(oid, pid)
+    if (media) add(media, 'vturb')
+  }
+
   return achados.slice(0, 8)
 }
 

@@ -123,6 +123,12 @@ export default function AnalisarPaginaPage() {
               <div className="flex flex-wrap gap-1.5">{dados.stack.map((s) => <span key={s.id} className="text-xs font-semibold px-2 py-1 rounded-lg bg-primary/10 text-primary">{s.label}</span>)}</div>
             </div>
           )}
+          {dados.abVturb && (
+            <div className="rounded-xl px-3 py-2.5 flex items-start gap-2 text-xs bg-amber-500/8 border border-amber-500/25 text-amber-200">
+              <Layers className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span><b>Teste A/B da VTurb detectado</b> — a página serve {dados.videos.filter((v) => v.origem === 'vturb-ab').length} VSLs diferentes no rodízio. Os pesos aparecem em cada uma abaixo.</span>
+            </div>
+          )}
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Vídeos no código da página ({dados.videos.length})</p>
             {dados.videos.length === 0 ? (
@@ -131,7 +137,8 @@ export default function AnalisarPaginaPage() {
               <div className="space-y-2">
                 {dados.videos.map((v) => (
                   <div key={v.url} className="rounded-xl border border-white/10 p-3 flex items-center gap-3">
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary uppercase shrink-0">{tag(v)}</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary uppercase shrink-0">{v.origem === 'vturb-ab' ? 'A/B' : tag(v)}</span>
+                    {v.peso != null && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 shrink-0">peso {v.peso}</span>}
                     <span className="text-[11px] font-mono text-muted-foreground truncate flex-1" title={v.url}>{v.url.replace(/^https?:\/\//, '')}</span>
                     <button onClick={() => transcrever(v)} disabled={!!tStatus}
                       className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-50 transition inline-flex items-center gap-1">
