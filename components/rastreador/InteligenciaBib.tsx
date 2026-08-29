@@ -143,7 +143,8 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         }
         if (j.status === 'erro' || j.error) { setVslStatus(null); setVslErro(j.erro || j.error || 'Falha ao transcrever.'); return }
         setVslStatus(j.status === 'fila' ? 'Na fila da VPS...' : `Transcrevendo... (${min} min)`)
-        if (Date.now() - comecou > 45 * 60000) { setVslStatus(null); setVslErro('Passou de 45 min — algo travou na VPS.'); return }
+        // VSL de 1h em CPU pode levar bem mais de 1h de máquina — teto folgado.
+        if (Date.now() - comecou > 150 * 60000) { setVslStatus(null); setVslErro('Passou de 2h30 — algo travou na VPS.'); return }
       }
     } catch {
       setVslStatus(null)

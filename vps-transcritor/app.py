@@ -37,7 +37,8 @@ def baixar(video_url: str) -> str:
             "ffmpeg", "-y", "-user_agent", UA, "-i", video_url,
             "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", path,
         ]
-        r = subprocess.run(cmd, capture_output=True, timeout=600)
+        # 30 min de teto: sobra pra extrair o áudio de uma VSL de 1h.
+        r = subprocess.run(cmd, capture_output=True, timeout=1800)
         if r.returncode != 0 or os.path.getsize(path) < 1000:
             os.path.exists(path) and os.remove(path)
             raise RuntimeError(f"ffmpeg falhou no m3u8: {r.stderr[-300:].decode(errors='ignore')}")
@@ -68,9 +69,9 @@ JOBS_LOCK = threading.Lock()
 def _rodar_job(job_id: str, video_url: str):
     with JOBS_LOCK:
         JOBS[job_id]["status"] = "fila"
-    if not TRANSCRIBE_LOCK.acquire(timeout=3600):
+    if not TRANSCRIBE_LOCK.acquire(timeout=7200):
         with JOBS_LOCK:
-            JOBS[job_id].update(status="erro", erro="transcritor ocupado por mais de 1h")
+            JOBS[job_id].update(status="erro", erro="transcritor ocupado por mais de 2h")
         return
     path = None
     try:
@@ -91,7 +92,7 @@ def _rodar_job(job_id: str, video_url: str):
 
 
 def _limpar_jobs_velhos():
-    corte = time.time() - 2 * 3600
+    corte = time.time() - 6 * 3600
     with JOBS_LOCK:
         for k in [k for k, v in JOBS.items() if v.get("criado", 0) < corte]:
             del JOBS[k]
@@ -144,7 +145,7 @@ def download():
             os.close(fd)
             cmd = ["ffmpeg", "-y", "-user_agent", UA, "-i", video_url, "-c", "copy",
                    "-bsf:a", "aac_adtstoasc", path]
-            r = subprocess.run(cmd, capture_output=True, timeout=900)
+            r = subprocess.run(cmd, capture_output=True, timeout=1800)
             if r.returncode != 0 or os.path.getsize(path) < 10000:
                 raise RuntimeError(f"ffmpeg: {r.stderr[-300:].decode(errors='ignore')}")
         else:
