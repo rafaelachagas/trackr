@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
         // teste encerrado quando sobra 1 vencedora a 100%).
         try {
           const html = await fetch(b.landing_url, { cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36' } }).then((x) => x.text())
-          const ev = await atualizarDiarioAb(b.org_id, b.id, html, new Date().toISOString())
+          const ev = await atualizarDiarioAb(b.org_id, b.id, html, new Date().toISOString(), b.landing_url)
           if (ev) {
             r.diario = ev.tipo
             const { novo } = await registrarAlerta({

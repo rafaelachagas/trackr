@@ -251,6 +251,97 @@ app.get('/screenshot', async (req, res) => {
   }
 })
 
+// Amostrador de headlines (teste A/B de página): abre a página em N sessões
+// NOVAS (contexto limpo, sem cookie/cache) e, em cada uma, deixa o JS do
+// construtor (GreatPages/Elementor/etc.) rodar e injetar as imagens. A headline
+// desses funis quase sempre é uma IMAGEM no topo — que NÃO existe no HTML cru,
+// só aparece depois do JS. Devolve, por sessão, as imagens do topo em ordem;
+// o The Track agrupa as sessões por "impressão digital" (quais imagens vieram)
+// pra descobrir quantas variantes de headline estão rodando, e faz o OCR.
+// GET /render?url=...&key=APIKEY&n=6
+app.get('/render', async (req, res) => {
+  const key = req.query.key || req.headers['x-api-key']
+  if (APIKEY && key !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
+  const url = String(req.query.url || '')
+  if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'url inválida' })
+  const n = Math.min(Math.max(Number(req.query.n) || 6, 1), 10)
+
+  const UAS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+    'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36',
+  ]
+  // Coleta, no DOM já renderizado, as imagens VISÍVEIS do topo da página (onde
+  // mora a headline). Ignora ícones pequenos, pixels e data-uri minúsculos.
+  const COLETOR = `() => {
+    const out = []
+    const push = (src, r) => {
+      if (!src || src.startsWith('data:,')) return
+      const top = r.top + (window.scrollY || 0)
+      if (r.width < 120 || r.height < 24) return          // ícone/selo pequeno
+      if (top > 1800) return                              // só o topo da página
+      out.push({ src, top: Math.round(top), w: Math.round(r.width), h: Math.round(r.height) })
+    }
+    // 1) <img> visíveis do topo.
+    for (const im of Array.from(document.images || [])) {
+      push(im.currentSrc || im.src || '', im.getBoundingClientRect())
+    }
+    // 2) background-image (GreatPages/Elementor às vezes põe a headline como BG).
+    for (const el of Array.from(document.querySelectorAll('*'))) {
+      const r = el.getBoundingClientRect()
+      const top = r.top + (window.scrollY || 0)
+      if (r.width < 120 || r.height < 24 || top > 1800) continue
+      const bg = getComputedStyle(el).backgroundImage || ''
+      const m = bg.match(/url\\(["']?([^"')]+)["']?\\)/)
+      if (m && /\\.(png|jpe?g|webp|gif)/i.test(m[1])) push(m[1], r)
+    }
+    // 3) texto de headline em <h1>/<h2> reais (caso não seja imagem).
+    let htext = ''
+    for (const tag of ['h1','h2']) {
+      const el = document.querySelector(tag)
+      if (el && el.innerText && el.innerText.trim().length > 8) { htext = el.innerText.trim().slice(0,300); break }
+    }
+    // Dedup por src, mantém o do topo.
+    const vistos = new Set(); const uniq = []
+    out.sort((a,b) => a.top - b.top)
+    for (const it of out) { if (vistos.has(it.src)) continue; vistos.add(it.src); uniq.push(it) }
+    return { imgs: uniq.slice(0, 8), htext }
+  }`
+
+  const sessoes = []
+  let erros = 0
+  try {
+    const b = await getBrowser()
+    for (let i = 0; i < n; i++) {
+      let ctx = null
+      try {
+        ctx = await b.newContext({
+          userAgent: UAS[i % UAS.length],
+          viewport: { width: 1366, height: 900 },
+          locale: 'pt-BR',
+          bypassCSP: true,
+        })
+        // Contexto novo já vem sem cookie/cache; garante estado limpo.
+        await ctx.clearCookies().catch(() => {})
+        const page = await ctx.newPage()
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {})
+        await page.waitForTimeout(3500) // deixa o construtor injetar as imagens
+        const r = await page.evaluate(COLETOR).catch(() => ({ imgs: [], htext: '' }))
+        sessoes.push({ imgs: r.imgs || [], htext: r.htext || '' })
+      } catch (_) {
+        erros++
+      } finally {
+        if (ctx) await ctx.close().catch(() => {})
+      }
+    }
+  } catch (err) {
+    console.error('[render]', err)
+    return res.status(500).json({ error: String(err && err.message || err) })
+  }
+  res.json({ ok: true, sessoes, n, erros })
+})
+
 app.post('/scrape', async (req, res) => {
   if (APIKEY && req.headers['x-api-key'] !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
   const { url, maxScrolls, debug } = req.body || {}

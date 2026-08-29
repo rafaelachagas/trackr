@@ -9,7 +9,7 @@ import { transcreverNaFila } from '@/lib/fila-transcricao'
 import { baixarTxt, baixarDocx, baixarMd, baixarPdf } from '@/lib/exportDoc'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
-import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, resolverEscolhaVsl, detectarAbVslConcorrente, listarDiarioConcorrente, atualizarDiarioConcorrente, type VersaoPagina, type VslCandidata, type AbDetectado } from '@/app/actions/rastreador-pagina'
+import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, resolverEscolhaVsl, detectarAbVslConcorrente, detectarHeadlinesConcorrente, listarDiarioConcorrente, atualizarDiarioConcorrente, type VersaoPagina, type VslCandidata, type AbDetectado, type HeadlineVariante } from '@/app/actions/rastreador-pagina'
 import type { EventoDiario } from '@/lib/vigia-pagina'
 import { baixarRelatorioHTML, relatorioParaMarkdown, relatorioParaTexto } from '@/lib/reportConcorrente'
 import { CLASSIFICACAO_META, ANGULOS, anguloMeta, scoreLabel, type ClassificacaoTeste } from '@/lib/rastreador-intel'
@@ -190,21 +190,31 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   // variantes de vídeo/headline com a proporção do sorteio.
   // Análise inline (não modal) da VSL/A/B, exibida no card "VSL do concorrente".
   const [abInline, setAbInline] = useState<AbDetectado | null>(null)
+  const [headlines, setHeadlines] = useState<HeadlineVariante[] | null>(null)
+  const [headlinesSessoes, setHeadlinesSessoes] = useState(0)
   const [analisandoTudo, setAnalisandoTudo] = useState(false)
+  const [etapaAnalise, setEtapaAnalise] = useState<string | null>(null)
 
-  // Um clique faz tudo: versiona a página, atualiza o diário e detecta o A/B.
+  // Um clique faz tudo: versiona a página, detecta o A/B de vídeo, LÊ as
+  // headlines em teste (render + OCR) e atualiza o diário.
   async function analisarTudo() {
     if (analisandoTudo) return
     setAnalisandoTudo(true); setVslErro(null); setMsg(null)
     try {
+      setEtapaAnalise('Capturando a página...')
       await capturar()
-      const d = await atualizarDiarioConcorrente(bibId)
-      if (d.success) setDiario(d.data)
+      setEtapaAnalise('Procurando VSLs no ar...')
       const ab = await detectarAbVslConcorrente(bibId)
       if (ab.success && ab.data) setAbInline(ab.data)
       else if (ab.error) setVslErro(ab.error)
+      setEtapaAnalise('Abrindo a página em várias sessões pra ler as headlines...')
+      const hl = await detectarHeadlinesConcorrente(bibId)
+      if (hl.success) { setHeadlines(hl.variantes); setHeadlinesSessoes(hl.sessoes) }
+      setEtapaAnalise('Registrando no diário...')
+      const d = await atualizarDiarioConcorrente(bibId)
+      if (d.success) setDiario(d.data)
     } finally {
-      setAnalisandoTudo(false)
+      setAnalisandoTudo(false); setEtapaAnalise(null)
     }
   }
 
@@ -212,10 +222,15 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const ultimaVersao = versoes[0]
   const ultimoEvento = diario[0]
   const resumoAb = (() => {
+    const nHl = headlines?.length ?? 0
+    const nVsl = abInline?.videos.length ?? 0
+    // O teste de headline é o mais comum nesses funis — mostra ele em primeiro
+    // plano quando há mais de uma variante rodando.
+    if (nHl > 1) return { icone: '🧪', texto: `Testando ${nHl} headlines agora`, sub: nVsl > 1 ? `+ ${nVsl} VSLs em teste A/B` : `Lidas em ${headlinesSessoes} sessões novas da página` }
     if (abInline) {
-      const n = abInline.videos.length
-      if (n > 1) return { icone: '🧪', texto: `Testando ${n} VSLs agora`, sub: abInline.abVturb ? `A/B nativo da VTurb · ${abInline.videos.map((v) => `${Math.round(v.pct)}%`).join(' / ')}` : `${abInline.rodadas} visitas` }
-      if (n === 1) return { icone: '🎬', texto: 'VSL única no ar', sub: 'Nenhum teste A/B ativo neste momento' }
+      if (nVsl > 1) return { icone: '🧪', texto: `Testando ${nVsl} VSLs agora`, sub: abInline.abVturb ? `A/B nativo da VTurb · ${abInline.videos.map((v) => `${Math.round(v.pct)}%`).join(' / ')}` : `${abInline.rodadas} visitas` }
+      if (nVsl === 1 && nHl === 1) return { icone: '🎬', texto: 'VSL e headline únicas', sub: 'Nenhum teste A/B ativo neste momento' }
+      if (nVsl === 1) return { icone: '🎬', texto: 'VSL única no ar', sub: 'Nenhum teste A/B de vídeo neste momento' }
     }
     if (ultimoEvento?.tipo === 'ab_encerrado') return { icone: '🏆', texto: 'Encerrou um teste A/B', sub: ultimoEvento.detalhe }
     if (ultimoEvento?.tipo === 'ab_inicio' || ultimoEvento?.tipo === 'ab_rodada') return { icone: '🧪', texto: 'Teste A/B em andamento', sub: ultimoEvento.detalhe }
@@ -600,8 +615,41 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             {analisandoTudo ? 'Analisando...' : 'Analisar agora'}
           </button>
         </div>
+        {etapaAnalise && <p className="mt-2 text-[11px] text-primary/90 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> {etapaAnalise}</p>}
         {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
       </div>
+
+      {/* 1.5) HEADLINES EM TESTE — o A/B mais comum desses funis (headline = imagem) */}
+      {headlines && headlines.length > 0 && (
+        <div className={`rounded-2xl p-5 ${card}`}>
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-muted-foreground" />
+              {headlines.length > 1 ? `${headlines.length} headlines em teste A/B` : 'Headline no ar'}
+            </p>
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-500/10 text-violet-300">lido por IA{headlinesSessoes ? ` · ${headlinesSessoes} sessões` : ''}</span>
+          </div>
+          <div className="space-y-2">
+            {headlines.map((h, i) => (
+              <div key={i} className="rounded-xl border border-white/10 p-3 flex items-start gap-3">
+                {headlines.length > 1 && (
+                  <span className="text-xs font-black w-6 h-6 rounded-full bg-violet-500/15 text-violet-300 flex items-center justify-center shrink-0 mt-0.5">{String.fromCharCode(65 + i)}</span>
+                )}
+                {h.imagem && (
+                  <a href={h.imagem} target="_blank" rel="noreferrer" className="shrink-0">
+                    <img src={h.imagem} alt="" className="w-14 h-14 rounded object-cover object-top bg-black/40 border border-white/10 hover:border-primary/50 transition" loading="lazy" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none' }} />
+                  </a>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground leading-snug">“{h.texto}”</p>
+                  {headlines.length > 1 && <p className="text-[10px] text-muted-foreground mt-1 tabular-nums">apareceu em {h.pct}% das visitas</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+          {headlines.length === 1 && <p className="mt-2 text-[11px] text-muted-foreground">Só uma headline apareceu nas {headlinesSessoes} sessões — sem teste A/B de headline agora.</p>}
+        </div>
+      )}
 
       {/* 2) VSL DO CONCORRENTE — variantes com ações inline (transcrever/baixar) */}
       {abInline && abInline.videos.length > 0 && (

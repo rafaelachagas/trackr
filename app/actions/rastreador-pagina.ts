@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
-import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, detectarAbTeste, htmlParaTexto, extrairHeadline, detectarPrecos, detectarStack, atualizarDiarioAb, lerDiarioConcorrente, BUCKET_PRINTS, type ResultadoCaptura, type EventoDiario } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, detectarAbTeste, htmlParaTexto, extrairHeadline, detectarPrecos, detectarStack, atualizarDiarioAb, lerDiarioConcorrente, headlinesEmTeste, BUCKET_PRINTS, type ResultadoCaptura, type EventoDiario, type HeadlineVariante } from '@/lib/vigia-pagina'
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
 // O trabalho pesado mora em lib/vigia-pagina.ts (compartilhado com o cron do
@@ -154,6 +154,35 @@ export async function detectarAbVslConcorrente(bibliotecaId: string): Promise<{ 
   }
 }
 
+// Headlines em teste A/B do concorrente: renderiza a página de vendas em várias
+// sessões novas (via Chromium da VPS) e lê o texto de cada headline — inclusive
+// quando ela é uma IMAGEM (OCR pela IA). É o único jeito de ver esses testes,
+// porque a headline desses funis é injetada por JS e some do HTML cru.
+export type { HeadlineVariante }
+
+export async function detectarHeadlinesConcorrente(bibliotecaId: string): Promise<{ success: boolean; variantes: HeadlineVariante[]; sessoes: number; error?: string }> {
+  try {
+    const { data: bib } = await supabaseAdmin
+      .from('rastreador_bibliotecas').select('landing_url').eq('id', bibliotecaId).maybeSingle()
+    if (!bib?.landing_url) return { success: false, variantes: [], sessoes: 0, error: 'Sem URL de página cadastrada ainda.' }
+    const { variantes, sessoes } = await headlinesEmTeste(bib.landing_url, 6)
+    return { success: true, variantes, sessoes }
+  } catch (e: any) {
+    return { success: false, variantes: [], sessoes: 0, error: e.message }
+  }
+}
+
+// Versão avulsa: headlines em teste de qualquer URL colada na hora.
+export async function detectarHeadlinesAvulso(url: string): Promise<{ success: boolean; variantes: HeadlineVariante[]; sessoes: number; error?: string }> {
+  try {
+    if (!/^https?:\/\//i.test(url)) return { success: false, variantes: [], sessoes: 0, error: 'Cole uma URL completa (com https://).' }
+    const { variantes, sessoes } = await headlinesEmTeste(url, 6)
+    return { success: true, variantes, sessoes }
+  } catch (e: any) {
+    return { success: false, variantes: [], sessoes: 0, error: e.message }
+  }
+}
+
 // Resolve a escolha feita no "modo seleção" da página salva (clique em cima
 // do vídeo): url direta vem pronta; vturb vem como URL do player.js, que a
 // gente busca pra extrair a mídia. Devolve o item já com download assinado.
@@ -196,7 +225,7 @@ export async function atualizarDiarioConcorrente(bibliotecaId: string): Promise<
     const { data: bib } = await supabaseAdmin.from('rastreador_bibliotecas').select('landing_url').eq('id', bibliotecaId).maybeSingle()
     if (!bib?.landing_url) return { success: false, data: [], error: 'Sem URL de página cadastrada ainda.' }
     const html = await fetch(bib.landing_url, { cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36' } }).then((r) => r.text())
-    const evento = await atualizarDiarioAb(orgId, bibliotecaId, html, new Date().toISOString())
+    const evento = await atualizarDiarioAb(orgId, bibliotecaId, html, new Date().toISOString(), bib.landing_url)
     return { success: true, evento, data: await lerDiarioConcorrente(bibliotecaId) }
   } catch (e: any) {
     return { success: false, data: [], error: e.message }

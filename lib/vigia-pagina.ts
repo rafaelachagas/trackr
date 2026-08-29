@@ -76,14 +76,28 @@ export function htmlParaTexto(html: string): { titulo: string | null; texto: str
   return { titulo, texto }
 }
 
-// Primeira headline visível (h1; cai pro h2 se não houver h1).
+// Textos de h1/h2 que NÃO são headline de verdade (rodapé, menu, jurídico).
+// Sem isso o extrator pegava "Termos, Privacidade e Aviso de Resultados" como
+// se fosse a promessa principal da página.
+const HEADLINE_LIXO = /termos|privacidade|pol[ií]tica|cookies?|direitos reservados|copyright|©|aviso (de|legal)|todos os direitos|menu|navega|rodap[eé]|suporte|contato|faq|d[uú]vidas frequentes/i
+
+// Primeira headline visível (h1; cai pro h2 se não houver h1), pulando lixo
+// de rodapé/jurídico. Devolve null se só houver texto boilerplate — aí o
+// chamador tenta o OCR da imagem de headline (extrairHeadlinePagina).
 export function extrairHeadline(html: string): string | null {
+  const candidatos: string[] = []
   for (const tag of ['h1', 'h2']) {
-    const m = html.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'))
-    if (m) {
+    for (const m of html.matchAll(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi'))) {
       const t = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-      if (t) return t.slice(0, 300)
+      if (t) candidatos.push(t)
     }
+  }
+  // Prefere o 1º que pareça marketing (não-lixo e com um tamanho de frase).
+  for (const t of candidatos) {
+    if (!HEADLINE_LIXO.test(t) && t.length >= 12) return t.slice(0, 300)
+  }
+  for (const t of candidatos) {
+    if (!HEADLINE_LIXO.test(t)) return t.slice(0, 300)
   }
   return null
 }
@@ -421,7 +435,7 @@ export async function detectarAbTeste(url: string, rodadas = 6): Promise<Resulta
 // ab_diario_<bibId> (linha do tempo de eventos). Sem tabela nova.
 
 export interface VarianteAb { chave: string; url: string; peso: number }
-export interface EstadoAb { variantes: VarianteAb[]; em: string; ctas?: string[]; headline?: string }
+export interface EstadoAb { variantes: VarianteAb[]; em: string; ctas?: string[]; headline?: string; headlines?: string[] }
 
 // Headline da página. 1º tenta texto (h1/h2). Se não houver texto legível mas
 // existir uma imagem de destaque (og:image), lê com OCR pela IA (Gemini).
@@ -436,6 +450,78 @@ export async function extrairHeadlinePagina(html: string): Promise<string | null
     if (r.ok && r.texto && r.texto !== '—') return `[imagem] ${r.texto.slice(0, 300)}`
   }
   return null
+}
+
+// ---- Headlines em teste (renderizadas via browser da VPS) ----
+// A headline desses funis (GreatPages/Elementor) costuma ser uma IMAGEM injetada
+// por JS — não existe no HTML cru. Pra pegá-la (e descobrir se há VÁRIAS rodando
+// em teste A/B de página), pedimos ao Chromium da VPS pra abrir a página em N
+// sessões novas e devolver as imagens do topo de cada uma. Agrupamos as sessões
+// por "impressão digital" (quais imagens vieram) → cada grupo é uma variante.
+
+interface SessaoRender { imgs: { src: string; top: number; w: number; h: number }[]; htext: string }
+
+async function renderSessoesVps(url: string, n = 6): Promise<SessaoRender[]> {
+  if (!RASTREADOR_APIKEY) return []
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 120000)
+    const r = await fetch(`${RASTREADOR_URL}/render?url=${encodeURIComponent(url)}&key=${encodeURIComponent(RASTREADOR_APIKEY)}&n=${n}`, {
+      signal: ctrl.signal, cache: 'no-store',
+    }).finally(() => clearTimeout(t))
+    if (!r.ok) return []
+    const j = await r.json()
+    return Array.isArray(j?.sessoes) ? j.sessoes : []
+  } catch { return [] }
+}
+
+export interface HeadlineVariante {
+  texto: string          // texto lido (OCR da imagem ou h1/h2)
+  imagem: string | null  // imagem da headline (se for imagem)
+  vezes: number          // em quantas sessões apareceu
+  pct: number            // proporção entre as variantes
+}
+
+// A imagem "headline" de uma sessão: a maior imagem larga do topo que não seja
+// o thumbnail do player de vídeo. Heurística simples e robusta entre builders.
+function imagemHeadline(s: SessaoRender): string | null {
+  const cand = s.imgs
+    .filter((im) => im.w >= 180 && !/thumb|poster|player|vturb|converteai|logo|favicon/i.test(im.src))
+    .sort((a, b) => a.top - b.top || b.w * b.h - a.w * a.h)
+  return cand[0]?.src ?? null
+}
+
+// Detecta quantas headlines o concorrente está testando, lendo o texto de cada
+// uma (OCR pela IA quando é imagem). Renderiza a página em N sessões novas.
+export async function headlinesEmTeste(url: string, n = 6): Promise<{ variantes: HeadlineVariante[]; sessoes: number }> {
+  const sessoes = await renderSessoesVps(url, n)
+  if (!sessoes.length) return { variantes: [], sessoes: 0 }
+
+  // Agrupa sessões por variante. A "chave" da variante é a imagem-headline
+  // (ou, se não houver imagem, o texto do h1/h2). Sessões iguais somam.
+  const grupos = new Map<string, { imagem: string | null; htext: string; vezes: number }>()
+  for (const s of sessoes) {
+    const img = imagemHeadline(s)
+    const chave = img || s.htext || '∅'
+    if (chave === '∅') continue
+    const g = grupos.get(chave)
+    if (g) g.vezes++
+    else grupos.set(chave, { imagem: img, htext: s.htext, vezes: 1 })
+  }
+
+  // Para cada variante distinta, lê o texto (OCR da imagem, senão o h1/h2).
+  const variantes: HeadlineVariante[] = []
+  const totalSessoes = sessoes.length
+  for (const g of [...grupos.values()].sort((a, b) => b.vezes - a.vezes).slice(0, 6)) {
+    let texto = g.htext
+    if (g.imagem) {
+      const ocr = await lerTextoDaImagem(g.imagem)
+      if (ocr.ok && ocr.texto && ocr.texto !== '—') texto = ocr.texto.replace(/\s+/g, ' ').trim()
+    }
+    if (!texto) continue
+    variantes.push({ texto: texto.slice(0, 400), imagem: g.imagem, vezes: g.vezes, pct: Math.round((g.vezes / totalSessoes) * 100) })
+  }
+  return { variantes, sessoes: totalSessoes }
 }
 
 // CTAs/ofertas testadas dentro do config do A/B da VTurb (callActions.content).
@@ -501,24 +587,55 @@ async function ctasTestadas(html: string): Promise<string[]> {
 // Retorna o evento gerado (pra o vigia poder alertar no WhatsApp). Registra
 // TAMBÉM mudança de headline e de ofertas/CTAs testadas (podem gerar vários
 // eventos numa rodada; devolve o mais relevante).
-export async function atualizarDiarioAb(orgId: string, bibId: string, html: string, agoraISO: string): Promise<EventoDiario | null> {
+export async function atualizarDiarioAb(orgId: string, bibId: string, html: string, agoraISO: string, url?: string): Promise<EventoDiario | null> {
   const atual = await snapshotAb(html)
   const estadoAnt = await lerJson<EstadoAb | null>(`ab_estado_${bibId}`, null)
   const antes = estadoAnt?.variantes ?? []
   const eventosExtras: EventoDiario[] = []
 
-  // Headline (texto ou OCR de imagem) — registra quando muda.
-  try {
-    const hlNova = await extrairHeadlinePagina(html)
-    if (hlNova && hlNova !== estadoAnt?.headline) {
-      eventosExtras.push({
-        em: agoraISO, tipo: 'headline',
-        titulo: estadoAnt?.headline ? 'Trocou a headline da página' : 'Headline registrada',
-        detalhe: estadoAnt?.headline ? `"${estadoAnt.headline.slice(0, 90)}" → "${hlNova.slice(0, 90)}"` : `"${hlNova.slice(0, 160)}"`,
-      })
-    }
-    var headlineAtual = hlNova ?? estadoAnt?.headline
-  } catch { var headlineAtual = estadoAnt?.headline }
+  // Headlines em teste — renderiza a página em várias sessões (via VPS) e lê o
+  // texto de cada variante (OCR quando é imagem). É assim que pegamos o teste
+  // A/B de headline desses funis (a headline é imagem injetada por JS, some do
+  // HTML cru). Só roda quando temos a URL (o vigia e o botão passam).
+  let headlinesAtual = estadoAnt?.headlines ?? []
+  let headlineAtual = estadoAnt?.headline
+  if (url) {
+    try {
+      const { variantes } = await headlinesEmTeste(url, 6)
+      const textos = variantes.map((v) => v.texto)
+      if (textos.length) {
+        headlinesAtual = textos
+        headlineAtual = textos[0]
+        const antesSet = new Set((estadoAnt?.headlines ?? []).map((t) => t.slice(0, 60).toLowerCase()))
+        const novas = textos.filter((t) => !antesSet.has(t.slice(0, 60).toLowerCase()))
+        const primeiraVez = !estadoAnt?.headlines?.length
+        if (textos.length > 1 && (primeiraVez || novas.length)) {
+          eventosExtras.push({
+            em: agoraISO, tipo: 'headline',
+            titulo: `${textos.length} headlines em teste A/B`,
+            detalhe: textos.map((t, i) => `${String.fromCharCode(65 + i)}) "${t.slice(0, 110)}"`).join('  ·  '),
+          })
+        } else if (textos.length === 1 && novas.length && !primeiraVez) {
+          eventosExtras.push({ em: agoraISO, tipo: 'headline', titulo: 'Trocou a headline da página', detalhe: `Agora: "${textos[0].slice(0, 140)}"` })
+        } else if (primeiraVez && textos.length === 1) {
+          eventosExtras.push({ em: agoraISO, tipo: 'headline', titulo: 'Headline registrada', detalhe: `"${textos[0].slice(0, 160)}"` })
+        }
+      }
+    } catch { /* render best-effort */ }
+  } else {
+    // Sem URL (compat): tenta só o texto/OCR do HTML cru.
+    try {
+      const hlNova = await extrairHeadlinePagina(html)
+      if (hlNova && hlNova !== estadoAnt?.headline) {
+        eventosExtras.push({
+          em: agoraISO, tipo: 'headline',
+          titulo: estadoAnt?.headline ? 'Trocou a headline da página' : 'Headline registrada',
+          detalhe: estadoAnt?.headline ? `"${estadoAnt.headline.slice(0, 90)}" → "${hlNova.slice(0, 90)}"` : `"${hlNova.slice(0, 160)}"`,
+        })
+      }
+      headlineAtual = hlNova ?? estadoAnt?.headline
+    } catch { /* mantém */ }
+  }
 
   // Ofertas/CTAs testadas no A/B.
   let ctasAtual = estadoAnt?.ctas ?? []
@@ -556,7 +673,7 @@ export async function atualizarDiarioAb(orgId: string, bibId: string, html: stri
   }
 
   // Estado sempre atualizado (mesmo sem evento, pra pegar mudança futura).
-  await gravarJson(orgId, `ab_estado_${bibId}`, { variantes: atual, em: agoraISO, ctas: ctasAtual, headline: headlineAtual } as EstadoAb)
+  await gravarJson(orgId, `ab_estado_${bibId}`, { variantes: atual, em: agoraISO, ctas: ctasAtual, headline: headlineAtual, headlines: headlinesAtual } as EstadoAb)
 
   const todos = [...(evento ? [evento] : []), ...eventosExtras]
   if (todos.length) {
