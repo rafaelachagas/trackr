@@ -116,15 +116,39 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     return r.itens
   }
 
+  // VSL pode ter 20-40 min — transcrição assíncrona: inicia o job na VPS e
+  // fica perguntando o status a cada 10s (sem prender nenhuma requisição).
   async function transcreverItem(item: VslCandidata) {
     setSeletorVsl(null)
-    const r = await transcreverNaFila(item.url, setVslStatus)
-    setVslStatus(null)
-    if (r.error) { setVslErro(r.error); return }
-    const texto = r.texto!
-    setCacheT((m) => ({ ...m, [`vsl:${bibId}`]: texto }))
-    salvarTranscricao(`vsl:${bibId}`, item.url, texto)
-    setModalT({ titulo: 'VSL da página de vendas', texto })
+    setVslStatus('Enviando pra transcrição...')
+    try {
+      const ini = await fetch('/api/rastreador/transcrever-async', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_url: item.url }),
+      }).then((r) => r.json())
+      if (!ini?.job_id) { setVslStatus(null); setVslErro(ini?.error || 'Falha ao iniciar a transcrição.'); return }
+      const comecou = Date.now()
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 10000))
+        const min = Math.floor((Date.now() - comecou) / 60000)
+        const j = await fetch(`/api/rastreador/transcrever-async?id=${ini.job_id}`).then((r) => r.json()).catch(() => null)
+        if (!j) { setVslStatus(`Transcrevendo... (${min} min)`); continue }
+        if (j.status === 'ok') {
+          setVslStatus(null)
+          const texto = j.texto || '(sem fala detectada)'
+          setCacheT((m) => ({ ...m, [`vsl:${bibId}`]: texto }))
+          salvarTranscricao(`vsl:${bibId}`, item.url, texto)
+          setModalT({ titulo: 'VSL da página de vendas', texto })
+          return
+        }
+        if (j.status === 'erro' || j.error) { setVslStatus(null); setVslErro(j.erro || j.error || 'Falha ao transcrever.'); return }
+        setVslStatus(j.status === 'fila' ? 'Na fila da VPS...' : `Transcrevendo... (${min} min)`)
+        if (Date.now() - comecou > 45 * 60000) { setVslStatus(null); setVslErro('Passou de 45 min — algo travou na VPS.'); return }
+      }
+    } catch {
+      setVslStatus(null)
+      setVslErro('Falha ao transcrever.')
+    }
   }
 
   async function transcreverVsl() {

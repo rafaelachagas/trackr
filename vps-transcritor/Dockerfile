@@ -14,4 +14,6 @@ COPY app.py .
 RUN pip install --no-cache-dir gunicorn
 ENV WHISPER_MODEL=small
 EXPOSE 8082
-CMD ["gunicorn", "-b", "0.0.0.0:8082", "-w", "1", "--timeout", "600", "app:app"]
+# threads: o worker continua respondendo (health, polls de status) enquanto
+# uma transcrição longa roda em thread de fundo.
+CMD ["gunicorn", "-b", "0.0.0.0:8082", "-w", "1", "--threads", "8", "--timeout", "900", "app:app"]

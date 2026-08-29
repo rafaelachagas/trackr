@@ -2,6 +2,8 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
+import uuid
 import requests
 from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel
@@ -53,6 +55,73 @@ def baixar(video_url: str) -> str:
 @app.get("/health")
 def health():
     return jsonify(ok=True, model=MODEL_SIZE)
+
+
+# ---- Transcrição assíncrona (VSLs longas estouram o timeout do site) ----
+# POST/GET /transcribe_async?video_url= → {job_id}; a transcrição roda numa
+# thread (respeitando a mesma trava de CPU) e o resultado fica em memória.
+# GET /result?id= → {status: fila|rodando|ok|erro, texto?, erro?}.
+JOBS = {}
+JOBS_LOCK = threading.Lock()
+
+
+def _rodar_job(job_id: str, video_url: str):
+    with JOBS_LOCK:
+        JOBS[job_id]["status"] = "fila"
+    if not TRANSCRIBE_LOCK.acquire(timeout=3600):
+        with JOBS_LOCK:
+            JOBS[job_id].update(status="erro", erro="transcritor ocupado por mais de 1h")
+        return
+    path = None
+    try:
+        with JOBS_LOCK:
+            JOBS[job_id]["status"] = "rodando"
+        path = baixar(video_url)
+        segments, info = model.transcribe(path, language="pt", vad_filter=True)
+        texto = " ".join(s.text.strip() for s in segments).strip()
+        with JOBS_LOCK:
+            JOBS[job_id].update(status="ok", texto=texto, idioma=info.language, duracao=round(info.duration, 1))
+    except Exception as e:
+        with JOBS_LOCK:
+            JOBS[job_id].update(status="erro", erro=f"falha ao transcrever: {e}")
+    finally:
+        TRANSCRIBE_LOCK.release()
+        if path and os.path.exists(path):
+            os.remove(path)
+
+
+def _limpar_jobs_velhos():
+    corte = time.time() - 2 * 3600
+    with JOBS_LOCK:
+        for k in [k for k, v in JOBS.items() if v.get("criado", 0) < corte]:
+            del JOBS[k]
+
+
+@app.route("/transcribe_async", methods=["GET", "POST"])
+def transcribe_async():
+    if APIKEY and request.args.get("key") != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    video_url = request.args.get("video_url")
+    if not video_url and request.is_json:
+        video_url = (request.json or {}).get("video_url")
+    if not video_url:
+        return jsonify(error="video_url ausente"), 400
+    _limpar_jobs_velhos()
+    job_id = uuid.uuid4().hex
+    with JOBS_LOCK:
+        JOBS[job_id] = {"status": "fila", "criado": time.time()}
+    threading.Thread(target=_rodar_job, args=(job_id, video_url), daemon=True).start()
+    return jsonify(ok=True, job_id=job_id)
+
+
+@app.get("/result")
+def result():
+    if APIKEY and request.args.get("key") != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    job = JOBS.get(request.args.get("id") or "")
+    if not job:
+        return jsonify(error="job desconhecido (expirou ou o serviço reiniciou)"), 404
+    return jsonify({k: v for k, v in job.items() if k != "criado"})
 
 
 @app.get("/download")
