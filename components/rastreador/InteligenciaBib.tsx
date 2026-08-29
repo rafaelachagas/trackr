@@ -9,7 +9,7 @@ import { transcreverNaFila } from '@/lib/fila-transcricao'
 import { baixarTxt, baixarDocx, baixarMd, baixarPdf } from '@/lib/exportDoc'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
-import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, type VersaoPagina, type VslCandidata } from '@/app/actions/rastreador-pagina'
+import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, resolverEscolhaVsl, type VersaoPagina, type VslCandidata } from '@/app/actions/rastreador-pagina'
 import { baixarRelatorioHTML, relatorioParaMarkdown, relatorioParaTexto } from '@/lib/reportConcorrente'
 import { CLASSIFICACAO_META, ANGULOS, anguloMeta, scoreLabel, type ClassificacaoTeste } from '@/lib/rastreador-intel'
 
@@ -89,8 +89,25 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
 
   // Vídeos da página do concorrente: acha todos (mp4/m3u8/VTurb) na última
   // versão salva; com 1 resultado age direto, com vários abre o seletor.
-  const [seletorVsl, setSeletorVsl] = useState<{ itens: VslCandidata[]; acao: 'transcrever' | 'baixar' } | null>(null)
+  const [seletorVsl, setSeletorVsl] = useState<{ itens: VslCandidata[] } | null>(null)
   const [baixandoVsl, setBaixandoVsl] = useState(false)
+
+  // Recebe a escolha feita no "modo seleção" (aba da página do concorrente
+  // aberta via botão Escolher na página — o clique lá manda postMessage).
+  useEffect(() => {
+    async function onMsg(ev: MessageEvent) {
+      const escolha = (ev.data as any)?.theTrackVsl
+      if (!escolha?.tipo || !escolha?.valor) return
+      setVslErro(null)
+      setVslStatus('Resolvendo o vídeo escolhido...')
+      const r = await resolverEscolhaVsl(escolha)
+      setVslStatus(null)
+      if (!r.success || !r.item) { setVslErro(r.error ?? 'Não consegui resolver o vídeo escolhido.'); return }
+      setSeletorVsl({ itens: [r.item] })
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [bibId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function obterVsls(): Promise<VslCandidata[] | null> {
     setVslErro(null)
@@ -119,7 +136,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     if (!itens) { setVslStatus(null); return }
     if (itens.length === 1) { await transcreverItem(itens[0]); return }
     setVslStatus(null)
-    setSeletorVsl({ itens, acao: 'transcrever' })
+    setSeletorVsl({ itens })
   }
 
   async function baixarVsl() {
@@ -130,7 +147,15 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     if (!itens) return
     // m3u8 remontado na VPS pode levar 1-2 min pra começar — abre em aba própria.
     if (itens.length === 1) { window.open(itens[0].download, '_blank', 'noopener'); return }
-    setSeletorVsl({ itens, acao: 'baixar' })
+    setSeletorVsl({ itens })
+  }
+
+  // Abre a última versão salva da página em "modo seleção": os players ganham
+  // um botão de escolher e o clique volta pra cá via postMessage.
+  function escolherNaPagina() {
+    const v = versoes[0]
+    if (!v) { setVslErro('Ainda não há versão capturada da página — clique em Capturar/versionar primeiro.'); return }
+    window.open(`/api/rastreador/pagina/${v.id}?selecionar=1`, '_blank')
   }
 
   async function capturar() {
@@ -448,6 +473,10 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-white/10 text-foreground/90 hover:bg-white/5 disabled:opacity-50 whitespace-nowrap">
             {baixandoVsl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Baixar VSL
           </button>
+          <button onClick={escolherNaPagina} disabled={versoes.length === 0} title="Abre a página do concorrente em modo seleção: clique no vídeo que quiser e volte aqui pra transcrever ou baixar"
+            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-white/10 text-foreground/90 hover:bg-white/5 disabled:opacity-50 whitespace-nowrap">
+            <PlayCircle className="w-4 h-4" /> Escolher na página
+          </button>
         </div>
         {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
         {versoes.length > 0 && (
@@ -494,23 +523,20 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
               <h3 className="text-base font-bold flex items-center gap-2"><PlayCircle className="w-5 h-5 text-primary" /> Vídeos achados na página</h3>
               <button onClick={() => setSeletorVsl(null)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><X className="w-4 h-4" /></button>
             </div>
-            <p className="text-xs text-muted-foreground mb-4">A página tem mais de um vídeo — escolha qual você quer {seletorVsl.acao === 'transcrever' ? 'transcrever' : 'baixar'}.</p>
+            <p className="text-xs text-muted-foreground mb-4">{seletorVsl.itens.length > 1 ? 'A página tem mais de um vídeo — escolha o que fazer com qual.' : 'Vídeo escolhido — o que você quer fazer com ele?'}</p>
             <div className="space-y-2 max-h-80 overflow-y-auto">
-              {seletorVsl.itens.map((item, i) => (
+              {seletorVsl.itens.map((item) => (
                 <div key={item.url} className="rounded-xl border border-white/10 p-3 flex items-center gap-3">
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary uppercase shrink-0">{item.origem === 'vturb' ? 'VTurb' : item.url.toLowerCase().includes('.m3u8') ? 'stream' : 'mp4'}</span>
                   <span className="text-[11px] font-mono text-muted-foreground truncate flex-1" title={item.url}>{item.url.replace(/^https?:\/\//, '')}</span>
-                  {seletorVsl.acao === 'transcrever' ? (
-                    <button onClick={() => transcreverItem(item)}
-                      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition">
-                      Transcrever
-                    </button>
-                  ) : (
-                    <a href={item.download} target="_blank" rel="noreferrer" onClick={() => setSeletorVsl(null)}
-                      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-foreground/90 hover:bg-white/5 transition inline-flex items-center gap-1">
-                      <Download className="w-3.5 h-3.5" /> Baixar
-                    </a>
-                  )}
+                  <button onClick={() => transcreverItem(item)}
+                    className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition">
+                    Transcrever
+                  </button>
+                  <a href={item.download} target="_blank" rel="noreferrer" onClick={() => setSeletorVsl(null)}
+                    className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-foreground/90 hover:bg-white/5 transition inline-flex items-center gap-1">
+                    <Download className="w-3.5 h-3.5" /> Baixar
+                  </a>
                 </div>
               ))}
             </div>

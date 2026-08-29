@@ -2,9 +2,22 @@
 // Sem 'use server' e sem resolveOrgId: recebe o orgId de fora, então serve
 // tanto pra server action (sessão do usuário) quanto pro cron do vigia.
 
+import { createHmac } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase'
 import { hashTexto } from '@/lib/llm'
 import { RASTREADOR_URL, RASTREADOR_APIKEY } from '@/lib/rastreador'
+
+// Assinatura HMAC pros links de download de VSL — o navegador só vê
+// /api/rastreador/vsl-download?u=...&t=..., nunca o IP da VPS nem a chave.
+// Segredo: a service key do Supabase (só existe no servidor).
+export function assinarVslUrl(url: string): string {
+  const segredo = process.env.SUPABASE_SERVICE_ROLE_KEY || 'thetrack'
+  return createHmac('sha256', segredo).update(url).digest('hex').slice(0, 24)
+}
+
+export function linkProxyVsl(url: string): string {
+  return `/api/rastreador/vsl-download?u=${encodeURIComponent(url)}&t=${assinarVslUrl(url)}`
+}
 
 // Bucket público onde ficam os prints (screenshot real) de cada versão da
 // página. Caminho determinístico: <bibliotecaId>/<conteudo_hash>.jpg — assim a

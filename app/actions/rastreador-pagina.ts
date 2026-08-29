@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
-import { capturarPaginaCore, acharVslUrl, acharVslUrls, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
 // O trabalho pesado mora em lib/vigia-pagina.ts (compartilhado com o cron do
@@ -45,29 +45,37 @@ export async function listarVslsConcorrente(bibliotecaId: string): Promise<{ suc
     if (!ultima?.html) return { success: false, itens: [], error: 'Ainda não capturei a página desse concorrente — o vigia roda de hora em hora, ou clique em Capturar/versionar.' }
     const achados = await acharVslUrls(ultima.html)
     if (!achados.length) return { success: false, itens: [], error: 'Não achei vídeo reproduzível nessa página (player pode carregar o vídeo só depois de interação).' }
-    const { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } = await import('@/lib/transcritor')
-    const itens = achados.map((a) => ({
-      ...a,
-      download: a.url.toLowerCase().includes('.m3u8')
-        ? `${TRANSCRITOR_URL}/download?video_url=${encodeURIComponent(a.url)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}`
-        : a.url,
-    }))
+    // Download via proxy assinado do próprio site — IP da VPS e chave nunca
+    // aparecem no navegador.
+    const itens = achados.map((a) => ({ ...a, download: linkProxyVsl(a.url) }))
     return { success: true, itens }
   } catch (e: any) {
     return { success: false, itens: [], error: e.message }
   }
 }
 
-// Monta o link de download da VSL do concorrente como .mp4. Vídeo mp4 direto
-// baixa da fonte; m3u8 (streaming VTurb) passa pelo /download do transcritor
-// na VPS, que remonta o arquivo com ffmpeg. O link carrega a chave da VPS —
-// ok pro uso interno do painel, não é pra compartilhar por aí.
-export async function linkDownloadVsl(bibliotecaId: string): Promise<{ success: boolean; url?: string; error?: string }> {
-  const achado = await acharVslConcorrente(bibliotecaId)
-  if (!achado.success || !achado.url) return { success: false, error: achado.error }
-  if (!achado.url.toLowerCase().includes('.m3u8')) return { success: true, url: achado.url }
-  const { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } = await import('@/lib/transcritor')
-  return { success: true, url: `${TRANSCRITOR_URL}/download?video_url=${encodeURIComponent(achado.url)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}` }
+// Resolve a escolha feita no "modo seleção" da página salva (clique em cima
+// do vídeo): url direta vem pronta; vturb vem como URL do player.js, que a
+// gente busca pra extrair a mídia. Devolve o item já com download assinado.
+export async function resolverEscolhaVsl(escolha: { tipo: string; valor: string }): Promise<{ success: boolean; item?: VslCandidata; error?: string }> {
+  try {
+    if (escolha.tipo === 'url' && /^https?:\/\//i.test(escolha.valor)) {
+      return { success: true, item: { url: escolha.valor, origem: 'html', download: linkProxyVsl(escolha.valor) } }
+    }
+    if (escolha.tipo === 'vturb' && /^https:\/\/scripts\.converteai\.net\//i.test(escolha.valor)) {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 15000)
+      const r = await fetch(escolha.valor, { signal: ctrl.signal, cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0' } }).finally(() => clearTimeout(t))
+      if (!r.ok) return { success: false, error: `Player respondeu ${r.status}.` }
+      const js = await r.text()
+      const media = js.match(/["'](https?:\/\/[^"']+\.(?:m3u8|mp4)(?:\?[^"']*)?)["']/i)
+      if (!media) return { success: false, error: 'Não achei a mídia dentro desse player.' }
+      return { success: true, item: { url: media[1], origem: 'vturb', download: linkProxyVsl(media[1]) } }
+    }
+    return { success: false, error: 'Escolha inválida.' }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
 }
 
 export interface VersaoPagina {
