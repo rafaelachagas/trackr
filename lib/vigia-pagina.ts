@@ -416,6 +416,93 @@ export async function detectarAbTeste(url: string, rodadas = 6): Promise<Resulta
   }
 }
 
+// ---- Diário do concorrente: estado do teste A/B ao longo do tempo ----
+// Guardado em configuracoes: ab_estado_<bibId> (último snapshot) e
+// ab_diario_<bibId> (linha do tempo de eventos). Sem tabela nova.
+
+export interface VarianteAb { chave: string; url: string; peso: number }
+export interface EstadoAb { variantes: VarianteAb[]; em: string }
+export interface EventoDiario {
+  em: string                 // ISO
+  tipo: 'ab_inicio' | 'ab_rodada' | 'ab_peso' | 'ab_encerrado' | 'ab_sumiu'
+  titulo: string
+  detalhe: string
+}
+
+// A "chave" de uma variante é o id do vídeo no CDN (estável entre visitas),
+// não a URL inteira. Ex.: .../<oid>/<mediaKey>/main.m3u8 → mediaKey.
+function chaveVariante(url: string): string {
+  const m = url.match(/converteai\.net\/[a-z0-9-]+\/([a-f0-9]{12,})\//i)
+  return m ? m[1] : url
+}
+
+// Lê o estado A/B atual da página (só as variantes do split nativo VTurb).
+export async function snapshotAb(html: string): Promise<VarianteAb[]> {
+  const vids = await acharVslUrls(html)
+  return vids
+    .filter((v) => v.origem === 'vturb-ab')
+    .map((v) => ({ chave: chaveVariante(v.url), url: v.url, peso: v.peso ?? 0 }))
+    .sort((a, b) => a.chave.localeCompare(b.chave))
+}
+
+async function lerJson<T>(chave: string, fallback: T): Promise<T> {
+  try {
+    const { data } = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', chave).maybeSingle()
+    return data?.valor ? JSON.parse(data.valor) : fallback
+  } catch { return fallback }
+}
+
+async function gravarJson(orgId: string, chave: string, valor: any) {
+  await supabaseAdmin.from('configuracoes').upsert(
+    { chave, valor: JSON.stringify(valor), org_id: orgId, updated_at: new Date().toISOString() },
+    { onConflict: 'chave' })
+}
+
+// Compara o estado A/B novo com o anterior e, se mudou, escreve no diário.
+// Retorna o evento gerado (pra o vigia poder alertar no WhatsApp).
+export async function atualizarDiarioAb(orgId: string, bibId: string, html: string, agoraISO: string): Promise<EventoDiario | null> {
+  const atual = await snapshotAb(html)
+  const estadoAnt = await lerJson<EstadoAb | null>(`ab_estado_${bibId}`, null)
+  const antes = estadoAnt?.variantes ?? []
+
+  const setAtual = new Set(atual.map((v) => v.chave))
+  const setAntes = new Set(antes.map((v) => v.chave))
+  const mesmoConjunto = atual.length === antes.length && atual.every((v) => setAntes.has(v.chave))
+
+  let evento: EventoDiario | null = null
+  const pesos = (vs: VarianteAb[]) => vs.map((v) => `${Math.round((v.peso / (vs.reduce((s, x) => s + x.peso, 0) || 1)) * 100)}%`).join(' / ')
+
+  if (atual.length === 0 && antes.length > 1) {
+    // Sumiu o A/B mas não sabemos a vencedora (página trocou de player).
+    evento = { em: agoraISO, tipo: 'ab_sumiu', titulo: 'Teste A/B saiu da página', detalhe: `As ${antes.length} variantes não estão mais no player.` }
+  } else if (antes.length > 1 && atual.length === 1) {
+    // O caso que o usuário quer: definiu vencedora.
+    evento = { em: agoraISO, tipo: 'ab_encerrado', titulo: '🏆 Teste A/B encerrado — vencedora definida', detalhe: `De ${antes.length} variantes sobrou 1 rodando a 100%. Esse é o vídeo que venceu o teste.` }
+  } else if (antes.length === 0 && atual.length > 1) {
+    evento = { em: agoraISO, tipo: 'ab_inicio', titulo: `Novo teste A/B iniciado (${atual.length} variantes)`, detalhe: `Pesos: ${pesos(atual)}.` }
+  } else if (antes.length > 0 && !mesmoConjunto && atual.length > 1) {
+    evento = { em: agoraISO, tipo: 'ab_rodada', titulo: `Nova rodada de teste A/B (${atual.length} variantes)`, detalhe: `As variantes mudaram — trocou pelo menos um vídeo do teste. Pesos: ${pesos(atual)}.` }
+  } else if (mesmoConjunto && antes.length > 1 && pesos(antes) !== pesos(atual)) {
+    evento = { em: agoraISO, tipo: 'ab_peso', titulo: 'Ajuste de peso no teste A/B', detalhe: `Mesmas variantes, nova divisão: ${pesos(antes)} → ${pesos(atual)}.` }
+  }
+
+  // Estado sempre atualizado (mesmo sem evento, pra pegar mudança futura).
+  if (atual.length > 0 || antes.length > 0) {
+    await gravarJson(orgId, `ab_estado_${bibId}`, { variantes: atual, em: agoraISO } as EstadoAb)
+  }
+  if (evento) {
+    const diario = await lerJson<EventoDiario[]>(`ab_diario_${bibId}`, [])
+    diario.push(evento)
+    await gravarJson(orgId, `ab_diario_${bibId}`, diario.slice(-100))
+  }
+  return evento
+}
+
+export async function lerDiarioConcorrente(bibId: string): Promise<EventoDiario[]> {
+  const d = await lerJson<EventoDiario[]>(`ab_diario_${bibId}`, [])
+  return [...d].reverse() // mais recente primeiro
+}
+
 // URL de destino dominante entre os criativos de um snapshot (a "página de
 // vendas dos anúncios"). Normaliza tirando querystring/UTM pra comparar.
 export function urlDominante(criativos: any[]): string | null {

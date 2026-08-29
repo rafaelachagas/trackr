@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
-import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, detectarAbTeste, htmlParaTexto, extrairHeadline, detectarPrecos, detectarStack, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, detectarAbTeste, htmlParaTexto, extrairHeadline, detectarPrecos, detectarStack, atualizarDiarioAb, lerDiarioConcorrente, BUCKET_PRINTS, type ResultadoCaptura, type EventoDiario } from '@/lib/vigia-pagina'
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
 // O trabalho pesado mora em lib/vigia-pagina.ts (compartilhado com o cron do
@@ -175,6 +175,31 @@ export async function resolverEscolhaVsl(escolha: { tipo: string; valor: string 
     return { success: false, error: 'Escolha inválida.' }
   } catch (e: any) {
     return { success: false, error: e.message }
+  }
+}
+
+// Diário do concorrente (eventos de teste A/B). listarDiario só lê; o
+// atualizar visita a página ao vivo e registra evento se algo mudou (o vigia
+// faz isso de hora em hora sozinho — o botão é pra quem quer checar na hora).
+export async function listarDiarioConcorrente(bibliotecaId: string): Promise<{ success: boolean; data: EventoDiario[] }> {
+  try {
+    return { success: true, data: await lerDiarioConcorrente(bibliotecaId) }
+  } catch {
+    return { success: true, data: [] }
+  }
+}
+
+export async function atualizarDiarioConcorrente(bibliotecaId: string): Promise<{ success: boolean; evento?: EventoDiario | null; data: EventoDiario[]; error?: string }> {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    const { data: bib } = await supabaseAdmin.from('rastreador_bibliotecas').select('landing_url').eq('id', bibliotecaId).maybeSingle()
+    if (!bib?.landing_url) return { success: false, data: [], error: 'Sem URL de página cadastrada ainda.' }
+    const html = await fetch(bib.landing_url, { cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36' } }).then((r) => r.text())
+    const evento = await atualizarDiarioAb(orgId, bibliotecaId, html, new Date().toISOString())
+    return { success: true, evento, data: await lerDiarioConcorrente(bibliotecaId) }
+  } catch (e: any) {
+    return { success: false, data: [], error: e.message }
   }
 }
 

@@ -9,7 +9,8 @@ import { transcreverNaFila } from '@/lib/fila-transcricao'
 import { baixarTxt, baixarDocx, baixarMd, baixarPdf } from '@/lib/exportDoc'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
-import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, resolverEscolhaVsl, detectarAbVslConcorrente, type VersaoPagina, type VslCandidata, type AbDetectado } from '@/app/actions/rastreador-pagina'
+import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, resolverEscolhaVsl, detectarAbVslConcorrente, listarDiarioConcorrente, atualizarDiarioConcorrente, type VersaoPagina, type VslCandidata, type AbDetectado } from '@/app/actions/rastreador-pagina'
+import type { EventoDiario } from '@/lib/vigia-pagina'
 import { baixarRelatorioHTML, relatorioParaMarkdown, relatorioParaTexto } from '@/lib/reportConcorrente'
 import { CLASSIFICACAO_META, ANGULOS, anguloMeta, scoreLabel, type ClassificacaoTeste } from '@/lib/rastreador-intel'
 
@@ -44,14 +45,18 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const [trafegoMes, setTrafegoMes] = useState(() => new Date().toISOString().slice(0, 7))
   const [trafegoVisitas, setTrafegoVisitas] = useState('')
 
+  const [diario, setDiario] = useState<EventoDiario[]>([])
+  const [diarioRodando, setDiarioRodando] = useState(false)
+
   async function carregar() {
     setLoading(true)
-    const [r, c, v, e, tr] = await Promise.all([resumoInteligencia(bibId), listarCriativosHist(bibId), listarVersoesPagina(bibId), serieEscala(bibId), listarTrafegoManual(bibId)])
+    const [r, c, v, e, tr, di] = await Promise.all([resumoInteligencia(bibId), listarCriativosHist(bibId), listarVersoesPagina(bibId), serieEscala(bibId), listarTrafegoManual(bibId), listarDiarioConcorrente(bibId)])
     if (r.success) setResumo(r.data)
     if (c.success) setCriativos(c.data)
     if (v.success) setVersoes(v.data)
     if (e.success) setEscala(e.data)
     if (tr.success) setTrafego(tr.data)
+    if (di.success) setDiario(di.data)
     setLoading(false)
     // Cache de transcrições já feitas (mesma tabela usada no "Movimento").
     // Inclui a da VSL da página, guardada sob a chave sintética vsl:<bibId>.
@@ -551,6 +556,52 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
       </>)}
 
       {secao === 'pagina' && (<>
+      {/* Diário do concorrente — linha do tempo de testes A/B */}
+      <div className={`rounded-2xl p-5 ${card}`}>
+        <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+          <div>
+            <p className="text-sm font-bold text-foreground flex items-center gap-1.5"><Clock className="w-4 h-4 text-muted-foreground" /> Diário do concorrente</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Linha do tempo dos testes A/B de VSL: quando inicia, troca de variante, muda o peso e — o principal — quando ele elege uma vencedora (100%) e encerra o teste. O vigia atualiza sozinho de hora em hora.</p>
+          </div>
+          <button onClick={async () => {
+            if (diarioRodando) return
+            setDiarioRodando(true); setMsg(null)
+            const r = await atualizarDiarioConcorrente(bibId)
+            setDiarioRodando(false)
+            if (!r.success) { setMsg(r.error ?? 'Falha ao atualizar diário.'); return }
+            setDiario(r.data)
+            setMsg(r.evento ? `Registrado: ${r.evento.titulo}` : 'Sem novidade no teste A/B agora.')
+          }} disabled={diarioRodando}
+            className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-white/10 text-foreground/90 hover:bg-white/5 disabled:opacity-50 transition shrink-0">
+            {diarioRodando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Checar agora
+          </button>
+        </div>
+        {diario.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhum evento registrado ainda. Quando o concorrente rodar (ou encerrar) um teste A/B na VSL, aparece aqui automaticamente.</p>
+        ) : (
+          <div className="space-y-3">
+            {diario.map((ev, i) => {
+              const cor = ev.tipo === 'ab_encerrado' ? '#37d67a' : ev.tipo === 'ab_inicio' ? '#00aeef' : ev.tipo === 'ab_sumiu' ? '#f87171' : '#fbbf24'
+              return (
+                <div key={i} className="flex gap-3">
+                  <div className="flex flex-col items-center shrink-0">
+                    <span className="w-2.5 h-2.5 rounded-full mt-1.5" style={{ backgroundColor: cor }} />
+                    {i < diario.length - 1 && <span className="w-px flex-1 bg-white/10 mt-1" />}
+                  </div>
+                  <div className="pb-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold" style={{ color: cor }}>{ev.titulo}</span>
+                      <span className="text-[10px] text-muted-foreground">{new Date(ev.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{ev.detalhe}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Versionamento da página de vendas */}
       <div className={`rounded-2xl p-5 ${card}`}>
         <div className="mb-4">

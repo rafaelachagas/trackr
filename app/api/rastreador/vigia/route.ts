@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { capturarPaginaCore, urlDominante } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, urlDominante, atualizarDiarioAb } from '@/lib/vigia-pagina'
 import { registrarAlerta } from '@/lib/alertas'
 import { broadcastAlerta } from '@/lib/whatsapp-send'
 
@@ -72,6 +72,23 @@ export async function GET(request: NextRequest) {
             ).catch(() => {})
           }
         }
+        // Diário de teste A/B: lê o estado do split VTurb e registra
+        // eventos (início, nova rodada, ajuste de peso e — o principal —
+        // teste encerrado quando sobra 1 vencedora a 100%).
+        try {
+          const html = await fetch(b.landing_url, { cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36' } }).then((x) => x.text())
+          const ev = await atualizarDiarioAb(b.org_id, b.id, html, new Date().toISOString())
+          if (ev) {
+            r.diario = ev.tipo
+            const { novo } = await registrarAlerta({
+              orgId: b.org_id, tipo: 'pagina_mudou', chave: `${b.id}:ab:${ev.em}`,
+              titulo: `${nome}: ${ev.titulo}`, mensagem: ev.detalhe, severidade: 'atencao', enviarWhats: false,
+            }).catch(() => ({ novo: false }))
+            if (novo && ev.tipo === 'ab_encerrado') {
+              await broadcastAlerta(`🏆 *${nome} encerrou um teste A/B*\n\n${ev.detalhe}\n\nO vídeo vencedor está no diário do concorrente (Rastreador → Inteligência → Página & VSL).`).catch(() => {})
+            }
+          }
+        } catch { /* diário A/B é best-effort */ }
       } catch (e: any) {
         r.pagina = `erro: ${e.message}`
       }
