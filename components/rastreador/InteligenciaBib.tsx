@@ -64,6 +64,11 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     const idsT = [...c.data.map((x) => x.ad_archive_id).filter(Boolean), `vsl:${bibId}`]
     const t = await getTranscricoes(idsT)
     if (t.success) setCacheT(t.data)
+    // Galeria de variações já acumuladas (só lê, sem render).
+    try {
+      const g = await fetch(`/api/rastreador/headlines?bib=${bibId}&so_listar=1`, { cache: 'no-store' }).then((r) => r.json())
+      if (g?.variacoes?.length) setHeadlines(g.variacoes)
+    } catch { /* ignora */ }
   }
   useEffect(() => { carregar() }, [bibId])
 
@@ -191,7 +196,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   // variantes de vídeo/headline com a proporção do sorteio.
   // Análise inline (não modal) da VSL/A/B, exibida no card "VSL do concorrente".
   const [abInline, setAbInline] = useState<AbDetectado | null>(null)
-  const [headlines, setHeadlines] = useState<HeadlineVariante[] | null>(null)
+  const [headlines, setHeadlines] = useState<any[] | null>(null)
   const [headlinesSessoes, setHeadlinesSessoes] = useState(0)
   const [headlinesDebug, setHeadlinesDebug] = useState<any>(null)
   const [analisandoTudo, setAnalisandoTudo] = useState(false)
@@ -209,11 +214,11 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
       const ab = await detectarAbVslConcorrente(bibId)
       if (ab.success && ab.data) setAbInline(ab.data)
       else if (ab.error) setVslErro(ab.error)
-      setEtapaAnalise('Abrindo a página em várias sessões pra ler as headlines...')
+      setEtapaAnalise('Abrindo ~30 sessões novas pra caçar variações da página...')
       try {
         const hl = await fetch(`/api/rastreador/headlines?bib=${bibId}`, { cache: 'no-store' }).then((r) => r.json())
-        setHeadlines(hl.variantes ?? [])
-        setHeadlinesSessoes(hl.sessoes ?? 0)
+        setHeadlines(hl.variacoes ?? [])
+        setHeadlinesSessoes(hl.debug?.sessoes ?? 0)
         setHeadlinesDebug(hl.debug ?? null)
       } catch { setHeadlines([]); setHeadlinesDebug(null) }
       setEtapaAnalise('Registrando no diário...')
@@ -625,26 +630,27 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
       </div>
 
-      {/* 1.5) VARIAÇÕES EM TESTE — print da tela de cada variante + headline (OCR) */}
+      {/* 1.5) VARIAÇÕES DA PÁGINA — galeria de prints acumulada ao longo do tempo */}
       {headlines && headlines.length > 0 && (
         <div className={`rounded-2xl p-5 ${card}`}>
-          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
             <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-muted-foreground" />
-              {headlines.length > 1 ? `${headlines.length} variações da página em teste` : 'Variação no ar'}
+              {headlines.length > 1 ? `${headlines.length} variações da página já capturadas` : '1 variação capturada'}
             </p>
-            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-500/10 text-violet-300">print + OCR{headlinesSessoes ? ` · ${headlinesSessoes} sessões` : ''}</span>
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-500/10 text-violet-300">print + OCR</span>
           </div>
+          <p className="text-[11px] text-muted-foreground mb-3">O A/B de página deles rotaciona por tempo — a galeria vai crescendo a cada análise e de hora em hora, até juntar todas as variações.</p>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {headlines.map((h, i) => (
               <div key={i} className="rounded-xl border border-white/10 overflow-hidden bg-black/20 flex flex-col">
-                {h.print ? (
-                  <a href={h.print} target="_blank" rel="noreferrer" className="block relative">
-                    <img src={h.print} alt="" className="w-full max-h-64 object-cover object-top hover:opacity-90 transition" loading="lazy" />
-                    <span className="absolute top-1.5 left-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-black/70 text-white">{headlines.length > 1 ? `Variante ${String.fromCharCode(65 + i)}` : 'Variante'} · {h.pct}%</span>
+                {h.printUrl ? (
+                  <a href={h.printUrl} target="_blank" rel="noreferrer" className="block relative">
+                    <img src={h.printUrl} alt="" className="w-full max-h-72 object-cover object-top hover:opacity-90 transition" loading="lazy" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none' }} />
+                    <span className="absolute top-1.5 left-1.5 text-[10px] font-black px-1.5 py-0.5 rounded bg-black/70 text-white">Variante {String.fromCharCode(65 + i)}{h.vezes ? ` · vista ${h.vezes}x` : ''}</span>
                   </a>
                 ) : h.imagem ? (
-                  <a href={h.imagem} target="_blank" rel="noreferrer"><img src={h.imagem} alt="" className="w-full max-h-64 object-cover object-top" loading="lazy" /></a>
+                  <a href={h.imagem} target="_blank" rel="noreferrer"><img src={h.imagem} alt="" className="w-full max-h-72 object-cover object-top" loading="lazy" /></a>
                 ) : (
                   <div className="w-full h-40 flex items-center justify-center text-[11px] text-muted-foreground">sem print</div>
                 )}
@@ -654,11 +660,11 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
                   ) : (
                     <p className="text-xs text-muted-foreground italic">sem headline em texto (só vídeo/imagem)</p>
                   )}
+                  {h.primeiraVez && <p className="text-[10px] text-muted-foreground/70 mt-1">desde {new Date(h.primeiraVez).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>}
                 </div>
               </div>
             ))}
           </div>
-          {headlines.length === 1 && <p className="mt-2 text-[11px] text-muted-foreground">Só uma variação apareceu nas {headlinesSessoes} sessões — sem teste A/B de página agora.</p>}
         </div>
       )}
 

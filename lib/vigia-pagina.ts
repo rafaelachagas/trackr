@@ -62,6 +62,24 @@ async function salvarPrint(bibliotecaId: string, hash: string, url: string): Pro
   }
 }
 
+// Sobe um print que já veio como data URI (base64) do render pro Storage.
+async function salvarPrintDataUri(bibliotecaId: string, nome: string, dataUri: string): Promise<string | null> {
+  try {
+    const m = dataUri.match(/^data:image\/(?:jpe?g|png);base64,(.+)$/)
+    if (!m) return null
+    const buf = Buffer.from(m[1], 'base64')
+    if (buf.byteLength < 1000) return null
+    await garantirBucket()
+    const caminho = `${bibliotecaId}/${nome}.jpg`
+    const { error } = await supabaseAdmin.storage.from(BUCKET_PRINTS)
+      .upload(caminho, buf, { contentType: 'image/jpeg', upsert: true })
+    if (error) return null
+    return supabaseAdmin.storage.from(BUCKET_PRINTS).getPublicUrl(caminho).data.publicUrl
+  } catch {
+    return null
+  }
+}
+
 // Extrai texto legível de um HTML (sem libs): remove script/style e tags.
 export function htmlParaTexto(html: string): { titulo: string | null; texto: string } {
   const tituloMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
@@ -462,11 +480,11 @@ export async function extrairHeadlinePagina(html: string): Promise<string | null
 interface SessaoRender { imgs: { src: string; top: number; w: number; h: number }[]; htext: string; vids?: string[]; shot?: string | null }
 interface RenderResp { sessoes: SessaoRender[]; errosMsg: string[]; erroFetch?: string }
 
-async function renderSessoesVps(url: string, n = 5): Promise<RenderResp> {
+async function renderSessoesVps(url: string, n = 30): Promise<RenderResp> {
   if (!RASTREADOR_APIKEY) return { sessoes: [], errosMsg: [], erroFetch: 'RASTREADOR_APIKEY não configurada no ambiente.' }
   try {
     const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 240000)
+    const t = setTimeout(() => ctrl.abort(), 290000)
     const r = await fetch(`${RASTREADOR_URL}/render?url=${encodeURIComponent(url)}&key=${encodeURIComponent(RASTREADOR_APIKEY)}&n=${n}`, {
       signal: ctrl.signal, cache: 'no-store',
     }).finally(() => clearTimeout(t))
@@ -574,6 +592,85 @@ export async function headlinesEmTeste(url: string, n = 5): Promise<{ variantes:
         : 'Achou conteúdo no topo, mas nada que parecesse headline legível.'
   }
   return { variantes, sessoes: totalSessoes, debug: dbg }
+}
+
+// ---- Variações da página ACUMULADAS ao longo do tempo ----
+// O A/B de página desses funis rotaciona por tempo: um burst de sessões cai
+// tudo na mesma variante. A solução é acumular — cada rodada (vigia de hora em
+// hora + o botão) captura o que está no ar AGORA, guarda o print no Storage e
+// vai montando a galeria de todas as variações já vistas. Estado em
+// configuracoes: variacoes_<bibId>.
+export interface VariacaoPagina {
+  sig: string
+  printUrl: string | null
+  texto: string
+  imagem: string | null
+  vezes: number
+  primeiraVez: string
+  ultimaVez: string
+}
+
+export async function coletarVariacoes(orgId: string, bibId: string, url: string, agoraISO: string, n = 5): Promise<{ variacoes: VariacaoPagina[]; novas: number; debug: DebugHeadlines }> {
+  const resp = await renderSessoesVps(url, n)
+  const sessoes = resp.sessoes
+  for (const s of sessoes) { if (s.htext && HEADLINE_LIXO.test(s.htext)) s.htext = '' }
+  const dbg: DebugHeadlines = { sessoes: sessoes.length, imgsTopo: 0, htextVisto: 0, candidatasImg: 0, ocrTentado: 0, ocrFalhou: 0, errosMsg: resp.errosMsg, erroFetch: resp.erroFetch }
+  for (const s of sessoes) { dbg.imgsTopo += s.imgs.length; if (s.htext) dbg.htextVisto++ }
+
+  const stored = await lerJson<VariacaoPagina[]>(`variacoes_${bibId}`, [])
+  const porSig = new Map(stored.map((v) => [v.sig, v]))
+  if (!sessoes.length) {
+    dbg.motivo = resp.erroFetch ? `O render da VPS falhou: ${resp.erroFetch}` : 'O render não retornou sessões.'
+    return { variacoes: [...stored].sort((a, b) => b.vezes - a.vezes), novas: 0, debug: dbg }
+  }
+
+  // Agrupa as sessões desta rodada por variante.
+  const atuais = new Map<string, { imagem: string | null; htext: string; print: string | null; vezes: number }>()
+  for (const s of sessoes) {
+    const sig = assinaturaVariante(s)
+    if (sig === '∅') continue
+    const g = atuais.get(sig)
+    if (g) g.vezes++
+    else atuais.set(sig, { imagem: imagemHeadline(s), htext: s.htext, print: s.shot ?? null, vezes: 1 })
+  }
+
+  let novas = 0
+  for (const [sig, g] of atuais) {
+    const ja = porSig.get(sig)
+    if (ja) {
+      ja.vezes += g.vezes
+      ja.ultimaVez = agoraISO
+      if (!ja.printUrl && g.print) ja.printUrl = await salvarPrintDataUri(bibId, `var_${hashTexto(sig)}`, g.print)
+      continue
+    }
+    // Variante NOVA: lê a headline (OCR) e guarda o print no Storage.
+    let texto = g.htext
+    if (g.imagem) {
+      dbg.ocrTentado++
+      const ocr = await lerTextoDaImagem(g.imagem)
+      if (ocr.ok && ocr.texto && ocr.texto !== '—') texto = ocr.texto.replace(/\s+/g, ' ').trim()
+      else dbg.ocrFalhou++
+    }
+    const printUrl = g.print ? await salvarPrintDataUri(bibId, `var_${hashTexto(sig)}`, g.print) : null
+    const nova: VariacaoPagina = { sig, printUrl, texto: (texto || '').slice(0, 400), imagem: g.imagem, vezes: g.vezes, primeiraVez: agoraISO, ultimaVez: agoraISO }
+    stored.push(nova); porSig.set(sig, nova); novas++
+  }
+
+  await gravarJson(orgId, `variacoes_${bibId}`, stored.slice(-40))
+
+  // Registra no diário quando aparece variação nova.
+  if (novas > 0) {
+    const diario = await lerJson<EventoDiario[]>(`ab_diario_${bibId}`, [])
+    diario.push({ em: agoraISO, tipo: 'headline', titulo: `${novas} nova(s) variação(ões) de página capturada(s)`, detalhe: `Já vistas ${stored.length} variações diferentes no total. Veja os prints na aba Página & VSL.` })
+    await gravarJson(orgId, `ab_diario_${bibId}`, diario.slice(-100))
+  }
+
+  return { variacoes: [...stored].sort((a, b) => b.vezes - a.vezes), novas, debug: dbg }
+}
+
+export async function listarVariacoes(bibId: string): Promise<VariacaoPagina[]> {
+  const v = await lerJson<VariacaoPagina[]>(`variacoes_${bibId}`, [])
+  return [...v].sort((a, b) => b.vezes - a.vezes)
 }
 
 // CTAs/ofertas testadas dentro do config do A/B da VTurb (callActions.content).

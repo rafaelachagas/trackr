@@ -264,7 +264,9 @@ app.get('/render', async (req, res) => {
   if (APIKEY && key !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
   const url = String(req.query.url || '')
   if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'url inválida' })
-  const n = Math.min(Math.max(Number(req.query.n) || 5, 1), 8)
+  const n = Math.min(Math.max(Number(req.query.n) || 30, 1), 40)
+  const ORCAMENTO_MS = 230000 // teto de tempo total do render (fica < maxDuration)
+  const inicioMs = Date.now()
 
   const UAS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
@@ -319,6 +321,7 @@ app.get('/render', async (req, res) => {
   try {
     const b = await getBrowser()
     for (let i = 0; i < n; i++) {
+      if (Date.now() - inicioMs > ORCAMENTO_MS) break // respeita o teto de tempo
       let ctx = null
       try {
         ctx = await b.newContext({
@@ -336,10 +339,9 @@ app.get('/render', async (req, res) => {
         // servindo sempre a mesma variante pro nosso IP.
         const sep = url.indexOf('?') >= 0 ? '&' : '?'
         const u = url + sep + '_ttab=' + i + '_' + Date.now()
-        await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch((e) => { errosMsg.push('goto: ' + e.message) })
-        await page.waitForTimeout(5000) // settle maior: dá tempo do JS do A/B sortear
+        await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch((e) => { if (errosMsg.length < 8) errosMsg.push('goto: ' + e.message) })
+        await page.waitForTimeout(3200) // settle: dá tempo do JS do A/B sortear e injetar
         await page.evaluate(() => window.scrollTo(0, 200)).catch(() => {})
-        await page.waitForTimeout(800)
         const r = await page.evaluate(coletor).catch((e) => { errosMsg.push('evaluate: ' + e.message); return { imgs: [], htext: '', vids: [] } })
         // Print do topo da página (viewport) — é o que o usuário quer ver.
         let shot = null

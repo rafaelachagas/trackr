@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { capturarPaginaCore, urlDominante, atualizarDiarioAb } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, urlDominante, atualizarDiarioAb, coletarVariacoes } from '@/lib/vigia-pagina'
 import { registrarAlerta } from '@/lib/alertas'
 import { broadcastAlerta } from '@/lib/whatsapp-send'
 
@@ -89,6 +89,14 @@ export async function GET(request: NextRequest) {
             }
           }
         } catch { /* diário A/B é best-effort */ }
+
+        // Variações da página (prints) — acumula o que estiver no ar agora. O
+        // A/B rotaciona por tempo, então cada rodada horária pode pegar uma
+        // variante nova que vai pra galeria.
+        try {
+          const cv = await coletarVariacoes(b.org_id, b.id, b.landing_url, new Date().toISOString(), 4)
+          if (cv.novas > 0) r.variacoesNovas = cv.novas
+        } catch { /* best-effort */ }
       } catch (e: any) {
         r.pagina = `erro: ${e.message}`
       }
