@@ -490,7 +490,7 @@ export interface HeadlineVariante {
 // o thumbnail do player de vídeo. Heurística simples e robusta entre builders.
 function imagemHeadline(s: SessaoRender): string | null {
   const cand = s.imgs
-    .filter((im) => im.w >= 180 && !/thumb|poster|player|vturb|converteai|logo|favicon/i.test(im.src))
+    .filter((im) => im.w >= 140 && !/thumb|poster|player|vturb|converteai|logo|favicon|pixel|sprite/i.test(im.src))
     .sort((a, b) => a.top - b.top || b.w * b.h - a.w * a.h)
   return cand[0]?.src ?? null
 }
@@ -525,6 +525,9 @@ function assinaturaVariante(s: SessaoRender): string {
 export async function headlinesEmTeste(url: string, n = 5): Promise<{ variantes: HeadlineVariante[]; sessoes: number; debug: DebugHeadlines }> {
   const resp = await renderSessoesVps(url, n)
   const sessoes = resp.sessoes
+  // O coletor pode trazer o h2 do rodapé (Termos/Privacidade/etc.) como htext —
+  // isso NÃO é headline. Zera o boilerplate antes de agrupar/ler.
+  for (const s of sessoes) { if (s.htext && HEADLINE_LIXO.test(s.htext)) s.htext = '' }
   const dbg: DebugHeadlines = { sessoes: sessoes.length, imgsTopo: 0, htextVisto: 0, candidatasImg: 0, ocrTentado: 0, ocrFalhou: 0, errosMsg: resp.errosMsg, erroFetch: resp.erroFetch }
   for (const s of sessoes) { dbg.imgsTopo += s.imgs.length; if (s.htext) dbg.htextVisto++ }
   if (!sessoes.length) {
