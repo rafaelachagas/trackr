@@ -193,6 +193,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const [abInline, setAbInline] = useState<AbDetectado | null>(null)
   const [headlines, setHeadlines] = useState<HeadlineVariante[] | null>(null)
   const [headlinesSessoes, setHeadlinesSessoes] = useState(0)
+  const [headlinesDebug, setHeadlinesDebug] = useState<any>(null)
   const [analisandoTudo, setAnalisandoTudo] = useState(false)
   const [etapaAnalise, setEtapaAnalise] = useState<string | null>(null)
 
@@ -209,8 +210,12 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
       if (ab.success && ab.data) setAbInline(ab.data)
       else if (ab.error) setVslErro(ab.error)
       setEtapaAnalise('Abrindo a página em várias sessões pra ler as headlines...')
-      const hl = await detectarHeadlinesConcorrente(bibId)
-      if (hl.success) { setHeadlines(hl.variantes); setHeadlinesSessoes(hl.sessoes) }
+      try {
+        const hl = await fetch(`/api/rastreador/headlines?bib=${bibId}`, { cache: 'no-store' }).then((r) => r.json())
+        setHeadlines(hl.variantes ?? [])
+        setHeadlinesSessoes(hl.sessoes ?? 0)
+        setHeadlinesDebug(hl.debug ?? null)
+      } catch { setHeadlines([]); setHeadlinesDebug(null) }
       setEtapaAnalise('Registrando no diário...')
       const d = await atualizarDiarioConcorrente(bibId)
       if (d.success) setDiario(d.data)
@@ -649,6 +654,27 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             ))}
           </div>
           {headlines.length === 1 && <p className="mt-2 text-[11px] text-muted-foreground">Só uma headline apareceu nas {headlinesSessoes} sessões — sem teste A/B de headline agora.</p>}
+        </div>
+      )}
+
+      {/* 1.6) DIAGNÓSTICO — quando a leitura de headlines volta vazia, mostra o porquê */}
+      {headlines && headlines.length === 0 && headlinesDebug && (
+        <div className={`rounded-2xl p-4 ${card}`}>
+          <p className="text-xs font-bold text-foreground flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-muted-foreground" /> Headlines: não consegui ler dessa vez</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{headlinesDebug.motivo || 'Sem headlines detectadas.'}</p>
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px]">
+            {[['Sessões abertas', headlinesDebug.sessoes], ['Imagens no topo', headlinesDebug.imgsTopo], ['Headline em texto', headlinesDebug.htextVisto], ['Imagens candidatas', headlinesDebug.candidatasImg], ['OCR tentado', headlinesDebug.ocrTentado], ['OCR falhou', headlinesDebug.ocrFalhou]].map(([k, v]) => (
+              <div key={k as string} className="rounded-lg border border-white/10 px-2 py-1.5">
+                <span className="text-muted-foreground">{k}</span>
+                <span className="block font-bold text-foreground tabular-nums">{String(v ?? '—')}</span>
+              </div>
+            ))}
+          </div>
+          {headlinesDebug.amostraImg && (
+            <a href={headlinesDebug.amostraImg} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-primary hover:underline">
+              ver a imagem que o robô pegou no topo
+            </a>
+          )}
         </div>
       )}
 

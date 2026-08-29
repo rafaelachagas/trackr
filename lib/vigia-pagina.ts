@@ -491,11 +491,24 @@ function imagemHeadline(s: SessaoRender): string | null {
   return cand[0]?.src ?? null
 }
 
+export interface DebugHeadlines {
+  sessoes: number
+  imgsTopo: number          // imagens no topo somando todas as sessões
+  htextVisto: number        // sessões que trouxeram h1/h2 em texto
+  candidatasImg: number     // imagens-headline distintas encontradas
+  ocrTentado: number
+  ocrFalhou: number
+  amostraImg?: string       // 1ª imagem-headline (pra inspeção)
+  motivo?: string           // por que veio vazio, em português
+}
+
 // Detecta quantas headlines o concorrente está testando, lendo o texto de cada
 // uma (OCR pela IA quando é imagem). Renderiza a página em N sessões novas.
-export async function headlinesEmTeste(url: string, n = 6): Promise<{ variantes: HeadlineVariante[]; sessoes: number }> {
+export async function headlinesEmTeste(url: string, n = 6): Promise<{ variantes: HeadlineVariante[]; sessoes: number; debug: DebugHeadlines }> {
   const sessoes = await renderSessoesVps(url, n)
-  if (!sessoes.length) return { variantes: [], sessoes: 0 }
+  const dbg: DebugHeadlines = { sessoes: sessoes.length, imgsTopo: 0, htextVisto: 0, candidatasImg: 0, ocrTentado: 0, ocrFalhou: 0 }
+  for (const s of sessoes) { dbg.imgsTopo += s.imgs.length; if (s.htext) dbg.htextVisto++ }
+  if (!sessoes.length) { dbg.motivo = 'O render da VPS não retornou nenhuma sessão (endpoint fora do ar, timeout ou página bloqueou o robô).'; return { variantes: [], sessoes: 0, debug: dbg } }
 
   // Agrupa sessões por variante. A "chave" da variante é a imagem-headline
   // (ou, se não houver imagem, o texto do h1/h2). Sessões iguais somam.
@@ -509,19 +522,31 @@ export async function headlinesEmTeste(url: string, n = 6): Promise<{ variantes:
     else grupos.set(chave, { imagem: img, htext: s.htext, vezes: 1 })
   }
 
+  dbg.candidatasImg = [...grupos.values()].filter((g) => g.imagem).length
+  dbg.amostraImg = [...grupos.values()].find((g) => g.imagem)?.imagem ?? undefined
+
   // Para cada variante distinta, lê o texto (OCR da imagem, senão o h1/h2).
   const variantes: HeadlineVariante[] = []
   const totalSessoes = sessoes.length
   for (const g of [...grupos.values()].sort((a, b) => b.vezes - a.vezes).slice(0, 6)) {
     let texto = g.htext
     if (g.imagem) {
+      dbg.ocrTentado++
       const ocr = await lerTextoDaImagem(g.imagem)
       if (ocr.ok && ocr.texto && ocr.texto !== '—') texto = ocr.texto.replace(/\s+/g, ' ').trim()
+      else dbg.ocrFalhou++
     }
     if (!texto) continue
     variantes.push({ texto: texto.slice(0, 400), imagem: g.imagem, vezes: g.vezes, pct: Math.round((g.vezes / totalSessoes) * 100) })
   }
-  return { variantes, sessoes: totalSessoes }
+  if (!variantes.length) {
+    dbg.motivo = dbg.imgsTopo === 0 && dbg.htextVisto === 0
+      ? 'O render abriu a página mas não achou imagem no topo nem headline em texto (headline pode estar dentro do vídeo).'
+      : dbg.ocrTentado > 0 && dbg.ocrFalhou === dbg.ocrTentado
+        ? 'Achou a imagem da headline, mas a IA (OCR) não leu texto nela.'
+        : 'Achou conteúdo no topo, mas nada que parecesse headline legível.'
+  }
+  return { variantes, sessoes: totalSessoes, debug: dbg }
 }
 
 // CTAs/ofertas testadas dentro do config do A/B da VTurb (callActions.content).

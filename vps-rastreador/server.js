@@ -325,8 +325,14 @@ app.get('/render', async (req, res) => {
         // Contexto novo já vem sem cookie/cache; garante estado limpo.
         await ctx.clearCookies().catch(() => {})
         const page = await ctx.newPage()
-        await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {})
-        await page.waitForTimeout(3500) // deixa o construtor injetar as imagens
+        // NÃO usar networkidle: páginas de VSL (player + pixels) nunca ficam
+        // idle e travariam os 45s do timeout por sessão. domcontentloaded +
+        // espera fixa é rápido e já pega as imagens injetadas por JS.
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+        await page.waitForTimeout(4000) // deixa o construtor injetar as imagens/headline
+        // rola um tico pra disparar lazy-load do topo, e espera mais um pouco
+        await page.evaluate(() => window.scrollTo(0, 300)).catch(() => {})
+        await page.waitForTimeout(1200)
         const r = await page.evaluate(COLETOR).catch(() => ({ imgs: [], htext: '' }))
         sessoes.push({ imgs: r.imgs || [], htext: r.htext || '' })
       } catch (_) {
