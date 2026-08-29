@@ -325,10 +325,19 @@ app.get('/render', async (req, res) => {
           userAgent: UAS[i % UAS.length],
           viewport: { width: 1080, height: 1350 },
           locale: 'pt-BR',
+          serviceWorkers: 'block',            // sem SW = sem cache de variante
+          extraHTTPHeaders: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+          deviceScaleFactor: 1 + (i % 3) * 0.5, // varia o fingerprint entre sessões
         })
+        // Zera qualquer storage antes de qualquer script rodar.
+        await ctx.addInitScript(() => { try { localStorage.clear(); sessionStorage.clear() } catch (e) {} })
         const page = await ctx.newPage()
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch((e) => { errosMsg.push('goto: ' + e.message) })
-        await page.waitForTimeout(3500) // deixa o construtor injetar as imagens/headline
+        // Cache-buster único por sessão: derruba qualquer cache/CDN que estivesse
+        // servindo sempre a mesma variante pro nosso IP.
+        const sep = url.indexOf('?') >= 0 ? '&' : '?'
+        const u = url + sep + '_ttab=' + i + '_' + Date.now()
+        await page.goto(u, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch((e) => { errosMsg.push('goto: ' + e.message) })
+        await page.waitForTimeout(5000) // settle maior: dá tempo do JS do A/B sortear
         await page.evaluate(() => window.scrollTo(0, 200)).catch(() => {})
         await page.waitForTimeout(800)
         const r = await page.evaluate(coletor).catch((e) => { errosMsg.push('evaluate: ' + e.message); return { imgs: [], htext: '', vids: [] } })
