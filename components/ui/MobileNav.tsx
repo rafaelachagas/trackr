@@ -16,10 +16,9 @@ import { useAuth } from '@/hooks/useAuth'
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/sales', label: 'Vendas', icon: ShoppingCart },
-  { href: '/criativos', label: 'Criativos', icon: Film },
+  // Criativos e Lançamento (cadastro manual) ocultos — puxados automaticamente.
   { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
-  { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
   { href: '/ad-analysis', label: 'Analisar Criativos', icon: Film },
   { href: '/vsls', label: 'Análise de VSL', icon: MonitorPlay },
   { href: '/funil', label: 'Análise de Funil', icon: FilterIcon },

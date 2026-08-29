@@ -8,7 +8,6 @@ import VendasPorProdutoBloco from '@/components/dashboard/VendasPorProdutoBloco'
 import VendasPorPagamentoBloco from '@/components/dashboard/VendasPorPagamentoBloco'
 import GraficosPorHora from '@/components/dashboard/GraficosPorHora'
 import TabelaCriativosV2 from '@/components/dashboard/TabelaCriativosV2'
-import TabelaCriativos from '@/components/dashboard/TabelaCriativos'
 import HistoricoCriativos from '@/components/dashboard/HistoricoCriativos'
 import type { BlocoId } from '@/lib/metricas-overview'
 import type { RoasPorCriativo } from '@/types'
@@ -110,7 +109,10 @@ export default function BlocoById({ id, metrics, chartData, criativos }: {
     case 'tabela-criativos-v2':
       return <TabelaCriativosV2 />
     case 'tabela-criativos':
-      return <TabelaCriativos dados={criativos ?? []} />
+      // Performance por Criativo MANUAL — oculto do overview (criativos são
+      // puxados automaticamente em 'tabela-criativos-v2'). Layouts salvos que
+      // ainda referenciam este bloco simplesmente não renderizam nada.
+      return null
     case 'historico-criativos':
       return <HistoricoCriativos />
   }

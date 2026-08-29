@@ -40,7 +40,8 @@ export const CATALOGO_METRICAS: BlocoDef[] = [
   { id: 'vendas-por-pagamento', categoria: 'Vendas', label: 'Vendas por Pagamento', span: 6 },
   { id: 'graficos-por-hora', categoria: 'Gráficos', label: 'Gráficos por Hora', span: 12 },
   { id: 'tabela-criativos-v2', categoria: 'Criativos', label: 'Performance por Criativo', span: 12 },
-  { id: 'tabela-criativos', categoria: 'Criativos', label: 'Criativos (framework)', span: 12 },
+  // 'tabela-criativos' (Performance por Criativo MANUAL) removido do catálogo —
+  // hoje os criativos são puxados automaticamente (tabela-criativos-v2).
   { id: 'historico-criativos', categoria: 'Criativos', label: 'Histórico de Criativos', span: 12 },
 ]
 
@@ -48,7 +49,7 @@ export const CATALOGO_METRICAS: BlocoDef[] = [
 export const LAYOUT_PADRAO: BlocoId[] = [
   'revenue', 'spend', 'roas', 'lucro', 'imposto', 'reembolso', 'cpm', 'cpa',
   'grafico-diario', 'vendas-por-tipo', 'vendas-por-produto', 'vendas-por-pagamento', 'graficos-por-hora',
-  'tabela-criativos-v2', 'tabela-criativos', 'historico-criativos',
+  'tabela-criativos-v2', 'historico-criativos',
 ]
 
 export function chaveLayout(device: 'desktop' | 'mobile') {

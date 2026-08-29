@@ -38,10 +38,11 @@ import { CATALOGO_METRICAS, type BlocoId, type CategoriaBloco } from '@/lib/metr
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/sales', label: 'Vendas', icon: ShoppingCart },
-  { href: '/criativos', label: 'Criativos', icon: Film },
+  // Criativos e Lançamento (cadastro MANUAL) ocultos — hoje criativos e
+  // lançamentos são puxados automaticamente. As páginas seguem acessíveis por
+  // URL, só saíram do menu.
   { href: '/vendas-criativos', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
-  { href: '/lancamento', label: 'Lançamento', icon: PlusCircle },
   { href: '/vsls', label: 'Análise de VSL', icon: MonitorPlay },
   { href: '/funil', label: 'Análise de Funil', icon: FilterIcon },
 ]

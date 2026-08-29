@@ -252,15 +252,8 @@ export default function ContasAnunciosPage() {
         </button>
       </div>
 
-      {/* Tabs de plataforma */}
-      <div className="flex gap-2 mb-6 bg-card border border-border rounded-xl p-1">
-        <button className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-primary text-white shadow transition">
-          Meta Ads
-        </button>
-        <button disabled className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-muted-foreground cursor-not-allowed">
-          Google Ads
-        </button>
-      </div>
+      {/* Google Ads removido por enquanto — só Meta Ads em uso. Sem o Google, um
+          único tab "Meta Ads" seria redundante, então a barra de tabs saiu. */}
 
       {/* Card Meta Ads */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden mb-4">
