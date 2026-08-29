@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink, X, PlayCircle, Download, Copy, Binoculars, FileText, Check } from 'lucide-react'
+import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink, X, PlayCircle, Download, Copy, Binoculars, FileText, Check, ChevronDown as ChevronDownIB } from 'lucide-react'
 import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, serieEscala, listarTrafegoManual, salvarTrafegoManual, type ResumoInteligencia, type CriativoHist, type PontoEscala, type LeituraTrafego } from '@/app/actions/rastreador-intel'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts'
 import { getTranscricoes, salvarTranscricao } from '@/app/actions/rastreador'
@@ -188,16 +188,39 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
 
   // Caça teste A/B: visita a página 6x como visitante novo e mostra as
   // variantes de vídeo/headline com a proporção do sorteio.
-  const [abResultado, setAbResultado] = useState<AbDetectado | null>(null)
-  const [abRodando, setAbRodando] = useState(false)
-  async function detectarAb() {
-    if (abRodando) return
-    setAbRodando(true); setVslErro(null)
-    const r = await detectarAbVslConcorrente(bibId)
-    setAbRodando(false)
-    if (!r.success || !r.data) { setVslErro(r.error ?? 'Falha ao detectar.'); return }
-    setAbResultado(r.data)
+  // Análise inline (não modal) da VSL/A/B, exibida no card "VSL do concorrente".
+  const [abInline, setAbInline] = useState<AbDetectado | null>(null)
+  const [analisandoTudo, setAnalisandoTudo] = useState(false)
+
+  // Um clique faz tudo: versiona a página, atualiza o diário e detecta o A/B.
+  async function analisarTudo() {
+    if (analisandoTudo) return
+    setAnalisandoTudo(true); setVslErro(null); setMsg(null)
+    try {
+      await capturar()
+      const d = await atualizarDiarioConcorrente(bibId)
+      if (d.success) setDiario(d.data)
+      const ab = await detectarAbVslConcorrente(bibId)
+      if (ab.success && ab.data) setAbInline(ab.data)
+      else if (ab.error) setVslErro(ab.error)
+    } finally {
+      setAnalisandoTudo(false)
+    }
   }
+
+  // Resumo em linguagem simples do estado atual (lido do diário + versões).
+  const ultimaVersao = versoes[0]
+  const ultimoEvento = diario[0]
+  const resumoAb = (() => {
+    if (abInline) {
+      const n = abInline.videos.length
+      if (n > 1) return { icone: '🧪', texto: `Testando ${n} VSLs agora`, sub: abInline.abVturb ? `A/B nativo da VTurb · ${abInline.videos.map((v) => `${Math.round(v.pct)}%`).join(' / ')}` : `${abInline.rodadas} visitas` }
+      if (n === 1) return { icone: '🎬', texto: 'VSL única no ar', sub: 'Nenhum teste A/B ativo neste momento' }
+    }
+    if (ultimoEvento?.tipo === 'ab_encerrado') return { icone: '🏆', texto: 'Encerrou um teste A/B', sub: ultimoEvento.detalhe }
+    if (ultimoEvento?.tipo === 'ab_inicio' || ultimoEvento?.tipo === 'ab_rodada') return { icone: '🧪', texto: 'Teste A/B em andamento', sub: ultimoEvento.detalhe }
+    return { icone: '🎬', texto: 'Sem análise de VSL ainda', sub: 'Clique em "Analisar agora" pra ver o que ele está testando' }
+  })()
 
   // Abre a última versão salva da página em "modo seleção": os players ganham
   // um botão de escolher e o clique volta pra cá via postMessage.
@@ -556,32 +579,80 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
       </>)}
 
       {secao === 'pagina' && (<>
-      {/* Diário do concorrente — linha do tempo de testes A/B */}
+      {/* 1) RESUMO — o estado atual em uma linha, + ação única "Analisar agora" */}
+      <div className={`rounded-2xl p-5 ${card}`}>
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-3xl shrink-0">{resumoAb.icone}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-bold text-foreground">{resumoAb.texto}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{resumoAb.sub}</p>
+            {ultimaVersao && (
+              <p className="text-[11px] text-muted-foreground/70 mt-1">
+                Página vista {new Date(ultimaVersao.capturado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                {ultimaVersao.stack && ultimaVersao.stack.length > 0 && ` · ${ultimaVersao.stack.map((s) => s.label).join(', ')}`}
+                {ultimaVersao.precos?.length > 0 && ` · ${ultimaVersao.precos.slice(0, 3).join(' · ')}`}
+              </p>
+            )}
+          </div>
+          <button onClick={analisarTudo} disabled={analisandoTudo}
+            className="px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 bg-primary text-white hover:opacity-90 disabled:opacity-50 shrink-0 transition">
+            {analisandoTudo ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {analisandoTudo ? 'Analisando...' : 'Analisar agora'}
+          </button>
+        </div>
+        {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
+      </div>
+
+      {/* 2) VSL DO CONCORRENTE — variantes com ações inline (transcrever/baixar) */}
+      {abInline && abInline.videos.length > 0 && (
+        <div className={`rounded-2xl p-5 ${card}`}>
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              <PlayCircle className="w-4 h-4 text-muted-foreground" />
+              {abInline.videos.length > 1 ? `${abInline.videos.length} VSLs no teste A/B` : 'VSL no ar'}
+            </p>
+            {abInline.abVturb && <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-500/10 text-amber-300">A/B nativo VTurb · peso real</span>}
+          </div>
+          <div className="space-y-2">
+            {abInline.videos.map((v, i) => (
+              <div key={v.url} className="rounded-xl border border-white/10 p-3 flex items-center gap-3">
+                <span className="text-sm font-black tabular-nums w-12 text-center shrink-0" style={{ color: i === 0 ? '#37d67a' : '#fbbf24' }}>{Math.round(v.pct)}%</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-foreground">Variante {String.fromCharCode(65 + i)}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground truncate" title={v.url}>{v.url.replace(/^https?:\/\//, '').slice(0, 60)}</p>
+                </div>
+                <button onClick={() => transcreverItem(v)} disabled={!!vslStatus}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-50 transition inline-flex items-center gap-1">
+                  {vslStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />} Transcrever
+                </button>
+                <a href={v.download} target="_blank" rel="noreferrer"
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-foreground/90 hover:bg-white/5 transition inline-flex items-center gap-1">
+                  <Download className="w-3.5 h-3.5" /> Baixar
+                </a>
+              </div>
+            ))}
+          </div>
+          <button onClick={escolherNaPagina} disabled={versoes.length === 0}
+            className="mt-3 text-[11px] text-muted-foreground hover:text-primary transition inline-flex items-center gap-1 disabled:opacity-40">
+            <PlayCircle className="w-3 h-3" /> não achou o vídeo certo? escolher clicando na página
+          </button>
+        </div>
+      )}
+
+      {/* 3) DIÁRIO — feed cronológico de tudo que muda no concorrente */}
       <div className={`rounded-2xl p-5 ${card}`}>
         <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
           <div>
             <p className="text-sm font-bold text-foreground flex items-center gap-1.5"><Clock className="w-4 h-4 text-muted-foreground" /> Diário do concorrente</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Linha do tempo dos testes A/B de VSL: quando inicia, troca de variante, muda o peso e — o principal — quando ele elege uma vencedora (100%) e encerra o teste. O vigia atualiza sozinho de hora em hora.</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Tudo que muda na página e nos testes A/B, em ordem. O vigia atualiza sozinho de hora em hora.</p>
           </div>
-          <button onClick={async () => {
-            if (diarioRodando) return
-            setDiarioRodando(true); setMsg(null)
-            const r = await atualizarDiarioConcorrente(bibId)
-            setDiarioRodando(false)
-            if (!r.success) { setMsg(r.error ?? 'Falha ao atualizar diário.'); return }
-            setDiario(r.data)
-            setMsg(r.evento ? `Registrado: ${r.evento.titulo}` : 'Sem novidade no teste A/B agora.')
-          }} disabled={diarioRodando}
-            className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-white/10 text-foreground/90 hover:bg-white/5 disabled:opacity-50 transition shrink-0">
-            {diarioRodando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Checar agora
-          </button>
         </div>
         {diario.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nenhum evento registrado ainda. Quando o concorrente rodar (ou encerrar) um teste A/B na VSL, aparece aqui automaticamente.</p>
+          <p className="text-xs text-muted-foreground">Nenhum evento ainda. Assim que ele iniciar, trocar ou encerrar um teste A/B, aparece aqui.</p>
         ) : (
           <div className="space-y-3">
             {diario.map((ev, i) => {
-              const cor = ev.tipo === 'ab_encerrado' ? '#37d67a' : ev.tipo === 'ab_inicio' ? '#00aeef' : ev.tipo === 'ab_sumiu' ? '#f87171' : '#fbbf24'
+              const cor = ev.tipo === 'ab_encerrado' ? '#37d67a' : ev.tipo === 'ab_inicio' ? '#00aeef' : ev.tipo === 'ab_sumiu' ? '#f87171' : ev.tipo === 'headline' ? '#a78bfa' : ev.tipo === 'oferta' ? '#34d399' : '#fbbf24'
               return (
                 <div key={i} className="flex gap-3">
                   <div className="flex flex-col items-center shrink-0">
@@ -602,132 +673,60 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         )}
       </div>
 
-      {/* Versionamento da página de vendas */}
-      <div className={`rounded-2xl p-5 ${card}`}>
-        <div className="mb-4">
-          <p className="text-sm font-bold text-foreground flex items-center gap-1.5"><Globe className="w-4 h-4 text-muted-foreground" /> Página de vendas do concorrente</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Guarda uma versão a cada captura — quando ele mudar preço, bônus ou oferta, você vê a diferença aqui.</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://pagina-do-concorrente.com/oferta" className="flex-1 px-3 py-2.5 rounded-lg text-sm font-mono" style={inputStyle} />
-          <button onClick={capturar} disabled={capturando || (!url.trim() && !landingUrl)} className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 disabled:opacity-50 whitespace-nowrap">
-            {capturando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />} Capturar / versionar
-          </button>
-          <button onClick={transcreverVsl} disabled={!!vslStatus} title="Acha a VSL embutida na página e transcreve com o Whisper da VPS"
-            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 disabled:opacity-50 whitespace-nowrap">
-            {vslStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            {vslStatus ?? (cacheT[`vsl:${bibId}`] ? 'Ver transcrição da VSL' : 'Transcrever VSL')}
-          </button>
-          <button onClick={baixarVsl} disabled={baixandoVsl} title="Baixa a VSL da página como arquivo .mp4 (streaming da VTurb é remontado na VPS — pode demorar 1-2 min pra começar)"
-            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-white/10 text-foreground/90 hover:bg-white/5 disabled:opacity-50 whitespace-nowrap">
-            {baixandoVsl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Baixar VSL
-          </button>
-          <button onClick={escolherNaPagina} disabled={versoes.length === 0} title="Abre a página do concorrente em modo seleção: clique no vídeo que quiser e volte aqui pra transcrever ou baixar"
-            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-white/10 text-foreground/90 hover:bg-white/5 disabled:opacity-50 whitespace-nowrap">
-            <PlayCircle className="w-4 h-4" /> Escolher na página
-          </button>
-          <button onClick={detectarAb} disabled={abRodando} title="Visita a página 6 vezes como visitante novo e revela as variantes de vídeo e headline do teste A/B"
-            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 whitespace-nowrap">
-            {abRodando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-            {abRodando ? 'Visitando 6x...' : 'Detectar teste A/B'}
-          </button>
-        </div>
-        {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
-        {versoes.length > 0 && (
-          <div className="mt-3 space-y-2">
-            {versoes.map((v) => (
-              <div key={v.id} className="rounded-lg p-2.5 border border-white/5 bg-white/[0.02]">
-                <div className="flex items-center gap-2 text-xs">
-                  {v.print_url && (
-                    <a href={v.print_url} target="_blank" rel="noreferrer" title="Ver o print (screenshot real) desta versão" className="shrink-0">
-                      <img src={v.print_url} alt="" className="w-9 h-9 rounded object-cover object-top bg-black/40 border border-white/10 hover:border-primary/50 transition"
-                        loading="lazy" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }} />
-                    </a>
-                  )}
-                  <span className="text-muted-foreground shrink-0">{new Date(v.capturado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                  {v.precos?.length > 0 && <span className="text-emerald-300 font-semibold truncate">{v.precos.slice(0, 4).join(' · ')}</span>}
-                  <a href={`/api/rastreador/pagina/${v.id}`} target="_blank" rel="noreferrer"
-                    className="ml-auto shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-white/10 text-muted-foreground hover:text-primary hover:border-primary/40 transition text-[11px] font-semibold">
-                    <ExternalLink className="w-3 h-3" /> abrir
-                  </a>
-                </div>
-                {v.stack && v.stack.length > 0 && (
-                  <div className="flex items-center gap-1 flex-wrap mt-1.5">
-                    {v.stack.map((s) => (
-                      <span key={s.id} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">{s.label}</span>
-                    ))}
-                  </div>
-                )}
-                {v.resumo_mudanca && <p className="text-[11px] text-muted-foreground mt-1">{v.resumo_mudanca}</p>}
-              </div>
-            ))}
+      {/* 4) HISTÓRICO DA PÁGINA — colapsável, com URL e prints */}
+      <details className={`rounded-2xl ${card} group`}>
+        <summary className="p-5 cursor-pointer list-none flex items-center gap-2">
+          <Globe className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-bold text-foreground">Histórico da página de vendas{versoes.length > 0 ? ` (${versoes.length})` : ''}</span>
+          <ChevronDownIB className="w-4 h-4 text-muted-foreground ml-auto group-open:rotate-180 transition" />
+        </summary>
+        <div className="px-5 pb-5">
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://pagina-do-concorrente.com/oferta" className="flex-1 px-3 py-2.5 rounded-lg text-sm font-mono" style={inputStyle} />
+            <button onClick={capturar} disabled={capturando || (!url.trim() && !landingUrl)} className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 disabled:opacity-50 whitespace-nowrap">
+              {capturando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />} Capturar / versionar
+            </button>
           </div>
-        )}
-      </div>
+          {versoes.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Sem versões salvas ainda. A URL é cadastrada sozinha pelo vigia, ou cole acima e capture.</p>
+          ) : (
+            <div className="space-y-2">
+              {versoes.map((v) => (
+                <div key={v.id} className="rounded-lg p-2.5 border border-white/5 bg-white/[0.02]">
+                  <div className="flex items-center gap-2 text-xs">
+                    {v.print_url && (
+                      <a href={v.print_url} target="_blank" rel="noreferrer" title="Ver o print (screenshot real) desta versão" className="shrink-0">
+                        <img src={v.print_url} alt="" className="w-9 h-9 rounded object-cover object-top bg-black/40 border border-white/10 hover:border-primary/50 transition"
+                          loading="lazy" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }} />
+                      </a>
+                    )}
+                    <span className="text-muted-foreground shrink-0">{new Date(v.capturado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                    {v.precos?.length > 0 && <span className="text-emerald-300 font-semibold truncate">{v.precos.slice(0, 4).join(' · ')}</span>}
+                    <a href={`/api/rastreador/pagina/${v.id}`} target="_blank" rel="noreferrer"
+                      className="ml-auto shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-white/10 text-muted-foreground hover:text-primary hover:border-primary/40 transition text-[11px] font-semibold">
+                      <ExternalLink className="w-3 h-3" /> abrir
+                    </a>
+                  </div>
+                  {v.stack && v.stack.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap mt-1.5">
+                      {v.stack.map((s) => (
+                        <span key={s.id} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">{s.label}</span>
+                      ))}
+                    </div>
+                  )}
+                  {v.resumo_mudanca && <p className="text-[11px] text-muted-foreground mt-1">{v.resumo_mudanca}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </details>
 
       </>)}
 
       {/* Modal de transcrição (leitura + copiar + downloads) — usado pelos
           cards de criativos E pela VSL da página, então fica fora das seções */}
       {modalT && <ModalTranscricaoHist titulo={modalT.titulo} texto={modalT.texto} onFechar={() => setModalT(null)} />}
-
-      {/* Modal: resultado do detector de teste A/B */}
-      {abResultado && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={() => setAbResultado(null)}>
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-          <div onClick={(e) => e.stopPropagation()} className={`relative w-full max-w-xl rounded-2xl ${card} shadow-2xl p-6 max-h-[85vh] overflow-y-auto`}>
-            <div className="flex items-start justify-between gap-3 mb-1">
-              <h3 className="text-base font-bold flex items-center gap-2"><Layers className="w-5 h-5 text-amber-300" /> Teste A/B do concorrente</h3>
-              <button onClick={() => setAbResultado(null)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><X className="w-4 h-4" /></button>
-            </div>
-            <p className="text-xs text-muted-foreground mb-4">
-              {abResultado.abVturb
-                ? <><b className="text-amber-300">Teste A/B nativo da VTurb</b> — {abResultado.videos.length} variantes com os pesos exatos lidos do código.</>
-                : <>{abResultado.rodadas} visitas como visitante novo{abResultado.erros > 0 ? ` (${abResultado.erros} falharam)` : ''} —{' '}
-                  {abResultado.videos.length > 1 || abResultado.headlines.length > 1
-                    ? <b className="text-amber-300">tem teste A/B rodando: {abResultado.videos.length} vídeo(s) e {abResultado.headlines.length} headline(s) diferentes.</b>
-                    : 'nenhuma variação detectada nessas visitas (pode ser página única, ou o sorteio não alternou).'}</>}
-            </p>
-
-            {abResultado.videos.length > 0 && (
-              <>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Vídeos servidos</p>
-                <div className="space-y-2 mb-4">
-                  {abResultado.videos.map((v) => (
-                    <div key={v.url} className="rounded-xl border border-white/10 p-3 flex items-center gap-3">
-                      <span className="text-xs font-bold tabular-nums px-2 py-1 rounded-lg bg-amber-500/10 text-amber-300 shrink-0">{Math.round(v.pct)}%</span>
-                      <span className="text-[11px] font-mono text-muted-foreground truncate flex-1" title={v.url}>{v.url.replace(/^https?:\/\//, '')}</span>
-                      <button onClick={() => { setAbResultado(null); transcreverItem(v) }}
-                        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition">
-                        Transcrever
-                      </button>
-                      <a href={v.download} target="_blank" rel="noreferrer"
-                        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-foreground/90 hover:bg-white/5 transition inline-flex items-center gap-1">
-                        <Download className="w-3.5 h-3.5" /> Baixar
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {abResultado.headlines.length > 0 && (
-              <>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Headlines servidas</p>
-                <div className="space-y-2">
-                  {abResultado.headlines.map((h) => (
-                    <div key={h.texto} className="rounded-xl border border-white/10 p-3 flex items-start gap-3">
-                      <span className="text-xs font-bold tabular-nums px-2 py-1 rounded-lg bg-amber-500/10 text-amber-300 shrink-0">{Math.round(h.pct)}%</span>
-                      <span className="text-sm text-foreground/90">{h.texto}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-            <p className="text-[10px] text-muted-foreground/70 mt-4">A proporção é do sorteio nas {abResultado.rodadas} visitas — rode de novo pra refinar. Split feito 100% no navegador (sem trocar o HTML) pode não aparecer aqui.</p>
-          </div>
-        </div>
-      )}
 
       {/* Modal: escolher qual vídeo da página transcrever/baixar */}
       {seletorVsl && (

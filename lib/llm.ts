@@ -143,6 +143,55 @@ async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: str
   }
 }
 
+// OCR de imagem via IA com visão — lê o texto de uma headline em imagem.
+// Usa o provider configurado (Gemini tem visão nativa; Anthropic idem).
+// Recebe a URL da imagem; baixa e manda inline (base64). Devolve só o texto.
+export async function lerTextoDaImagem(imageUrl: string): Promise<{ ok: boolean; texto: string; erro?: string }> {
+  const cfg = await getLLMConfig()
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 30000)
+    const img = await fetch(imageUrl, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0' } }).finally(() => clearTimeout(t))
+    if (!img.ok) return { ok: false, texto: '', erro: `imagem respondeu ${img.status}` }
+    const mime = img.headers.get('content-type')?.split(';')[0] || 'image/jpeg'
+    if (!/^image\//.test(mime)) return { ok: false, texto: '', erro: 'não é imagem' }
+    const b64 = Buffer.from(await img.arrayBuffer()).toString('base64')
+    const instrucao = 'Extraia APENAS o texto que aparece nesta imagem (headline, chamada, oferta), exatamente como está escrito, sem comentar nada. Se não houver texto legível, responda apenas "—".'
+
+    if (cfg.provider === 'gemini') {
+      if (!cfg.geminiKey) return { ok: false, texto: '', erro: 'Chave do Gemini não configurada.' }
+      const r = await fetch(`${GEMINI_BASE}/${encodeURIComponent(cfg.model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': cfg.geminiKey },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: instrucao }, { inlineData: { mimeType: mime, data: b64 } }] }],
+          generationConfig: { maxOutputTokens: 800, temperature: 0 },
+        }),
+      })
+      if (!r.ok) return { ok: false, texto: '', erro: `Gemini ${r.status}` }
+      const j = await r.json()
+      const texto = (j?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('').trim()
+      return { ok: !!texto, texto }
+    }
+
+    if (!cfg.anthropicKey) return { ok: false, texto: '', erro: 'Chave da Anthropic não configurada.' }
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': cfg.anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: cfg.model, max_tokens: 800,
+        messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } }, { type: 'text', text: instrucao }] }],
+      }),
+    })
+    if (!r.ok) return { ok: false, texto: '', erro: `Anthropic ${r.status}` }
+    const j = await r.json()
+    const texto = (j?.content ?? []).map((c: any) => c?.text ?? '').join('').trim()
+    return { ok: !!texto, texto }
+  } catch (e: any) {
+    return { ok: false, texto: '', erro: e?.name === 'AbortError' ? 'timeout' : e.message }
+  }
+}
+
 // Extrai JSON de uma resposta do modelo (tolerante a texto ao redor / cercas ```).
 export function extrairJSON<T = any>(texto: string): T | null {
   if (!texto) return null

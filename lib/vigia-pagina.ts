@@ -4,7 +4,7 @@
 
 import { createHmac } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase'
-import { hashTexto } from '@/lib/llm'
+import { hashTexto, lerTextoDaImagem } from '@/lib/llm'
 import { RASTREADOR_URL, RASTREADOR_APIKEY } from '@/lib/rastreador'
 
 // Assinatura HMAC pros links de download de VSL — o navegador só vê
@@ -421,10 +421,36 @@ export async function detectarAbTeste(url: string, rodadas = 6): Promise<Resulta
 // ab_diario_<bibId> (linha do tempo de eventos). Sem tabela nova.
 
 export interface VarianteAb { chave: string; url: string; peso: number }
-export interface EstadoAb { variantes: VarianteAb[]; em: string }
+export interface EstadoAb { variantes: VarianteAb[]; em: string; ctas?: string[]; headline?: string }
+
+// Headline da página. 1º tenta texto (h1/h2). Se não houver texto legível mas
+// existir uma imagem de destaque (og:image), lê com OCR pela IA (Gemini).
+export async function extrairHeadlinePagina(html: string): Promise<string | null> {
+  const txt = extrairHeadline(html)
+  if (txt) return txt
+  // Sem headline em texto — tenta OCR da og:image (a "capa" da página).
+  const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+  if (og?.[1]) {
+    const r = await lerTextoDaImagem(og[1])
+    if (r.ok && r.texto && r.texto !== '—') return `[imagem] ${r.texto.slice(0, 300)}`
+  }
+  return null
+}
+
+// CTAs/ofertas testadas dentro do config do A/B da VTurb (callActions.content).
+function extrairCtasAb(js: string): string[] {
+  const out = new Set<string>()
+  for (const m of js.matchAll(/content:"((?:[^"\\]|\\.)*)"/g)) {
+    const t = m[1].replace(/\\"/g, '"').trim()
+    // Filtra só o que parece copy de botão/oferta (tem letra e tamanho razoável).
+    if (t.length >= 4 && t.length <= 120 && /[a-zà-ú]/i.test(t)) out.add(t)
+  }
+  return [...out].slice(0, 20)
+}
 export interface EventoDiario {
   em: string                 // ISO
-  tipo: 'ab_inicio' | 'ab_rodada' | 'ab_peso' | 'ab_encerrado' | 'ab_sumiu'
+  tipo: 'ab_inicio' | 'ab_rodada' | 'ab_peso' | 'ab_encerrado' | 'ab_sumiu' | 'headline' | 'oferta'
   titulo: string
   detalhe: string
 }
@@ -458,12 +484,55 @@ async function gravarJson(orgId: string, chave: string, valor: any) {
     { onConflict: 'chave' })
 }
 
+// Extrai as CTAs testadas dos scripts de A/B presentes no HTML.
+async function ctasTestadas(html: string): Promise<string[]> {
+  const out = new Set<string>()
+  const abs = new Set<string>()
+  for (const m of html.matchAll(/https?:\/\/scripts\.converteai\.net\/([a-z0-9-]+)\/ab-test\/([a-f0-9]{10,})/gi)) abs.add(`${m[1]}::${m[2]}`)
+  for (const key of [...abs].slice(0, 3)) {
+    const [oid, abId] = key.split('::')
+    const js = await baixarTexto(`https://scripts.converteai.net/${oid}/ab-test/${abId}/player.js`)
+    if (js) for (const c of extrairCtasAb(js)) out.add(c)
+  }
+  return [...out]
+}
+
 // Compara o estado A/B novo com o anterior e, se mudou, escreve no diário.
-// Retorna o evento gerado (pra o vigia poder alertar no WhatsApp).
+// Retorna o evento gerado (pra o vigia poder alertar no WhatsApp). Registra
+// TAMBÉM mudança de headline e de ofertas/CTAs testadas (podem gerar vários
+// eventos numa rodada; devolve o mais relevante).
 export async function atualizarDiarioAb(orgId: string, bibId: string, html: string, agoraISO: string): Promise<EventoDiario | null> {
   const atual = await snapshotAb(html)
   const estadoAnt = await lerJson<EstadoAb | null>(`ab_estado_${bibId}`, null)
   const antes = estadoAnt?.variantes ?? []
+  const eventosExtras: EventoDiario[] = []
+
+  // Headline (texto ou OCR de imagem) — registra quando muda.
+  try {
+    const hlNova = await extrairHeadlinePagina(html)
+    if (hlNova && hlNova !== estadoAnt?.headline) {
+      eventosExtras.push({
+        em: agoraISO, tipo: 'headline',
+        titulo: estadoAnt?.headline ? 'Trocou a headline da página' : 'Headline registrada',
+        detalhe: estadoAnt?.headline ? `"${estadoAnt.headline.slice(0, 90)}" → "${hlNova.slice(0, 90)}"` : `"${hlNova.slice(0, 160)}"`,
+      })
+    }
+    var headlineAtual = hlNova ?? estadoAnt?.headline
+  } catch { var headlineAtual = estadoAnt?.headline }
+
+  // Ofertas/CTAs testadas no A/B.
+  let ctasAtual = estadoAnt?.ctas ?? []
+  try {
+    const ctas = await ctasTestadas(html)
+    if (ctas.length) {
+      const antesSet = new Set(estadoAnt?.ctas ?? [])
+      const novas = ctas.filter((c) => !antesSet.has(c))
+      if (novas.length && estadoAnt?.ctas?.length) {
+        eventosExtras.push({ em: agoraISO, tipo: 'oferta', titulo: 'Novas ofertas/CTAs em teste', detalhe: novas.slice(0, 5).map((c) => `"${c}"`).join(' · ') })
+      }
+      ctasAtual = ctas
+    }
+  } catch { /* mantém */ }
 
   const setAtual = new Set(atual.map((v) => v.chave))
   const setAntes = new Set(antes.map((v) => v.chave))
@@ -487,15 +556,16 @@ export async function atualizarDiarioAb(orgId: string, bibId: string, html: stri
   }
 
   // Estado sempre atualizado (mesmo sem evento, pra pegar mudança futura).
-  if (atual.length > 0 || antes.length > 0) {
-    await gravarJson(orgId, `ab_estado_${bibId}`, { variantes: atual, em: agoraISO } as EstadoAb)
-  }
-  if (evento) {
+  await gravarJson(orgId, `ab_estado_${bibId}`, { variantes: atual, em: agoraISO, ctas: ctasAtual, headline: headlineAtual } as EstadoAb)
+
+  const todos = [...(evento ? [evento] : []), ...eventosExtras]
+  if (todos.length) {
     const diario = await lerJson<EventoDiario[]>(`ab_diario_${bibId}`, [])
-    diario.push(evento)
+    diario.push(...todos)
     await gravarJson(orgId, `ab_diario_${bibId}`, diario.slice(-100))
   }
-  return evento
+  // Prioriza o evento de A/B (encerramento é o mais relevante); senão o 1º extra.
+  return evento ?? eventosExtras[0] ?? null
 }
 
 export async function lerDiarioConcorrente(bibId: string): Promise<EventoDiario[]> {
