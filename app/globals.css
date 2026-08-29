@@ -26,9 +26,10 @@
 .dark {
   /* Dark Theme (Noturno) — identidade The Track (rebrand): fundo #04060C,
      superfícies #070C16 / #0D1526, borda #1D2A44, texto #EEF2F8, azul #2E90FA. */
-  --background: #04060C;
+  --background: #05070E;
   --foreground: #EEF2F8;
-  --card: #070C16;
+  /* Card levemente acima do fundo pra separar sem depender de borda marcada. */
+  --card: #0A111E;
   --card-foreground: #EEF2F8;
   --popover: #0D1526;
   --popover-foreground: #EEF2F8;
@@ -42,7 +43,10 @@
   --accent-foreground: #EEF2F8;
   --destructive: #ef4444;
   --destructive-foreground: #f8fafc;
-  --border: #1D2A44;
+  /* Borda sutil (quase invisível) — o navy sólido #1D2A44 do kit deixava cada
+     card com contorno marcado demais na UI densa. Mantém a identidade sem o
+     contraste pesado. */
+  --border: rgba(255, 255, 255, 0.055);
   --input: #0D1526;
   --ring: #2E90FA;
 }
