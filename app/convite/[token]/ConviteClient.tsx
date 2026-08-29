@@ -113,7 +113,7 @@ export default function ConviteClient({ status: initialStatus, token, orgName, r
                     Você foi convidado para entrar na organização{' '}
                     <span className="text-foreground font-bold">{orgName}</span>
                     {' '}como{' '}
-                    <span className="inline-flex items-center gap-1 font-bold" style={{ color: role === 'admin' ? '#f59e0b' : '#00aeef' }}>
+                    <span className="inline-flex items-center gap-1 font-bold" style={{ color: role === 'admin' ? '#f59e0b' : '#2E90FA' }}>
                       {role === 'admin' ? <Crown className="w-3 h-3" /> : <User className="w-3 h-3" />}
                       {role === 'admin' ? 'Administrador' : 'Membro'}
                     </span>.

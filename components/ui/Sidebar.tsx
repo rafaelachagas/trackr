@@ -34,6 +34,7 @@ import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useEditorDashboard } from '@/context/EditorDashboardContext'
 import { CATALOGO_METRICAS, type BlocoId, type CategoriaBloco } from '@/lib/metricas-overview'
+import { BrandIcon } from '@/components/ui/BrandLogo'
 
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
@@ -85,14 +86,14 @@ export default function Sidebar() {
         <Link
           href={href}
           className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
-          style={active ? { backgroundColor: '#5dd3ff14' } : {}}
+          style={active ? { backgroundColor: '#8FCBFF14' } : {}}
         >
-          {active && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
+          {active && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#2E90FA' }} />}
           <Icon
             className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`}
-            style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }}
+            style={{ color: active ? '#2E90FA' : 'var(--muted-foreground)' }}
           />
-          <span className={labelClass} style={{ color: active ? '#00aeef' : '' }}>{label}</span>
+          <span className={labelClass} style={{ color: active ? '#2E90FA' : '' }}>{label}</span>
         </Link>
         {collapsed && (
           <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
@@ -113,14 +114,13 @@ export default function Sidebar() {
         className={`${ativo ? 'w-72' : collapsed ? 'w-[60px]' : 'w-64'} text-foreground hidden md:flex flex-col h-screen fixed left-0 top-0 overflow-y-auto overflow-x-hidden hide-scrollbar transition-all duration-300 z-40`}
         style={{ backgroundColor: 'var(--card)', borderRight: '1px solid var(--border)', boxShadow: '4px 0 24px rgba(0,0,0,.4)' }}
       >
-        {/* Logo */}
+        {/* Logo (marca The Track) */}
         <div className="h-12 flex items-center px-3 flex-shrink-0 border-b border-white/5">
-          <div className="w-7 h-7 rounded-xl bg-card border border-white/5 flex items-center justify-center flex-shrink-0 relative overflow-hidden">
-            <div className="absolute inset-0 bg-primary/10" />
-            <Zap className="w-3.5 h-3.5 text-primary relative z-10" strokeWidth={2.5} />
-          </div>
+          <BrandIcon size={26} className="flex-shrink-0" />
           <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-2'}`}>
-            <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground whitespace-nowrap">The Track</h1>
+            <span className="whitespace-nowrap select-none" style={{ fontFamily: 'var(--font-brand), var(--font-app), sans-serif', fontWeight: 700, letterSpacing: '-0.045em', fontSize: 18, lineHeight: 1 }}>
+              <span style={{ color: 'var(--muted-foreground)' }}>the</span><span style={{ color: 'var(--foreground)' }}>track</span>
+            </span>
           </div>
         </div>
 
@@ -135,11 +135,11 @@ export default function Sidebar() {
             <Link
               href="/ad-analysis"
               className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
-              style={adAnalysisActive ? { backgroundColor: '#5dd3ff14' } : {}}
+              style={adAnalysisActive ? { backgroundColor: '#8FCBFF14' } : {}}
             >
-              {adAnalysisActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Film className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!adAnalysisActive ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: adAnalysisActive ? '#00aeef' : 'var(--muted-foreground)' }} />
-              <span className={labelClass} style={{ color: adAnalysisActive ? '#00aeef' : '' }}>Analisar Criativos</span>
+              {adAnalysisActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#2E90FA' }} />}
+              <Film className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!adAnalysisActive ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: adAnalysisActive ? '#2E90FA' : 'var(--muted-foreground)' }} />
+              <span className={labelClass} style={{ color: adAnalysisActive ? '#2E90FA' : '' }}>Analisar Criativos</span>
             </Link>
             {collapsed && (
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
@@ -154,12 +154,12 @@ export default function Sidebar() {
             <button
               onClick={() => { if (collapsed) { setCollapsed(false); setDataSourcesOpen(true) } else { setDataSourcesOpen(v => !v) } }}
               className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
-              style={dataSourcesActive || dataSourcesOpen ? { backgroundColor: '#5dd3ff14' } : {}}
+              style={dataSourcesActive || dataSourcesOpen ? { backgroundColor: '#8FCBFF14' } : {}}
             >
-              {(dataSourcesActive || dataSourcesOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Database className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(dataSourcesActive || dataSourcesOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : 'var(--muted-foreground)' }} />
-              <span className={`${labelClass} flex-1 text-left`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : '' }}>Fontes de dados</span>
-              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#00aeef' : 'var(--muted-foreground)' }} />
+              {(dataSourcesActive || dataSourcesOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#2E90FA' }} />}
+              <Database className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(dataSourcesActive || dataSourcesOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#2E90FA' : 'var(--muted-foreground)' }} />
+              <span className={`${labelClass} flex-1 text-left`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#2E90FA' : '' }}>Fontes de dados</span>
+              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${dataSourcesOpen ? 'rotate-180' : ''}`} style={{ color: dataSourcesActive || dataSourcesOpen ? '#2E90FA' : 'var(--muted-foreground)' }} />
             </button>
             {collapsed && (
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
@@ -172,8 +172,8 @@ export default function Sidebar() {
                 {dataSources.map(({ href, label, icon: Icon }) => {
                   const active = pathname === href
                   return (
-                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }}>
-                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-foreground' : ''}`} style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
+                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#2E90FA' : 'var(--muted-foreground)' }}>
+                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-foreground' : ''}`} style={{ color: active ? '#2E90FA' : 'var(--muted-foreground)' }} />
                       {label}
                     </Link>
                   )
@@ -187,12 +187,12 @@ export default function Sidebar() {
             <button
               onClick={() => { if (collapsed) { setCollapsed(false); setFerramentasOpen(true) } else { setFerramentasOpen(v => !v) } }}
               className="w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
-              style={ferramentasActive || ferramentasOpen ? { backgroundColor: '#5dd3ff14' } : {}}
+              style={ferramentasActive || ferramentasOpen ? { backgroundColor: '#8FCBFF14' } : {}}
             >
-              {(ferramentasActive || ferramentasOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Wrench className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(ferramentasActive || ferramentasOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : 'var(--muted-foreground)' }} />
-              <span className={`${labelClass} flex-1 text-left`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : '' }}>Ferramentas</span>
-              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${ferramentasOpen ? 'rotate-180' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#00aeef' : 'var(--muted-foreground)' }} />
+              {(ferramentasActive || ferramentasOpen) && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#2E90FA' }} />}
+              <Wrench className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!(ferramentasActive || ferramentasOpen) ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#2E90FA' : 'var(--muted-foreground)' }} />
+              <span className={`${labelClass} flex-1 text-left`} style={{ color: ferramentasActive || ferramentasOpen ? '#2E90FA' : '' }}>Ferramentas</span>
+              <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[20px] opacity-100'} ${ferramentasOpen ? 'rotate-180' : ''}`} style={{ color: ferramentasActive || ferramentasOpen ? '#2E90FA' : 'var(--muted-foreground)' }} />
             </button>
             {collapsed && (
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
@@ -205,8 +205,8 @@ export default function Sidebar() {
                 {ferramentas.map(({ href, label, icon: Icon, beta }) => {
                   const active = pathname === href
                   return (
-                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }}>
-                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-foreground' : ''}`} style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
+                    <Link key={href} href={href} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-all duration-200 group/sub ${active ? 'font-medium' : 'hover:bg-white/5'}`} style={{ color: active ? '#2E90FA' : 'var(--muted-foreground)' }}>
+                      <Icon className={`w-4 h-4 flex-shrink-0 transition-all duration-200 ${!active ? 'group-hover/sub:scale-110 group-hover/sub:!text-foreground' : ''}`} style={{ color: active ? '#2E90FA' : 'var(--muted-foreground)' }} />
                       <span className="flex-1">{label}</span>
                       {beta && <span className="text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-primary/15 text-primary">Beta</span>}
                     </Link>
@@ -221,11 +221,11 @@ export default function Sidebar() {
             <Link
               href="/settings"
               className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative overflow-hidden hover:bg-white/5"
-              style={configActive ? { backgroundColor: '#5dd3ff14' } : {}}
+              style={configActive ? { backgroundColor: '#8FCBFF14' } : {}}
             >
-              {configActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#00aeef' }} />}
-              <Settings className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!configActive ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: configActive ? '#00aeef' : 'var(--muted-foreground)' }} />
-              <span className={labelClass} style={{ color: configActive ? '#00aeef' : '' }}>Configurações</span>
+              {configActive && <div className="absolute inset-y-2.5 left-0 w-0.5 rounded-r-[0.5rem]" style={{ backgroundColor: '#2E90FA' }} />}
+              <Settings className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${!configActive ? 'group-hover/item:scale-110 group-hover/item:!text-foreground' : ''}`} style={{ color: configActive ? '#2E90FA' : 'var(--muted-foreground)' }} />
+              <span className={labelClass} style={{ color: configActive ? '#2E90FA' : '' }}>Configurações</span>
             </Link>
             {collapsed && (
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-card border border-white/5 rounded-lg text-xs font-medium text-foreground whitespace-nowrap shadow-lg opacity-0 group-hover/item:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
@@ -285,7 +285,7 @@ export default function Sidebar() {
           onClick={() => setCollapsed(v => !v)}
           className={`fixed top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-7 h-7 rounded-full hidden md:flex items-center justify-center transition-all duration-300 shadow-md ${collapsed ? 'left-[60px]' : 'left-64'}`}
           style={{ backgroundColor: 'var(--secondary)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#00aeef'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,174,239,0.4)' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#2E90FA'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(46, 144, 250,0.4)' }}
           onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)' }}
         >
           {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}

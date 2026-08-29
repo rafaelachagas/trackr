@@ -1,6 +1,16 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
+
+// Tipografia da marca (rebrand): Space Grotesk (Google Fonts), pesos 500/600/700.
+// Vira a fonte principal do app; Uber Move fica de fallback.
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-brand",
+  display: "swap",
+});
 
 // Uber Move (arquivos locais fornecidos pelo usuário em app/fonts). A licença dos
 // arquivos é responsabilidade do usuário.
@@ -32,7 +42,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className={`${uberMove.variable} min-h-full`}>{children}</body>
+      <body className={`${spaceGrotesk.variable} ${uberMove.variable} min-h-full`}>{children}</body>
     </html>
   );
 }

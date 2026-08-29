@@ -77,7 +77,7 @@ export default function ConfigIA() {
       </div>
 
       {msg && (
-        <div className="rounded-xl px-4 py-2.5 flex items-center gap-2 text-xs" style={{ backgroundColor: 'rgba(0,174,239,0.06)', border: '1px solid rgba(0,174,239,0.2)' }}>
+        <div className="rounded-xl px-4 py-2.5 flex items-center gap-2 text-xs" style={{ backgroundColor: 'rgba(46, 144, 250,0.06)', border: '1px solid rgba(46, 144, 250,0.2)' }}>
           <Check className="w-3.5 h-3.5 text-primary" /><span className="text-foreground/90">{msg}</span>
         </div>
       )}

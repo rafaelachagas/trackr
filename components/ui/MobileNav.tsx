@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
+import BrandLogo from '@/components/ui/BrandLogo'
 
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
@@ -66,11 +67,7 @@ export default function MobileNav() {
         style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
       >
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-xl bg-card border border-white/5 flex items-center justify-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-primary/10" />
-            <Zap className="w-3.5 h-3.5 text-primary relative z-10" strokeWidth={2.5} />
-          </div>
-          <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground">The Track</h1>
+          <BrandLogo size={24} wordmarkSize={16} />
         </div>
 
         <div className="flex items-center gap-1">
@@ -105,11 +102,7 @@ export default function MobileNav() {
             style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
           >
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-xl bg-card border border-white/5 flex items-center justify-center relative overflow-hidden">
-                <div className="absolute inset-0 bg-primary/10" />
-                <Zap className="w-3.5 h-3.5 text-primary relative z-10" strokeWidth={2.5} />
-              </div>
-              <h1 className="text-sm font-black italic uppercase tracking-tighter text-foreground">The Track</h1>
+              <BrandLogo size={24} wordmarkSize={16} />
             </div>
             <button onClick={() => setOpen(false)} className="flex items-center gap-1.5 text-sm font-bold text-foreground">
               Fechar
@@ -127,9 +120,9 @@ export default function MobileNav() {
                   href={href}
                   onClick={() => setOpen(false)}
                   className={itemClass(active)}
-                  style={active ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
+                  style={active ? { backgroundColor: '#8FCBFF14', color: '#2E90FA' } : { color: '#c7ccce' }}
                 >
-                  <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
+                  <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#2E90FA' : 'var(--muted-foreground)' }} />
                   {label}
                 </Link>
               )
@@ -149,9 +142,9 @@ export default function MobileNav() {
                     href={href}
                     onClick={() => setOpen(false)}
                     className={`${itemClass(active)} ml-2`}
-                    style={active ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
+                    style={active ? { backgroundColor: '#8FCBFF14', color: '#2E90FA' } : { color: '#c7ccce' }}
                   >
-                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
+                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#2E90FA' : 'var(--muted-foreground)' }} />
                     {label}
                   </Link>
                 )
@@ -172,9 +165,9 @@ export default function MobileNav() {
                     href={href}
                     onClick={() => setOpen(false)}
                     className={`${itemClass(active)} ml-2`}
-                    style={active ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
+                    style={active ? { backgroundColor: '#8FCBFF14', color: '#2E90FA' } : { color: '#c7ccce' }}
                   >
-                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#00aeef' : 'var(--muted-foreground)' }} />
+                    <Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? '#2E90FA' : 'var(--muted-foreground)' }} />
                     <span className="flex-1">{label}</span>
                     <span className="text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-primary/15 text-primary">Beta</span>
                   </Link>
@@ -188,9 +181,9 @@ export default function MobileNav() {
                 href="/settings"
                 onClick={() => setOpen(false)}
                 className={itemClass(pathname === '/settings')}
-                style={pathname === '/settings' ? { backgroundColor: '#5dd3ff14', color: '#00aeef' } : { color: '#c7ccce' }}
+                style={pathname === '/settings' ? { backgroundColor: '#8FCBFF14', color: '#2E90FA' } : { color: '#c7ccce' }}
               >
-                <Settings className="w-5 h-5 flex-shrink-0" style={{ color: pathname === '/settings' ? '#00aeef' : 'var(--muted-foreground)' }} />
+                <Settings className="w-5 h-5 flex-shrink-0" style={{ color: pathname === '/settings' ? '#2E90FA' : 'var(--muted-foreground)' }} />
                 Configurações
               </Link>
             </div>
@@ -207,7 +200,7 @@ export default function MobileNav() {
               {isRefreshing ? 'Sincronizando...' : 'Sincronizar Dados'}
             </button>
             <div className="flex items-center gap-3 px-1">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center font-black text-xs text-white flex-shrink-0" style={{ backgroundColor: '#00aeef' }}>
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center font-black text-xs text-white flex-shrink-0" style={{ backgroundColor: '#2E90FA' }}>
                 {initials}
               </div>
               <div className="flex-1 min-w-0">

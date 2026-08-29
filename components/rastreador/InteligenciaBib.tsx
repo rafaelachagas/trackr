@@ -288,7 +288,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
       </div>
 
       {msg && (
-        <div className="rounded-xl px-3 py-2.5 flex items-start gap-2 text-xs" style={{ backgroundColor: 'rgba(0,174,239,0.06)', border: '1px solid rgba(0,174,239,0.2)' }}>
+        <div className="rounded-xl px-3 py-2.5 flex items-start gap-2 text-xs" style={{ backgroundColor: 'rgba(46, 144, 250,0.06)', border: '1px solid rgba(46, 144, 250,0.2)' }}>
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" /><span className="text-foreground/90">{msg}</span>
         </div>
       )}
@@ -397,8 +397,8 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
                 <AreaChart data={escala} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
                   <defs>
                     <linearGradient id="escalaFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#00aeef" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#00aeef" stopOpacity={0.02} />
+                      <stop offset="0%" stopColor="#2E90FA" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#2E90FA" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
@@ -416,7 +416,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
                       </div>
                     )
                   }} />
-                  <Area type="monotone" dataKey="totalComCopias" stroke="#00aeef" strokeWidth={2} fill="url(#escalaFill)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="totalComCopias" stroke="#2E90FA" strokeWidth={2} fill="url(#escalaFill)" isAnimationActive={false} />
                   <Area type="monotone" dataKey="ativos" stroke="rgba(255,255,255,0.35)" strokeWidth={1.5} strokeDasharray="4 3" fill="none" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -701,7 +701,7 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         ) : (
           <div className="space-y-3">
             {diario.map((ev, i) => {
-              const cor = ev.tipo === 'ab_encerrado' ? '#37d67a' : ev.tipo === 'ab_inicio' ? '#00aeef' : ev.tipo === 'ab_sumiu' ? '#f87171' : ev.tipo === 'headline' ? '#a78bfa' : ev.tipo === 'oferta' ? '#34d399' : '#fbbf24'
+              const cor = ev.tipo === 'ab_encerrado' ? '#37d67a' : ev.tipo === 'ab_inicio' ? '#2E90FA' : ev.tipo === 'ab_sumiu' ? '#f87171' : ev.tipo === 'headline' ? '#a78bfa' : ev.tipo === 'oferta' ? '#34d399' : '#fbbf24'
               return (
                 <div key={i} className="flex gap-3">
                   <div className="flex flex-col items-center shrink-0">

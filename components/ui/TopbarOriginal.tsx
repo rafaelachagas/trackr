@@ -96,8 +96,8 @@ export default function Topbar() {
                         onClick={() => { setActiveOrg(org); setOrgMenuOpen(false) }}
                         className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold transition hover:bg-white/5 text-left"
                         style={{
-                          color: activeOrg.org_id === org.org_id ? '#00aeef' : '#e2e8f0',
-                          backgroundColor: activeOrg.org_id === org.org_id ? 'rgba(0,174,239,0.06)' : undefined,
+                          color: activeOrg.org_id === org.org_id ? '#2E90FA' : '#e2e8f0',
+                          backgroundColor: activeOrg.org_id === org.org_id ? 'rgba(46, 144, 250,0.06)' : undefined,
                         }}
                       >
                         <Building2 className="w-3.5 h-3.5 flex-shrink-0" />

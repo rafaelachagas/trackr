@@ -114,7 +114,7 @@ export default function AdminOrgs() {
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 border border-primary/25 bg-primary/5">
               <Link2 className="w-3.5 h-3.5 text-primary flex-shrink-0" />
               <p className="flex-1 text-[11px] font-mono text-muted-foreground truncate">{inviteLink.url}</p>
-              <button onClick={copiarLink} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition text-white" style={{ backgroundColor: copiado ? '#10b981' : '#00aeef' }}>
+              <button onClick={copiarLink} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition text-white" style={{ backgroundColor: copiado ? '#10b981' : '#2E90FA' }}>
                 {copiado ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} {copiado ? 'Copiado' : 'Copiar'}
               </button>
             </div>

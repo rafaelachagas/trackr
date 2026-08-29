@@ -37,7 +37,7 @@ export default function FiltrosPeriodo({
             onClick={() => onPeriodoChange(op.value)}
             className={`px-4 py-2 text-[10px] rounded-xl font-bold uppercase tracking-widest transition-all ${
               periodo === op.value
-                ? 'bg-[#00aeef] text-black shadow-[0_0_15px_rgba(0,174,239,0.2)]'
+                ? 'bg-[#2E90FA] text-black shadow-[0_0_15px_rgba(46, 144, 250,0.2)]'
                 : 'bg-[#0b1222] text-slate-500 border border-slate-800/50 hover:text-white hover:border-slate-600'
             }`}
           >
@@ -52,14 +52,14 @@ export default function FiltrosPeriodo({
             type="date"
             value={dataInicio ?? ''}
             onChange={(e) => onDataInicioChange?.(e.target.value)}
-            className="text-[10px] font-bold uppercase tracking-widest border border-slate-800/50 rounded-xl px-3 py-2 bg-[#0b1222] text-white outline-none focus:border-[#00aeef]/50"
+            className="text-[10px] font-bold uppercase tracking-widest border border-slate-800/50 rounded-xl px-3 py-2 bg-[#0b1222] text-white outline-none focus:border-[#2E90FA]/50"
           />
           <span className="text-slate-600 font-bold uppercase text-[9px] tracking-widest">até</span>
           <input
             type="date"
             value={dataFim ?? ''}
             onChange={(e) => onDataFimChange?.(e.target.value)}
-            className="text-[10px] font-bold uppercase tracking-widest border border-slate-800/50 rounded-xl px-3 py-2 bg-[#0b1222] text-white outline-none focus:border-[#00aeef]/50"
+            className="text-[10px] font-bold uppercase tracking-widest border border-slate-800/50 rounded-xl px-3 py-2 bg-[#0b1222] text-white outline-none focus:border-[#2E90FA]/50"
           />
         </div>
       )}

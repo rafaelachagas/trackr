@@ -31,7 +31,7 @@ const SELECIONAR_JS = `
   }
   function montar(){
     var faixa = document.createElement('div')
-    faixa.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483646;background:#00aeef;color:#fff;font:600 14px/1.4 sans-serif;padding:10px 16px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.4)'
+    faixa.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483646;background:#2E90FA;color:#fff;font:600 14px/1.4 sans-serif;padding:10px 16px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.4)'
     faixa.textContent = 'MODO SELEÇÃO — clique no botão em cima do vídeo que você quer usar. Feche a aba pra cancelar.'
     document.body.appendChild(faixa)
     var cands = acharCandidatos()
@@ -40,7 +40,7 @@ const SELECIONAR_JS = `
       var r = c.el.getBoundingClientRect()
       var btn = document.createElement('button')
       btn.textContent = '▶ Escolher este vídeo' + (cands.length > 1 ? ' (' + (i + 1) + ')' : '')
-      btn.style.cssText = 'position:absolute;z-index:2147483647;background:#00aeef;color:#fff;border:0;border-radius:10px;padding:10px 16px;font:700 13px sans-serif;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.5)'
+      btn.style.cssText = 'position:absolute;z-index:2147483647;background:#2E90FA;color:#fff;border:0;border-radius:10px;padding:10px 16px;font:700 13px sans-serif;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.5)'
       btn.style.top = (window.scrollY + r.top + Math.max(10, r.height / 2 - 18)) + 'px'
       btn.style.left = (window.scrollX + r.left + Math.max(10, r.width / 2 - 90)) + 'px'
       btn.onclick = function(ev){

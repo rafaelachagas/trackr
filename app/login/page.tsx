@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { BrandIcon } from '@/components/ui/BrandLogo'
 import { Zap, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 
@@ -101,11 +102,12 @@ export default function LoginPage() {
         <div className="bg-card/80 backdrop-blur-xl border border-border rounded-[32px] p-6 sm:p-8 shadow-2xl shadow-black/50">
 
           <div className="flex flex-col items-center text-center mb-10">
-            <div className="w-16 h-16 rounded-3xl bg-background border border-border flex items-center justify-center shadow-lg shadow-black/50 mb-4 relative overflow-hidden">
-              <div className="absolute inset-0 bg-primary/10" />
-              <Zap className="w-8 h-8 text-primary relative z-10" strokeWidth={2.5} />
+            <div className="w-16 h-16 rounded-3xl bg-[#070C16] border border-border flex items-center justify-center shadow-lg shadow-black/50 mb-4" style={{ filter: 'drop-shadow(0 12px 34px rgba(46,144,250,0.38))' }}>
+              <BrandIcon size={40} />
             </div>
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter text-foreground">TRACKR</h1>
+            <div style={{ fontFamily: 'var(--font-brand), var(--font-app), sans-serif', fontWeight: 700, letterSpacing: '-0.045em', fontSize: 34, lineHeight: 1 }}>
+              <span style={{ color: 'var(--muted-foreground)' }}>the</span><span style={{ color: 'var(--foreground)' }}>track</span>
+            </div>
             <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-2">
               Painel de Gestão de Performance
             </p>

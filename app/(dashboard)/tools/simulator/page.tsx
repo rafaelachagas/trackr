@@ -18,7 +18,7 @@ interface CrmCenario {
   id: string; nome: string; leads: number; etapas: Etapa[]; precoVenda: number; investimento: number | null
 }
 
-const CORES = ['#00aeef', '#f5b301', '#8b5cf6', '#10b981', '#f43f5e', '#ec4899']
+const CORES = ['#2E90FA', '#f5b301', '#8b5cf6', '#10b981', '#f43f5e', '#ec4899']
 const uid = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.floor(Math.random() * 1e6)}`)
 const letra = (i: number) => String.fromCharCode(65 + i)
 

@@ -66,7 +66,7 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(0,174,239,0.1)' }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(46, 144, 250,0.1)' }}>
             <CreditCard className="w-4 h-4 text-primary" />
           </div>
           <h2 className="text-base font-black text-foreground tracking-tight flex-1">Gerenciar Assinatura</h2>
@@ -150,7 +150,7 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
                     </div>
                     <span
                       className="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded"
-                      style={{ backgroundColor: 'rgba(0,174,239,0.1)', color: '#00aeef' }}
+                      style={{ backgroundColor: 'rgba(46, 144, 250,0.1)', color: '#2E90FA' }}
                     >
                       Atual
                     </span>
@@ -167,7 +167,7 @@ export default function ModalAssinatura({ activeOrg, onClose }: Props) {
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-lg text-xs font-bold transition"
-            style={{ backgroundColor: 'rgba(0,174,239,0.1)', color: '#00aeef', border: '1px solid rgba(0,174,239,0.2)' }}
+            style={{ backgroundColor: 'rgba(46, 144, 250,0.1)', color: '#2E90FA', border: '1px solid rgba(46, 144, 250,0.2)' }}
           >
             Fechar
           </button>

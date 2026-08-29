@@ -138,7 +138,7 @@ export default function Topbar() {
                               className="relative w-full aspect-[4/3] rounded-lg overflow-hidden flex flex-col gap-1 p-1.5 transition-all"
                               style={{
                                 backgroundColor: opt.barBg,
-                                border: ativo ? '2px solid #00aeef' : '1px solid var(--border)',
+                                border: ativo ? '2px solid #2E90FA' : '1px solid var(--border)',
                               }}
                             >
                               <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: opt.line }} />
@@ -152,7 +152,7 @@ export default function Topbar() {
                             </div>
                             <span
                               className="text-xs font-semibold transition-colors"
-                              style={{ color: ativo ? '#00aeef' : 'var(--muted-foreground)' }}
+                              style={{ color: ativo ? '#2E90FA' : 'var(--muted-foreground)' }}
                             >
                               {opt.label}
                             </span>
@@ -205,8 +205,8 @@ export default function Topbar() {
                           onClick={() => { setActiveOrg(org); setOrgMenuOpen(false) }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold transition hover:bg-white/5 text-left"
                           style={{
-                            color: activeOrg.org_id === org.org_id ? '#00aeef' : 'var(--foreground)',
-                            backgroundColor: activeOrg.org_id === org.org_id ? 'rgba(0,174,239,0.06)' : undefined,
+                            color: activeOrg.org_id === org.org_id ? '#2E90FA' : 'var(--foreground)',
+                            backgroundColor: activeOrg.org_id === org.org_id ? 'rgba(46, 144, 250,0.06)' : undefined,
                           }}
                         >
                           <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
@@ -252,13 +252,13 @@ export default function Topbar() {
               >
                 <div className="text-right hidden sm:block">
                   <p className="text-[11px] font-bold text-foreground leading-none">{firstName}</p>
-                  <p className="text-[9px] font-semibold mt-0.5" style={{ color: '#00aeef' }}>
+                  <p className="text-[9px] font-semibold mt-0.5" style={{ color: '#2E90FA' }}>
                     {activeOrg?.role === 'admin' ? 'Administrador' : 'Usuário'}
                   </p>
                 </div>
                 <div
                   className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-[10px] text-white"
-                  style={{ backgroundColor: '#00aeef', boxShadow: '0 0 12px rgba(0,174,239,0.3)' }}
+                  style={{ backgroundColor: '#2E90FA', boxShadow: '0 0 12px rgba(46, 144, 250,0.3)' }}
                 >
                   {initials}
                 </div>

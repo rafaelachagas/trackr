@@ -666,7 +666,7 @@ export default function AdAnalysisPage() {
                   {SORT_OPTIONS.map(s => (
                     <button key={s.key} onClick={() => toggleSort(s.key)}
                       className={`w-full text-left px-3 py-2 rounded-lg text-xs transition hover:bg-white/5 ${sortKey === s.key ? 'font-semibold' : ''}`}
-                      style={{ color: sortKey === s.key ? '#00aeef' : '#e2e8f0' }}>
+                      style={{ color: sortKey === s.key ? '#2E90FA' : '#e2e8f0' }}>
                       {s.label}
                     </button>
                   ))}

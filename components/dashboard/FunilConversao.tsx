@@ -115,7 +115,7 @@ export default function FunilConversao() {
             <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full" style={{ height: 300 }}>
               <defs>
                 <linearGradient id="funilGrad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0" stopColor="#00aeef" />
+                  <stop offset="0" stopColor="#2E90FA" />
                   <stop offset="0.5" stopColor="#6f5cf0" />
                   <stop offset="1" stopColor="#ec4899" />
                 </linearGradient>

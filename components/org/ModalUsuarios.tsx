@@ -127,7 +127,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
                           key={r}
                           onClick={() => { setInviteRole(r); setRoleMenuOpen(null); setInviteLink('') }}
                           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left"
-                          style={{ color: inviteRole === r ? '#00aeef' : '#e2e8f0' }}
+                          style={{ color: inviteRole === r ? '#2E90FA' : '#e2e8f0' }}
                         >
                           {r === 'admin' ? <Crown className="w-3 h-3 text-yellow-400" /> : <User className="w-3 h-3" />}
                           {r === 'admin' ? 'Admin' : 'Membro'}
@@ -141,7 +141,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
                   onClick={generateInvite}
                   disabled={generating}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition"
-                  style={{ backgroundColor: '#00aeef', color: '#000' }}
+                  style={{ backgroundColor: '#2E90FA', color: '#000' }}
                 >
                   {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
                   Gerar link
@@ -151,14 +151,14 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
               {inviteLink ? (
                 <div
                   className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-                  style={{ backgroundColor: 'var(--popover)', border: '1px solid rgba(0,174,239,0.25)' }}
+                  style={{ backgroundColor: 'var(--popover)', border: '1px solid rgba(46, 144, 250,0.25)' }}
                 >
                   <Link2 className="w-3 h-3 text-primary flex-shrink-0" />
                   <p className="flex-1 text-[10px] font-mono text-muted-foreground truncate">{inviteLink}</p>
                   <button
                     onClick={copyLink}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition"
-                    style={{ backgroundColor: copied ? '#10b981' : '#00aeef', color: '#000' }}
+                    style={{ backgroundColor: copied ? '#10b981' : '#2E90FA', color: '#000' }}
                   >
                     {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                     {copied ? 'Copiado' : 'Copiar link'}
@@ -220,7 +220,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
                             key={r}
                             onClick={() => changeRole(member.user_id, r)}
                             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition hover:bg-white/5 text-left"
-                            style={{ color: member.role === r ? '#00aeef' : '#e2e8f0' }}
+                            style={{ color: member.role === r ? '#2E90FA' : '#e2e8f0' }}
                           >
                             {r === 'admin' ? <Crown className="w-3 h-3 text-yellow-400" /> : <User className="w-3 h-3" />}
                             {r === 'admin' ? 'Admin' : 'Membro'}
@@ -232,7 +232,7 @@ export default function ModalUsuarios({ activeOrg, currentUserId, onClose }: Pro
                 ) : (
                   <span
                     className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg"
-                    style={{ color: member.role === 'admin' ? '#f59e0b' : '#00aeef', backgroundColor: member.role === 'admin' ? 'rgba(245,158,11,0.1)' : 'rgba(0,174,239,0.1)' }}
+                    style={{ color: member.role === 'admin' ? '#f59e0b' : '#2E90FA', backgroundColor: member.role === 'admin' ? 'rgba(245,158,11,0.1)' : 'rgba(46, 144, 250,0.1)' }}
                   >
                     {member.role === 'admin' ? 'Admin' : 'Membro'}
                   </span>
