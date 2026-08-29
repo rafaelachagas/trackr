@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
-import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, detectarAbTeste, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
 // O trabalho pesado mora em lib/vigia-pagina.ts (compartilhado com o cron do
@@ -51,6 +51,35 @@ export async function listarVslsConcorrente(bibliotecaId: string): Promise<{ suc
     return { success: true, itens }
   } catch (e: any) {
     return { success: false, itens: [], error: e.message }
+  }
+}
+
+// Caça o teste A/B do concorrente: visita a página ao vivo várias vezes como
+// visitante novo e devolve as variantes de vídeo/headline com a proporção.
+export interface AbDetectado {
+  rodadas: number
+  erros: number
+  videos: (VslCandidata & { vezes: number; pct: number })[]
+  headlines: { texto: string; vezes: number; pct: number }[]
+}
+export async function detectarAbVslConcorrente(bibliotecaId: string): Promise<{ success: boolean; data?: AbDetectado; error?: string }> {
+  try {
+    const { data: bib } = await supabaseAdmin
+      .from('rastreador_bibliotecas').select('landing_url').eq('id', bibliotecaId).maybeSingle()
+    if (!bib?.landing_url) return { success: false, error: 'Sem URL de página cadastrada — o vigia adota uma sozinho na próxima rodada, ou cole no campo acima.' }
+    const r = await detectarAbTeste(bib.landing_url, 6)
+    const visitasOk = Math.max(r.rodadas - r.erros, 1)
+    return {
+      success: true,
+      data: {
+        rodadas: r.rodadas,
+        erros: r.erros,
+        videos: r.videos.map((v) => ({ url: v.url, origem: v.origem, download: linkProxyVsl(v.url), vezes: v.vezes, pct: (v.vezes / visitasOk) * 100 })),
+        headlines: r.headlines.map((h) => ({ ...h, pct: (h.vezes / visitasOk) * 100 })),
+      },
+    }
+  } catch (e: any) {
+    return { success: false, error: e.message }
   }
 }
 

@@ -9,7 +9,7 @@ import { transcreverNaFila } from '@/lib/fila-transcricao'
 import { baixarTxt, baixarDocx, baixarMd, baixarPdf } from '@/lib/exportDoc'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
-import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, resolverEscolhaVsl, type VersaoPagina, type VslCandidata } from '@/app/actions/rastreador-pagina'
+import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, resolverEscolhaVsl, detectarAbVslConcorrente, type VersaoPagina, type VslCandidata, type AbDetectado } from '@/app/actions/rastreador-pagina'
 import { baixarRelatorioHTML, relatorioParaMarkdown, relatorioParaTexto } from '@/lib/reportConcorrente'
 import { CLASSIFICACAO_META, ANGULOS, anguloMeta, scoreLabel, type ClassificacaoTeste } from '@/lib/rastreador-intel'
 
@@ -177,6 +177,19 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     // m3u8 remontado na VPS pode levar 1-2 min pra começar — abre em aba própria.
     if (itens.length === 1) { window.open(itens[0].download, '_blank', 'noopener'); return }
     setSeletorVsl({ itens })
+  }
+
+  // Caça teste A/B: visita a página 6x como visitante novo e mostra as
+  // variantes de vídeo/headline com a proporção do sorteio.
+  const [abResultado, setAbResultado] = useState<AbDetectado | null>(null)
+  const [abRodando, setAbRodando] = useState(false)
+  async function detectarAb() {
+    if (abRodando) return
+    setAbRodando(true); setVslErro(null)
+    const r = await detectarAbVslConcorrente(bibId)
+    setAbRodando(false)
+    if (!r.success || !r.data) { setVslErro(r.error ?? 'Falha ao detectar.'); return }
+    setAbResultado(r.data)
   }
 
   // Abre a última versão salva da página em "modo seleção": os players ganham
@@ -539,6 +552,11 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-white/10 text-foreground/90 hover:bg-white/5 disabled:opacity-50 whitespace-nowrap">
             <PlayCircle className="w-4 h-4" /> Escolher na página
           </button>
+          <button onClick={detectarAb} disabled={abRodando} title="Visita a página 6 vezes como visitante novo e revela as variantes de vídeo e headline do teste A/B"
+            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 whitespace-nowrap">
+            {abRodando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+            {abRodando ? 'Visitando 6x...' : 'Detectar teste A/B'}
+          </button>
         </div>
         {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
         {versoes.length > 0 && (
@@ -575,6 +593,62 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
 
       {/* Modal de transcrição (leitura + copiar + downloads) */}
       {modalT && <ModalTranscricaoHist titulo={modalT.titulo} texto={modalT.texto} onFechar={() => setModalT(null)} />}
+
+      {/* Modal: resultado do detector de teste A/B */}
+      {abResultado && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={() => setAbResultado(null)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div onClick={(e) => e.stopPropagation()} className={`relative w-full max-w-xl rounded-2xl ${card} shadow-2xl p-6 max-h-[85vh] overflow-y-auto`}>
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h3 className="text-base font-bold flex items-center gap-2"><Layers className="w-5 h-5 text-amber-300" /> Teste A/B do concorrente</h3>
+              <button onClick={() => setAbResultado(null)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              {abResultado.rodadas} visitas como visitante novo{abResultado.erros > 0 ? ` (${abResultado.erros} falharam)` : ''} —{' '}
+              {abResultado.videos.length > 1 || abResultado.headlines.length > 1
+                ? <b className="text-amber-300">tem teste A/B rodando: {abResultado.videos.length} vídeo(s) e {abResultado.headlines.length} headline(s) diferentes.</b>
+                : 'nenhuma variação detectada nessas visitas (pode ser página única, ou o sorteio não alternou).'}
+            </p>
+
+            {abResultado.videos.length > 0 && (
+              <>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Vídeos servidos</p>
+                <div className="space-y-2 mb-4">
+                  {abResultado.videos.map((v) => (
+                    <div key={v.url} className="rounded-xl border border-white/10 p-3 flex items-center gap-3">
+                      <span className="text-xs font-bold tabular-nums px-2 py-1 rounded-lg bg-amber-500/10 text-amber-300 shrink-0">{Math.round(v.pct)}%</span>
+                      <span className="text-[11px] font-mono text-muted-foreground truncate flex-1" title={v.url}>{v.url.replace(/^https?:\/\//, '')}</span>
+                      <button onClick={() => { setAbResultado(null); transcreverItem(v) }}
+                        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition">
+                        Transcrever
+                      </button>
+                      <a href={v.download} target="_blank" rel="noreferrer"
+                        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-foreground/90 hover:bg-white/5 transition inline-flex items-center gap-1">
+                        <Download className="w-3.5 h-3.5" /> Baixar
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {abResultado.headlines.length > 0 && (
+              <>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Headlines servidas</p>
+                <div className="space-y-2">
+                  {abResultado.headlines.map((h) => (
+                    <div key={h.texto} className="rounded-xl border border-white/10 p-3 flex items-start gap-3">
+                      <span className="text-xs font-bold tabular-nums px-2 py-1 rounded-lg bg-amber-500/10 text-amber-300 shrink-0">{Math.round(h.pct)}%</span>
+                      <span className="text-sm text-foreground/90">{h.texto}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <p className="text-[10px] text-muted-foreground/70 mt-4">A proporção é do sorteio nas {abResultado.rodadas} visitas — rode de novo pra refinar. Split feito 100% no navegador (sem trocar o HTML) pode não aparecer aqui.</p>
+          </div>
+        </div>
+      )}
 
       {/* Modal: escolher qual vídeo da página transcrever/baixar */}
       {seletorVsl && (

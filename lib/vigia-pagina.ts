@@ -292,6 +292,59 @@ export async function acharVslUrl(html: string): Promise<{ url: string; origem: 
   return todos[0] ?? null
 }
 
+// ---- Detector de teste A/B ----
+// Visita a página N vezes como visitante novo (sem cookie, UA variado) e
+// registra o que muda entre as visitas: vídeo servido e headline. Se o
+// concorrente roda split test (server-side ou VTurb A/B), as variantes
+// aparecem com a proporção aproximada do sorteio.
+export interface ResultadoAb {
+  rodadas: number
+  videos: { url: string; origem: string; vezes: number }[]
+  headlines: { texto: string; vezes: number }[]
+  erros: number
+}
+
+const UAS_AB = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+  'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36',
+]
+
+export async function detectarAbTeste(url: string, rodadas = 6): Promise<ResultadoAb> {
+  const videos = new Map<string, { url: string; origem: string; vezes: number }>()
+  const headlines = new Map<string, number>()
+  let erros = 0
+  for (let i = 0; i < rodadas; i++) {
+    try {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 12000)
+      const r = await fetch(url, {
+        signal: ctrl.signal, cache: 'no-store',
+        headers: { 'User-Agent': UAS_AB[i % UAS_AB.length], 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      }).finally(() => clearTimeout(t))
+      if (!r.ok) { erros++; continue }
+      const html = await r.text()
+      const h = extrairHeadline(html)
+      if (h) headlines.set(h, (headlines.get(h) ?? 0) + 1)
+      // Resolve os vídeos DESTA visita (o player também pode sortear a mídia).
+      const vids = await acharVslUrls(html)
+      for (const v of vids) {
+        const cur = videos.get(v.url)
+        if (cur) cur.vezes++
+        else videos.set(v.url, { ...v, vezes: 1 })
+      }
+      await new Promise((res) => setTimeout(res, 400))
+    } catch { erros++ }
+  }
+  return {
+    rodadas,
+    videos: [...videos.values()].sort((a, b) => b.vezes - a.vezes),
+    headlines: [...headlines.entries()].map(([texto, vezes]) => ({ texto, vezes })).sort((a, b) => b.vezes - a.vezes),
+    erros,
+  }
+}
+
 // URL de destino dominante entre os criativos de um snapshot (a "página de
 // vendas dos anúncios"). Normaliza tirando querystring/UTM pra comparar.
 export function urlDominante(criativos: any[]): string | null {
