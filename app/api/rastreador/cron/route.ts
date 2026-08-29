@@ -126,6 +126,31 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Alerta de escala: comparado com ~7 dias atrás, dobrou (ou mais) os
+      // anúncios no ar? Considera únicos + duplicações (pressão real).
+      try {
+        const corte = new Date(Date.now() - 6 * 86400000).toISOString()
+        const { data: antigo } = await supabaseAdmin
+          .from('rastreador_snapshots').select('total, duplicacoes, puxado_em')
+          .eq('biblioteca_id', b.id).lte('puxado_em', corte)
+          .order('puxado_em', { ascending: false }).limit(1).maybeSingle()
+        const agora7 = (j.stats?.encontrados ?? 0) + (j.stats?.duplicacoes ?? 0)
+        const antes7 = antigo ? (Number(antigo.total) || 0) + (Number(antigo.duplicacoes) || 0) : 0
+        if (antigo && antes7 >= 3 && agora7 >= 10 && agora7 >= antes7 * 2) {
+          const { novo } = await registrarAlerta({
+            orgId: b.org_id, tipo: 'concorrente_escala',
+            chave: `${b.id}:${new Date().toISOString().slice(0, 10)}`,
+            titulo: `${nomeDisplay} está escalando pesado`,
+            mensagem: `Saiu de ${antes7} pra ${agora7} anúncios no ar em ~7 dias (${Math.round((agora7 / antes7) * 100 - 100)}% de aumento).`,
+            severidade: 'atencao',
+            enviarWhats: false,
+          }).catch(() => ({ novo: false }))
+          if (novo) {
+            await broadcastAlerta(`🚀 *${nomeDisplay} está escalando pesado*\n\nDe ${antes7} pra ${agora7} anúncios no ar em ~7 dias. O gráfico de pressão de escala tá na aba Inteligência.`).catch(() => {})
+          }
+        }
+      } catch { /* alerta de escala é best-effort */ }
+
       await supabaseAdmin.from('rastreador_bibliotecas')
         .update({ ultima_puxada: new Date().toISOString(), page_name: j.criativos?.[0]?.page_name ?? b.page_name })
         .eq('id', b.id)

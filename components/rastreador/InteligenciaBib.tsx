@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState } from 'react'
 import { Gauge, Layers, RefreshCw, Sparkles, FileDown, Loader2, Skull, Globe, Clock, TrendingUp, AlertCircle, Trophy, ExternalLink, X, PlayCircle, Download, Copy, Binoculars, FileText, Check } from 'lucide-react'
-import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, type ResumoInteligencia, type CriativoHist } from '@/app/actions/rastreador-intel'
+import { resumoInteligencia, listarCriativosHist, reconstruirHistorico, serieEscala, type ResumoInteligencia, type CriativoHist, type PontoEscala } from '@/app/actions/rastreador-intel'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts'
 import { getTranscricoes, salvarTranscricao } from '@/app/actions/rastreador'
 import { transcreverNaFila } from '@/lib/fila-transcricao'
 import { baixarTxt, baixarDocx, baixarMd, baixarPdf } from '@/lib/exportDoc'
 import { clusterizarBiblioteca } from '@/app/actions/rastreador-ia'
 import { gerarRelatorioConcorrente } from '@/app/actions/rastreador-relatorio'
-import { capturarPagina, listarVersoesPagina, acharVslConcorrente, type VersaoPagina } from '@/app/actions/rastreador-pagina'
+import { capturarPagina, listarVersoesPagina, listarVslsConcorrente, type VersaoPagina, type VslCandidata } from '@/app/actions/rastreador-pagina'
 import { baixarRelatorioHTML, relatorioParaMarkdown, relatorioParaTexto } from '@/lib/reportConcorrente'
 import { CLASSIFICACAO_META, ANGULOS, anguloMeta, scoreLabel, type ClassificacaoTeste } from '@/lib/rastreador-intel'
 
@@ -36,12 +37,15 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const [versoes, setVersoes] = useState<VersaoPagina[]>([])
   const [capturando, setCapturando] = useState(false)
 
+  const [escala, setEscala] = useState<PontoEscala[]>([])
+
   async function carregar() {
     setLoading(true)
-    const [r, c, v] = await Promise.all([resumoInteligencia(bibId), listarCriativosHist(bibId), listarVersoesPagina(bibId)])
+    const [r, c, v, e] = await Promise.all([resumoInteligencia(bibId), listarCriativosHist(bibId), listarVersoesPagina(bibId), serieEscala(bibId)])
     if (r.success) setResumo(r.data)
     if (c.success) setCriativos(c.data)
     if (v.success) setVersoes(v.data)
+    if (e.success) setEscala(e.data)
     setLoading(false)
     // Cache de transcrições já feitas (mesma tabela usada no "Movimento").
     // Inclui a da VSL da página, guardada sob a chave sintética vsl:<bibId>.
@@ -83,23 +87,50 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
     setMsg(`Relatório gerado e baixado (.${formato}).`)
   }
 
-  // Transcreve a VSL embutida na página do concorrente (acha o vídeo na
-  // última versão salva, manda pro Whisper da VPS via fila, cacheia).
-  async function transcreverVsl() {
-    if (vslStatus) return
-    const cacheado = cacheT[`vsl:${bibId}`]
-    if (cacheado) { setModalT({ titulo: 'VSL da página de vendas', texto: cacheado }); return }
+  // Vídeos da página do concorrente: acha todos (mp4/m3u8/VTurb) na última
+  // versão salva; com 1 resultado age direto, com vários abre o seletor.
+  const [seletorVsl, setSeletorVsl] = useState<{ itens: VslCandidata[]; acao: 'transcrever' | 'baixar' } | null>(null)
+  const [baixandoVsl, setBaixandoVsl] = useState(false)
+
+  async function obterVsls(): Promise<VslCandidata[] | null> {
     setVslErro(null)
-    setVslStatus('Achando a VSL na página...')
-    const achado = await acharVslConcorrente(bibId)
-    if (!achado.success || !achado.url) { setVslStatus(null); setVslErro(achado.error ?? 'VSL não encontrada.'); return }
-    const r = await transcreverNaFila(achado.url, setVslStatus)
+    const r = await listarVslsConcorrente(bibId)
+    if (!r.success) { setVslErro(r.error ?? 'Não achei vídeo na página.'); return null }
+    return r.itens
+  }
+
+  async function transcreverItem(item: VslCandidata) {
+    setSeletorVsl(null)
+    const r = await transcreverNaFila(item.url, setVslStatus)
     setVslStatus(null)
     if (r.error) { setVslErro(r.error); return }
     const texto = r.texto!
     setCacheT((m) => ({ ...m, [`vsl:${bibId}`]: texto }))
-    salvarTranscricao(`vsl:${bibId}`, achado.url, texto)
+    salvarTranscricao(`vsl:${bibId}`, item.url, texto)
     setModalT({ titulo: 'VSL da página de vendas', texto })
+  }
+
+  async function transcreverVsl() {
+    if (vslStatus) return
+    const cacheado = cacheT[`vsl:${bibId}`]
+    if (cacheado) { setModalT({ titulo: 'VSL da página de vendas', texto: cacheado }); return }
+    setVslStatus('Achando os vídeos da página...')
+    const itens = await obterVsls()
+    if (!itens) { setVslStatus(null); return }
+    if (itens.length === 1) { await transcreverItem(itens[0]); return }
+    setVslStatus(null)
+    setSeletorVsl({ itens, acao: 'transcrever' })
+  }
+
+  async function baixarVsl() {
+    if (baixandoVsl) return
+    setBaixandoVsl(true)
+    const itens = await obterVsls()
+    setBaixandoVsl(false)
+    if (!itens) return
+    // m3u8 remontado na VPS pode levar 1-2 min pra começar — abre em aba própria.
+    if (itens.length === 1) { window.open(itens[0].download, '_blank', 'noopener'); return }
+    setSeletorVsl({ itens, acao: 'baixar' })
   }
 
   async function capturar() {
@@ -212,6 +243,60 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
           </div>
         </div>
       )}
+
+      {/* Pressão de escala — quantos anúncios ele mantém no ar ao longo do tempo */}
+      {escala.length >= 2 && (() => {
+        const ultimo = escala[escala.length - 1]
+        const alvo7 = new Date(ultimo.dia + 'T12:00:00')
+        alvo7.setDate(alvo7.getDate() - 7)
+        const ref = [...escala].reverse().find((p) => new Date(p.dia + 'T12:00:00') <= alvo7) ?? escala[0]
+        const delta = ref.totalComCopias > 0 ? ((ultimo.totalComCopias - ref.totalComCopias) / ref.totalComCopias) * 100 : null
+        return (
+          <div className={`rounded-2xl p-5 ${card}`}>
+            <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+              <div>
+                <p className="text-sm font-bold text-foreground flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-muted-foreground" /> Pressão de escala</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Quantos anúncios ele mantém no ar, dia a dia. Subida forte = pisando no acelerador; queda = recuando ou trocando de estratégia.</p>
+              </div>
+              {delta != null && (
+                <span className={`text-xs font-bold px-2.5 py-1.5 rounded-full shrink-0 ${delta >= 25 ? 'text-emerald-300 bg-emerald-500/10' : delta <= -25 ? 'text-rose-300 bg-rose-500/10' : 'text-muted-foreground bg-white/5'}`}>
+                  {delta >= 0 ? '+' : ''}{delta.toFixed(0)}% em 7 dias{delta >= 100 ? ' 🚀' : ''}
+                </span>
+              )}
+            </div>
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={escala} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="escalaFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#00aeef" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#00aeef" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="dia" tickFormatter={(d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`}
+                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} tickMargin={8} minTickGap={28} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+                  <RTooltip content={({ active, payload, label }: any) => {
+                    if (!active || !payload?.length) return null
+                    const p = payload[0]?.payload as PontoEscala
+                    return (
+                      <div className="rounded-lg px-3 py-2 text-xs bg-popover border border-border shadow-xl">
+                        <p className="font-semibold mb-0.5">{`${String(label).slice(8, 10)}/${String(label).slice(5, 7)}`}</p>
+                        <p className="text-primary">{p.totalComCopias} anúncio(s) no ar</p>
+                        <p className="text-muted-foreground">{p.ativos} criativo(s) único(s)</p>
+                      </div>
+                    )
+                  }} />
+                  <Area type="monotone" dataKey="totalComCopias" stroke="#00aeef" strokeWidth={2} fill="url(#escalaFill)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="ativos" stroke="rgba(255,255,255,0.35)" strokeWidth={1.5} strokeDasharray="4 3" fill="none" isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 mt-2">Linha cheia: anúncios no ar (com cópias/duplicações). Tracejada: criativos únicos.</p>
+          </div>
+        )
+      })()}
 
       {/* Classificação por tempo de teste */}
       <div className={`rounded-2xl p-5 ${card}`}>
@@ -359,6 +444,10 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
             {vslStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {vslStatus ?? (cacheT[`vsl:${bibId}`] ? 'Ver transcrição da VSL' : 'Transcrever VSL')}
           </button>
+          <button onClick={baixarVsl} disabled={baixandoVsl} title="Baixa a VSL da página como arquivo .mp4 (streaming da VTurb é remontado na VPS — pode demorar 1-2 min pra começar)"
+            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 border border-white/10 text-foreground/90 hover:bg-white/5 disabled:opacity-50 whitespace-nowrap">
+            {baixandoVsl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Baixar VSL
+          </button>
         </div>
         {vslErro && <p className="mt-2 text-[11px] text-rose-300/90">{vslErro}</p>}
         {versoes.length > 0 && (
@@ -395,6 +484,40 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
 
       {/* Modal de transcrição (leitura + copiar + downloads) */}
       {modalT && <ModalTranscricaoHist titulo={modalT.titulo} texto={modalT.texto} onFechar={() => setModalT(null)} />}
+
+      {/* Modal: escolher qual vídeo da página transcrever/baixar */}
+      {seletorVsl && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={() => setSeletorVsl(null)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div onClick={(e) => e.stopPropagation()} className={`relative w-full max-w-lg rounded-2xl ${card} shadow-2xl p-6`}>
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h3 className="text-base font-bold flex items-center gap-2"><PlayCircle className="w-5 h-5 text-primary" /> Vídeos achados na página</h3>
+              <button onClick={() => setSeletorVsl(null)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">A página tem mais de um vídeo — escolha qual você quer {seletorVsl.acao === 'transcrever' ? 'transcrever' : 'baixar'}.</p>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {seletorVsl.itens.map((item, i) => (
+                <div key={item.url} className="rounded-xl border border-white/10 p-3 flex items-center gap-3">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary uppercase shrink-0">{item.origem === 'vturb' ? 'VTurb' : item.url.toLowerCase().includes('.m3u8') ? 'stream' : 'mp4'}</span>
+                  <span className="text-[11px] font-mono text-muted-foreground truncate flex-1" title={item.url}>{item.url.replace(/^https?:\/\//, '')}</span>
+                  {seletorVsl.acao === 'transcrever' ? (
+                    <button onClick={() => transcreverItem(item)}
+                      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition">
+                      Transcrever
+                    </button>
+                  ) : (
+                    <a href={item.download} target="_blank" rel="noreferrer" onClick={() => setSeletorVsl(null)}
+                      className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10 text-foreground/90 hover:bg-white/5 transition inline-flex items-center gap-1">
+                      <Download className="w-3.5 h-3.5" /> Baixar
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 mt-3">Dica: o vídeo principal (a VSL) costuma ser o primeiro da lista. "Stream" é remontado em .mp4 na VPS — o download pode levar 1-2 min pra começar.</p>
+          </div>
+        </div>
+      )}
 
       {/* Modal: escolher o formato do relatório IA */}
       {modalFormato && (

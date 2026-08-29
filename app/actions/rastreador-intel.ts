@@ -180,6 +180,38 @@ export async function resumoInteligencia(bibliotecaId: string): Promise<{ succes
   }
 }
 
+export interface PontoEscala {
+  dia: string          // yyyy-MM-dd
+  ativos: number       // criativos únicos no ar
+  totalComCopias: number  // únicos + duplicações (pressão real de veiculação)
+}
+
+// Série histórica de "pressão de escala": quantos anúncios o concorrente
+// mantém no ar ao longo do tempo (1 ponto por dia, último snapshot do dia).
+export async function serieEscala(bibliotecaId: string): Promise<{ success: boolean; data: PontoEscala[]; error?: string }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('rastreador_snapshots')
+      .select('puxado_em, total, duplicacoes')
+      .eq('biblioteca_id', bibliotecaId)
+      .order('puxado_em', { ascending: true })
+      .limit(400)
+    if (error) throw error
+    const porDia = new Map<string, PontoEscala>()
+    for (const s of data ?? []) {
+      const dia = String(s.puxado_em).slice(0, 10)
+      porDia.set(dia, {
+        dia,
+        ativos: Number(s.total) || 0,
+        totalComCopias: (Number(s.total) || 0) + (Number(s.duplicacoes) || 0),
+      })
+    }
+    return { success: true, data: [...porDia.values()] }
+  } catch (e: any) {
+    return { success: false, error: e.message, data: [] }
+  }
+}
+
 // Grava o ângulo/resumo de um criativo (usado pela clusterização por IA).
 export async function salvarAngulo(bibliotecaId: string, adArchiveId: string, angulo: string, resumo: string | null, transcricaoHash: string | null) {
   try {

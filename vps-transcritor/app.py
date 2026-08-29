@@ -55,6 +55,65 @@ def health():
     return jsonify(ok=True, model=MODEL_SIZE)
 
 
+@app.get("/download")
+def download():
+    """Baixa uma VSL como arquivo .mp4. m3u8 (HLS) é remontado pelo ffmpeg
+    (-c copy: só junta os segmentos, sem re-encodar — rápido). mp4 direto é
+    repassado. Sem trava: é IO, não compete com a CPU do Whisper."""
+    if APIKEY and request.args.get("key") != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    video_url = request.args.get("video_url")
+    if not video_url:
+        return jsonify(error="video_url ausente"), 400
+
+    from flask import Response, stream_with_context
+
+    path = None
+    try:
+        if ".m3u8" in video_url.lower():
+            fd, path = tempfile.mkstemp(suffix=".mp4")
+            os.close(fd)
+            cmd = ["ffmpeg", "-y", "-user_agent", UA, "-i", video_url, "-c", "copy",
+                   "-bsf:a", "aac_adtstoasc", path]
+            r = subprocess.run(cmd, capture_output=True, timeout=900)
+            if r.returncode != 0 or os.path.getsize(path) < 10000:
+                raise RuntimeError(f"ffmpeg: {r.stderr[-300:].decode(errors='ignore')}")
+        else:
+            r = requests.get(video_url, headers={"User-Agent": UA}, stream=True, timeout=60)
+            r.raise_for_status()
+            fd, path = tempfile.mkstemp(suffix=".mp4")
+            with os.fdopen(fd, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1 << 16):
+                    if chunk:
+                        f.write(chunk)
+
+        tamanho = os.path.getsize(path)
+
+        def gerar(p):
+            try:
+                with open(p, "rb") as f:
+                    while True:
+                        chunk = f.read(1 << 16)
+                        if not chunk:
+                            break
+                        yield chunk
+            finally:
+                os.path.exists(p) and os.remove(p)
+
+        return Response(
+            stream_with_context(gerar(path)),
+            mimetype="video/mp4",
+            headers={
+                "Content-Disposition": "attachment; filename=vsl-concorrente.mp4",
+                "Content-Length": str(tamanho),
+            },
+        )
+    except Exception as e:
+        if path and os.path.exists(path):
+            os.remove(path)
+        return jsonify(error=f"falha ao baixar: {e}"), 500
+
+
 @app.route("/transcribe", methods=["GET", "POST"])
 def transcribe():
     if APIKEY:

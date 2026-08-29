@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
-import { capturarPaginaCore, acharVslUrl, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, acharVslUrl, acharVslUrls, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
 // O trabalho pesado mora em lib/vigia-pagina.ts (compartilhado com o cron do
@@ -32,6 +32,42 @@ export async function acharVslConcorrente(bibliotecaId: string): Promise<{ succe
   } catch (e: any) {
     return { success: false, error: e.message }
   }
+}
+
+// Lista TODOS os vídeos achados na última versão salva da página (pro
+// seletor: o usuário escolhe qual transcrever/baixar quando há mais de um).
+export interface VslCandidata { url: string; origem: string; download: string }
+export async function listarVslsConcorrente(bibliotecaId: string): Promise<{ success: boolean; itens: VslCandidata[]; error?: string }> {
+  try {
+    const { data: ultima } = await supabaseAdmin
+      .from('rastreador_paginas_hist').select('html')
+      .eq('biblioteca_id', bibliotecaId).order('capturado_em', { ascending: false }).limit(1).maybeSingle()
+    if (!ultima?.html) return { success: false, itens: [], error: 'Ainda não capturei a página desse concorrente — o vigia roda de hora em hora, ou clique em Capturar/versionar.' }
+    const achados = await acharVslUrls(ultima.html)
+    if (!achados.length) return { success: false, itens: [], error: 'Não achei vídeo reproduzível nessa página (player pode carregar o vídeo só depois de interação).' }
+    const { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } = await import('@/lib/transcritor')
+    const itens = achados.map((a) => ({
+      ...a,
+      download: a.url.toLowerCase().includes('.m3u8')
+        ? `${TRANSCRITOR_URL}/download?video_url=${encodeURIComponent(a.url)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}`
+        : a.url,
+    }))
+    return { success: true, itens }
+  } catch (e: any) {
+    return { success: false, itens: [], error: e.message }
+  }
+}
+
+// Monta o link de download da VSL do concorrente como .mp4. Vídeo mp4 direto
+// baixa da fonte; m3u8 (streaming VTurb) passa pelo /download do transcritor
+// na VPS, que remonta o arquivo com ffmpeg. O link carrega a chave da VPS —
+// ok pro uso interno do painel, não é pra compartilhar por aí.
+export async function linkDownloadVsl(bibliotecaId: string): Promise<{ success: boolean; url?: string; error?: string }> {
+  const achado = await acharVslConcorrente(bibliotecaId)
+  if (!achado.success || !achado.url) return { success: false, error: achado.error }
+  if (!achado.url.toLowerCase().includes('.m3u8')) return { success: true, url: achado.url }
+  const { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } = await import('@/lib/transcritor')
+  return { success: true, url: `${TRANSCRITOR_URL}/download?video_url=${encodeURIComponent(achado.url)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}` }
 }
 
 export interface VersaoPagina {

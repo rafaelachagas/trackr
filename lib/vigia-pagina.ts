@@ -239,21 +239,27 @@ export async function capturarPaginaCore(orgId: string, bibliotecaId: string, ur
   }
 }
 
-// Acha a URL REPRODUZÍVEL da VSL embutida numa página (pra transcrever).
-// 1º tenta mp4/m3u8 direto no HTML; se só houver player VTurb, busca o
-// player.js/embed do converteai e extrai a mídia de lá.
-export async function acharVslUrl(html: string): Promise<{ url: string; origem: string } | null> {
-  // mp4/m3u8 cravados no HTML.
+// Acha TODAS as URLs reproduzíveis de vídeo embutidas numa página (mp4/m3u8
+// direto no HTML + players VTurb resolvidos via player.js do converteai).
+export async function acharVslUrls(html: string): Promise<{ url: string; origem: string }[]> {
+  const achados: { url: string; origem: string }[] = []
+  const vistos = new Set<string>()
+  const add = (url: string, origem: string) => {
+    // Dedup por "base" (mesmo vídeo em mp4 e m3u8 conta uma vez? não — formatos
+    // diferentes podem interessar; dedup só por URL exata).
+    if (vistos.has(url)) return
+    vistos.add(url)
+    achados.push({ url, origem })
+  }
   for (const m of html.matchAll(/["'](https?:\/\/[^"']+\.(?:mp4|m3u8)(?:\?[^"']*)?)["']/gi)) {
     const u = m[1]
     if (/thumb|poster|preview|\.jpg|\.png/i.test(u)) continue
-    return { url: u, origem: 'html' }
+    add(u, 'html')
   }
-  // Player VTurb: o script do player aponta pra mídia no CDN do converteai.
   const players = new Set<string>()
   for (const m of html.matchAll(/https?:\/\/scripts\.converteai\.net\/[a-z0-9-]+\/players\/[a-f0-9-]{10,}\/[\w./-]*player\.js/gi)) players.add(m[0])
   for (const m of html.matchAll(/https?:\/\/scripts\.converteai\.net\/[a-z0-9-]+\/players\/[a-f0-9-]{10,}/gi)) players.add(`${m[0]}/player.js`)
-  for (const pj of [...players].slice(0, 3)) {
+  for (const pj of [...players].slice(0, 5)) {
     try {
       const ctrl = new AbortController()
       const t = setTimeout(() => ctrl.abort(), 15000)
@@ -261,10 +267,16 @@ export async function acharVslUrl(html: string): Promise<{ url: string; origem: 
       if (!r.ok) continue
       const js = await r.text()
       const media = js.match(/["'](https?:\/\/[^"']+\.(?:m3u8|mp4)(?:\?[^"']*)?)["']/i)
-      if (media) return { url: media[1], origem: 'vturb' }
+      if (media) add(media[1], 'vturb')
     } catch { /* tenta o próximo player */ }
   }
-  return null
+  return achados.slice(0, 8)
+}
+
+// Compat: o primeiro vídeo achado (usado pelo caminho "um clique").
+export async function acharVslUrl(html: string): Promise<{ url: string; origem: string } | null> {
+  const todos = await acharVslUrls(html)
+  return todos[0] ?? null
 }
 
 // URL de destino dominante entre os criativos de um snapshot (a "página de
