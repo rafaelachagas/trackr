@@ -529,11 +529,14 @@ export interface DebugHeadlines {
 // Assinatura visual de uma sessão — o que define "a mesma variante". Prioriza a
 // imagem-headline; senão o h1/h2; senão o 1º vídeo; senão as imagens do topo.
 function assinaturaVariante(s: SessaoRender): string {
-  const img = imagemHeadline(s)
-  if (img) return 'img:' + img
+  // O que MUDA entre variantes de página é o TOPO (headline em imagem), não o
+  // vídeo — o player costuma ser o mesmo em todas as variantes. Então assina
+  // pelas imagens do topo (fora logo/ícone). Só cai pro texto/vídeo se não
+  // houver imagem nenhuma.
+  const topo = s.imgs.filter((im) => im.w >= 120 && !/logo|favicon|icon|pixel|sprite/i.test(im.src)).slice(0, 2).map((i) => i.src)
+  if (topo.length) return 'top:' + topo.join('|')
   if (s.htext) return 'txt:' + s.htext.slice(0, 80).toLowerCase()
   if (s.vids && s.vids.length) return 'vid:' + s.vids[0]
-  if (s.imgs.length) return 'top:' + s.imgs.slice(0, 3).map((i) => i.src).join('|')
   return '∅'
 }
 
@@ -634,6 +637,7 @@ export async function coletarVariacoes(orgId: string, bibId: string, url: string
     else atuais.set(sig, { imagem: imagemHeadline(s), htext: s.htext, print: s.shot ?? null, vezes: 1 })
   }
 
+  const INSTR_PRINT = 'Esta é a captura de tela do TOPO de uma página de vendas. Leia APENAS a HEADLINE principal (a chamada grande em destaque no topo), exatamente como está escrita, incluindo quebras naturais numa linha só. Ignore avisos de "atenção", botões, legendas do player de vídeo, rodapé e textos pequenos. Se não houver headline legível, responda apenas "—".'
   let novas = 0
   const novasTextos: string[] = []
   for (const [sig, g] of atuais) {
@@ -642,13 +646,17 @@ export async function coletarVariacoes(orgId: string, bibId: string, url: string
       ja.vezes += g.vezes
       ja.ultimaVez = agoraISO
       if (!ja.printUrl && g.print) ja.printUrl = await salvarPrintDataUri(bibId, `var_${hashTexto(sig)}`, g.print)
+      // Re-lê a headline se a variante ainda não tem texto mas já tem print.
+      if ((!ja.texto || ja.texto.length < 4) && ja.printUrl) {
+        const ocr = await lerTextoDaImagem(ja.printUrl, INSTR_PRINT)
+        if (ocr.ok && ocr.texto && ocr.texto !== '—') ja.texto = ocr.texto.replace(/\s+/g, ' ').trim().slice(0, 400)
+      }
       continue
     }
     // Variante NOVA: guarda o print no Storage e a IA LÊ O PRINT pra tirar a
     // headline (é o que o usuário quer — ler depois de já ter o print).
     const printUrl = g.print ? await salvarPrintDataUri(bibId, `var_${hashTexto(sig)}`, g.print) : null
     let texto = g.htext
-    const INSTR_PRINT = 'Esta é a captura de tela do TOPO de uma página de vendas. Leia APENAS a HEADLINE principal (a chamada grande em destaque no topo), exatamente como está escrita, incluindo quebras naturais numa linha só. Ignore avisos de "atenção", botões, legendas do player de vídeo, rodapé e textos pequenos. Se não houver headline legível, responda apenas "—".'
     if (!texto && printUrl) {
       dbg.ocrTentado++
       const ocr = await lerTextoDaImagem(printUrl, INSTR_PRINT)
