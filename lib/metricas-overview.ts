@@ -7,6 +7,7 @@
 export type BlocoId =
   | 'revenue' | 'spend' | 'roas' | 'lucro' | 'imposto' | 'reembolso' | 'cpm' | 'cpa'
   | 'grafico-diario' | 'vendas-por-tipo' | 'vendas-extra' | 'vendas-por-produto' | 'vendas-por-pagamento' | 'graficos-por-hora'
+  | 'funil-conversao'
   | 'tabela-criativos-v2' | 'tabela-criativos' | 'historico-criativos'
 
 // Compat com código antigo que ainda usa o nome anterior.
@@ -39,6 +40,7 @@ export const CATALOGO_METRICAS: BlocoDef[] = [
   { id: 'vendas-por-produto', categoria: 'Vendas', label: 'Vendas por Produto', span: 6 },
   { id: 'vendas-por-pagamento', categoria: 'Vendas', label: 'Vendas por Pagamento', span: 6 },
   { id: 'graficos-por-hora', categoria: 'Gráficos', label: 'Gráficos por Hora', span: 12 },
+  { id: 'funil-conversao', categoria: 'Gráficos', label: 'Funil de Conversão (Meta Ads)', span: 12 },
   { id: 'tabela-criativos-v2', categoria: 'Criativos', label: 'Performance por Criativo', span: 12 },
   // 'tabela-criativos' (Performance por Criativo MANUAL) removido do catálogo —
   // hoje os criativos são puxados automaticamente (tabela-criativos-v2).
@@ -49,6 +51,7 @@ export const CATALOGO_METRICAS: BlocoDef[] = [
 export const LAYOUT_PADRAO: BlocoId[] = [
   'revenue', 'spend', 'roas', 'lucro', 'imposto', 'reembolso', 'cpm', 'cpa',
   'grafico-diario', 'vendas-por-tipo', 'vendas-por-produto', 'vendas-por-pagamento', 'graficos-por-hora',
+  'funil-conversao',
   'tabela-criativos-v2', 'historico-criativos',
 ]
 

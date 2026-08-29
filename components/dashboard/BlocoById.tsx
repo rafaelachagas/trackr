@@ -7,6 +7,7 @@ import PainelVendasExtra from '@/components/dashboard/PainelVendasExtra'
 import VendasPorProdutoBloco from '@/components/dashboard/VendasPorProdutoBloco'
 import VendasPorPagamentoBloco from '@/components/dashboard/VendasPorPagamentoBloco'
 import GraficosPorHora from '@/components/dashboard/GraficosPorHora'
+import FunilConversao from '@/components/dashboard/FunilConversao'
 import TabelaCriativosV2 from '@/components/dashboard/TabelaCriativosV2'
 import HistoricoCriativos from '@/components/dashboard/HistoricoCriativos'
 import type { BlocoId } from '@/lib/metricas-overview'
@@ -106,6 +107,8 @@ export default function BlocoById({ id, metrics, chartData, criativos }: {
       return <VendasPorPagamentoBloco />
     case 'graficos-por-hora':
       return <GraficosPorHora />
+    case 'funil-conversao':
+      return <FunilConversao />
     case 'tabela-criativos-v2':
       return <TabelaCriativosV2 />
     case 'tabela-criativos':
