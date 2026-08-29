@@ -630,10 +630,12 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
               <button onClick={() => setAbResultado(null)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><X className="w-4 h-4" /></button>
             </div>
             <p className="text-xs text-muted-foreground mb-4">
-              {abResultado.rodadas} visitas como visitante novo{abResultado.erros > 0 ? ` (${abResultado.erros} falharam)` : ''} —{' '}
-              {abResultado.videos.length > 1 || abResultado.headlines.length > 1
-                ? <b className="text-amber-300">tem teste A/B rodando: {abResultado.videos.length} vídeo(s) e {abResultado.headlines.length} headline(s) diferentes.</b>
-                : 'nenhuma variação detectada nessas visitas (pode ser página única, ou o sorteio não alternou).'}
+              {abResultado.abVturb
+                ? <><b className="text-amber-300">Teste A/B nativo da VTurb</b> — {abResultado.videos.length} variantes com os pesos exatos lidos do código.</>
+                : <>{abResultado.rodadas} visitas como visitante novo{abResultado.erros > 0 ? ` (${abResultado.erros} falharam)` : ''} —{' '}
+                  {abResultado.videos.length > 1 || abResultado.headlines.length > 1
+                    ? <b className="text-amber-300">tem teste A/B rodando: {abResultado.videos.length} vídeo(s) e {abResultado.headlines.length} headline(s) diferentes.</b>
+                    : 'nenhuma variação detectada nessas visitas (pode ser página única, ou o sorteio não alternou).'}</>}
             </p>
 
             {abResultado.videos.length > 0 && (

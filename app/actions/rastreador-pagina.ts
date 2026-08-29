@@ -99,12 +99,18 @@ export async function detectarAbAvulso(url: string): Promise<{ success: boolean;
     if (!/^https?:\/\//i.test(url)) return { success: false, error: 'Cole uma URL completa (com https://).' }
     const r = await detectarAbTeste(url, 6)
     const visitasOk = Math.max(r.rodadas - r.erros, 1)
+    const somaPeso = r.videos.reduce((s, v) => s + (v.peso ?? 0), 0)
     return {
       success: true,
       data: {
         rodadas: r.rodadas,
         erros: r.erros,
-        videos: r.videos.map((v) => ({ url: v.url, origem: v.origem, download: linkProxyVsl(v.url), vezes: v.vezes, pct: (v.vezes / visitasOk) * 100 })),
+        abVturb: r.abVturb,
+        // A/B da VTurb: % vem do peso exato. Split server-side: da frequência.
+        videos: r.videos.map((v) => ({
+          url: v.url, origem: v.origem, download: linkProxyVsl(v.url), vezes: v.vezes, peso: v.peso,
+          pct: r.abVturb && somaPeso > 0 ? ((v.peso ?? 0) / somaPeso) * 100 : (v.vezes / visitasOk) * 100,
+        })),
         headlines: r.headlines.map((h) => ({ ...h, pct: (h.vezes / visitasOk) * 100 })),
       },
     }
@@ -118,6 +124,7 @@ export async function detectarAbAvulso(url: string): Promise<{ success: boolean;
 export interface AbDetectado {
   rodadas: number
   erros: number
+  abVturb: boolean
   videos: (VslCandidata & { vezes: number; pct: number })[]
   headlines: { texto: string; vezes: number; pct: number }[]
 }
@@ -128,12 +135,17 @@ export async function detectarAbVslConcorrente(bibliotecaId: string): Promise<{ 
     if (!bib?.landing_url) return { success: false, error: 'Sem URL de página cadastrada — o vigia adota uma sozinho na próxima rodada, ou cole no campo acima.' }
     const r = await detectarAbTeste(bib.landing_url, 6)
     const visitasOk = Math.max(r.rodadas - r.erros, 1)
+    const somaPeso = r.videos.reduce((s, v) => s + (v.peso ?? 0), 0)
     return {
       success: true,
       data: {
         rodadas: r.rodadas,
         erros: r.erros,
-        videos: r.videos.map((v) => ({ url: v.url, origem: v.origem, download: linkProxyVsl(v.url), vezes: v.vezes, pct: (v.vezes / visitasOk) * 100 })),
+        abVturb: r.abVturb,
+        videos: r.videos.map((v) => ({
+          url: v.url, origem: v.origem, download: linkProxyVsl(v.url), vezes: v.vezes, peso: v.peso,
+          pct: r.abVturb && somaPeso > 0 ? ((v.peso ?? 0) / somaPeso) * 100 : (v.vezes / visitasOk) * 100,
+        })),
         headlines: r.headlines.map((h) => ({ ...h, pct: (h.vezes / visitasOk) * 100 })),
       },
     }

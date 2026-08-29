@@ -160,10 +160,12 @@ export default function AnalisarPaginaPage() {
         <div className={`rounded-2xl p-5 ${card}`}>
           <p className="text-sm font-bold flex items-center gap-2 mb-1"><Layers className="w-4 h-4 text-amber-300" /> Teste A/B</p>
           <p className="text-xs text-muted-foreground mb-4">
-            {ab.rodadas} visitas como visitante novo{ab.erros > 0 ? ` (${ab.erros} falharam)` : ''} —{' '}
-            {ab.videos.length > 1 || ab.headlines.length > 1
-              ? <b className="text-amber-300">tem variação: {ab.videos.length} vídeo(s) e {ab.headlines.length} headline(s) diferentes.</b>
-              : 'nenhuma variação detectada nessas visitas.'}
+            {ab.abVturb
+              ? <><b className="text-amber-300">Teste A/B nativo da VTurb</b> — {ab.videos.length} variantes com os pesos exatos lidos do código (não é estimativa).</>
+              : <>{ab.rodadas} visitas como visitante novo{ab.erros > 0 ? ` (${ab.erros} falharam)` : ''} —{' '}
+                {ab.videos.length > 1 || ab.headlines.length > 1
+                  ? <b className="text-amber-300">tem variação: {ab.videos.length} vídeo(s) e {ab.headlines.length} headline(s) diferentes.</b>
+                  : 'nenhuma variação detectada nessas visitas.'}</>}
           </p>
           {ab.videos.map((v) => (
             <div key={v.url} className="rounded-xl border border-white/10 p-3 flex items-center gap-3 mb-2">

@@ -346,9 +346,10 @@ export async function acharVslUrl(html: string): Promise<{ url: string; origem: 
 // aparecem com a proporção aproximada do sorteio.
 export interface ResultadoAb {
   rodadas: number
-  videos: { url: string; origem: string; vezes: number }[]
+  videos: { url: string; origem: string; vezes: number; peso?: number }[]
   headlines: { texto: string; vezes: number }[]
   erros: number
+  abVturb: boolean   // variantes vieram do split nativo da VTurb (peso exato)
 }
 
 const UAS_AB = [
@@ -359,9 +360,29 @@ const UAS_AB = [
 ]
 
 export async function detectarAbTeste(url: string, rodadas = 6): Promise<ResultadoAb> {
+  // Atalho: se a página usa A/B NATIVO da VTurb, as variantes e os pesos exatos
+  // já vêm do código — não precisa sortear por visitas (e sortear daria errado,
+  // já que TODAS as variantes aparecem em toda visita).
+  const html0 = await baixarTexto(url, 15000)
+  if (html0) {
+    const vids = await acharVslUrls(html0)
+    if (vids.some((v) => v.origem === 'vturb-ab')) {
+      const somaPeso = vids.reduce((s, v) => s + (v.peso ?? 0), 0) || 1
+      return {
+        rodadas: 1,
+        abVturb: true,
+        // "vezes" aqui carrega o peso proporcional (0..rodadas) só p/ compat;
+        // a UI usa o peso direto.
+        videos: vids.filter((v) => v.origem === 'vturb-ab').map((v) => ({ url: v.url, origem: v.origem, vezes: 0, peso: v.peso })).sort((a, b) => (b.peso ?? 0) - (a.peso ?? 0)),
+        headlines: [],
+        erros: 0,
+      }
+    }
+  }
+
   const videos = new Map<string, { url: string; origem: string; vezes: number }>()
   const headlines = new Map<string, number>()
-  let erros = 0
+  let erros = html0 ? 0 : 1
   for (let i = 0; i < rodadas; i++) {
     try {
       const ctrl = new AbortController()
@@ -374,18 +395,21 @@ export async function detectarAbTeste(url: string, rodadas = 6): Promise<Resulta
       const html = await r.text()
       const h = extrairHeadline(html)
       if (h) headlines.set(h, (headlines.get(h) ?? 0) + 1)
-      // Resolve os vídeos DESTA visita (o player também pode sortear a mídia).
-      const vids = await acharVslUrls(html)
-      for (const v of vids) {
-        const cur = videos.get(v.url)
+      // Split server-side: pega só o mp4/m3u8 cravado no HTML desta visita
+      // (resolver players aqui traria as mesmas variantes toda vez).
+      for (const m of html.matchAll(/["'](https?:\/\/[^"']+\.(?:mp4|m3u8)(?:\?[^"']*)?)["']/gi)) {
+        const u = m[1]
+        if (/thumb|poster|preview|\.jpg|\.png/i.test(u)) continue
+        const cur = videos.get(u)
         if (cur) cur.vezes++
-        else videos.set(v.url, { ...v, vezes: 1 })
+        else videos.set(u, { url: u, origem: 'html', vezes: 1 })
       }
       await new Promise((res) => setTimeout(res, 400))
     } catch { erros++ }
   }
   return {
     rodadas,
+    abVturb: false,
     videos: [...videos.values()].sort((a, b) => b.vezes - a.vezes),
     headlines: [...headlines.entries()].map(([texto, vezes]) => ({ texto, vezes })).sort((a, b) => b.vezes - a.vezes),
     erros,
