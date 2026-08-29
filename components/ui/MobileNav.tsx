@@ -7,7 +7,7 @@ import {
   LayoutDashboard, TrendingUp, Settings, Zap, RefreshCw, LogOut,
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
-  Wrench, Binoculars, Video, MonitorPlay, Brain, FolderSearch, Wand2, Bell,
+  Wrench, Binoculars, Search, Video, MonitorPlay, Brain, FolderSearch, Wand2, Bell,
   Filter as FilterIcon,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
@@ -33,6 +33,7 @@ const dataSources = [
 
 const ferramentas = [
   { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars },
+  { href: '/ferramentas/analisar-pagina', label: 'Analisador de Páginas', icon: Search },
   { href: '/ferramentas/swipe-file', label: 'Swipe File', icon: FolderSearch },
   { href: '/ferramentas/gerador-copy', label: 'Gerador de Copy', icon: Wand2 },
   { href: '/ferramentas/alertas', label: 'Central de Alertas', icon: Bell },

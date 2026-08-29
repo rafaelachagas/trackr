@@ -2,7 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
-import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, detectarAbTeste, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
+import { capturarPaginaCore, acharVslUrl, acharVslUrls, linkProxyVsl, detectarAbTeste, htmlParaTexto, extrairHeadline, detectarPrecos, detectarStack, BUCKET_PRINTS, type ResultadoCaptura } from '@/lib/vigia-pagina'
 
 // Captura a página-alvo (landing_url) de uma biblioteca e versiona se mudou.
 // O trabalho pesado mora em lib/vigia-pagina.ts (compartilhado com o cron do
@@ -51,6 +51,63 @@ export async function listarVslsConcorrente(bibliotecaId: string): Promise<{ suc
     return { success: true, itens }
   } catch (e: any) {
     return { success: false, itens: [], error: e.message }
+  }
+}
+
+// ---- Analisador de páginas avulsas (sem precisar rastrear o concorrente) ----
+// Mesmo arsenal do rastreador, mas pra qualquer URL colada na hora.
+export interface AnalisePaginaAvulsa {
+  titulo: string | null
+  headline: string | null
+  precos: string[]
+  stack: { id: string; label: string }[]
+  videos: VslCandidata[]
+}
+
+export async function analisarPaginaAvulsa(url: string): Promise<{ success: boolean; data?: AnalisePaginaAvulsa; error?: string }> {
+  try {
+    if (!/^https?:\/\//i.test(url)) return { success: false, error: 'Cole uma URL completa (com https://).' }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 20000)
+    let html = ''
+    try {
+      const r = await fetch(url, { signal: ctrl.signal, cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36' } })
+      if (!r.ok) return { success: false, error: `A página respondeu ${r.status}.` }
+      html = await r.text()
+    } finally { clearTimeout(t) }
+    const { titulo, texto } = htmlParaTexto(html)
+    const achados = await acharVslUrls(html)
+    return {
+      success: true,
+      data: {
+        titulo,
+        headline: extrairHeadline(html),
+        precos: detectarPrecos(texto),
+        stack: detectarStack(html),
+        videos: achados.map((a) => ({ ...a, download: linkProxyVsl(a.url) })),
+      },
+    }
+  } catch (e: any) {
+    return { success: false, error: e?.name === 'AbortError' ? 'A página demorou demais para responder.' : e.message }
+  }
+}
+
+export async function detectarAbAvulso(url: string): Promise<{ success: boolean; data?: AbDetectado; error?: string }> {
+  try {
+    if (!/^https?:\/\//i.test(url)) return { success: false, error: 'Cole uma URL completa (com https://).' }
+    const r = await detectarAbTeste(url, 6)
+    const visitasOk = Math.max(r.rodadas - r.erros, 1)
+    return {
+      success: true,
+      data: {
+        rodadas: r.rodadas,
+        erros: r.erros,
+        videos: r.videos.map((v) => ({ url: v.url, origem: v.origem, download: linkProxyVsl(v.url), vezes: v.vezes, pct: (v.vezes / visitasOk) * 100 })),
+        headlines: r.headlines.map((h) => ({ ...h, pct: (h.vezes / visitasOk) * 100 })),
+      },
+    }
+  } catch (e: any) {
+    return { success: false, error: e.message }
   }
 }
 

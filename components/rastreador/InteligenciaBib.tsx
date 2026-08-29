@@ -26,6 +26,8 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
   const [gerando, setGerando] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [classAberta, setClassAberta] = useState<ClassificacaoTeste | null>(null)
+  // A Inteligência cresceu além do radar de anúncios — três seções internas.
+  const [secao, setSecao] = useState<'visao' | 'criativos' | 'pagina'>('visao')
   const [cacheT, setCacheT] = useState<Record<string, string>>({})
   const [modalT, setModalT] = useState<{ titulo: string; texto: string } | null>(null)
   const [modalFormato, setModalFormato] = useState(false)
@@ -247,6 +249,21 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         </div>
       )}
 
+      {/* Navegação interna: a Inteligência tem três painéis */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {([
+          ['visao', 'Visão geral'],
+          ['criativos', 'Criativos'],
+          ['pagina', 'Página & VSL'],
+        ] as ['visao' | 'criativos' | 'pagina', string][]).map(([k, label]) => (
+          <button key={k} onClick={() => setSecao(k)}
+            className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition ${secao === k ? 'bg-primary/15 text-primary border border-primary/30' : 'text-muted-foreground border border-transparent hover:text-foreground hover:bg-white/5'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {secao === 'visao' && (<>
       {/* Hero: anel de força + leitura em palavras + stats */}
       <div className={`rounded-2xl ${card} p-5 lg:p-6`}>
         <div className="flex flex-col sm:flex-row items-center gap-5 lg:gap-8">
@@ -398,6 +415,9 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         )
       })()}
 
+      </>)}
+
+      {secao === 'criativos' && (<>
       {/* Classificação por tempo de teste */}
       <div className={`rounded-2xl p-5 ${card}`}>
         <div className="mb-4">
@@ -528,6 +548,9 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         </div>
       )}
 
+      </>)}
+
+      {secao === 'pagina' && (<>
       {/* Versionamento da página de vendas */}
       <div className={`rounded-2xl p-5 ${card}`}>
         <div className="mb-4">
@@ -591,7 +614,10 @@ export default function InteligenciaBib({ bibId, landingUrl, isPrivate = false }
         )}
       </div>
 
-      {/* Modal de transcrição (leitura + copiar + downloads) */}
+      </>)}
+
+      {/* Modal de transcrição (leitura + copiar + downloads) — usado pelos
+          cards de criativos E pela VSL da página, então fica fora das seções */}
       {modalT && <ModalTranscricaoHist titulo={modalT.titulo} texto={modalT.texto} onFechar={() => setModalT(null)} />}
 
       {/* Modal: resultado do detector de teste A/B */}

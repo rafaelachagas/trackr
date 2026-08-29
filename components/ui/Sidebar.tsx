@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Wrench,
   Binoculars,
+  Search,
   Brain,
   Video,
   MonitorPlay,
@@ -57,6 +58,7 @@ const dataSources = [
 // código continua no repo pra quando isso for retomado, só não fica visível.
 const ferramentas = [
   { href: '/ferramentas/rastreador', label: 'Rastreador de Anúncios', icon: Binoculars, beta: true },
+  { href: '/ferramentas/analisar-pagina', label: 'Analisador de Páginas', icon: Search, beta: true },
   { href: '/ferramentas/alertas', label: 'Central de Alertas', icon: Bell, beta: true },
   { href: '/ferramentas/simulador', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
 ]
