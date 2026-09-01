@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Clapperboard, Search, Play, FileText, Eye, Heart, X, Copy, Check, Plus, Trash2, RefreshCw, ArrowLeft, Bookmark } from 'lucide-react'
+import { Loader2, Clapperboard, Search, Play, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock } from 'lucide-react'
 import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, type PerfilConteudo, type VideoViral } from '@/app/actions/conteudo'
+
+const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
+const FREQ = ['1 dia', '3 dias', '5 dias', '7 dias', '14 dias']
 
 const nf = new Intl.NumberFormat('pt-BR', { notation: 'compact' })
 const fmtDur = (s: number | null) => (s == null ? '' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`)
@@ -20,7 +23,7 @@ function haQuanto(iso: string | null) {
 }
 
 export default function ContentTrackerPage() {
-  const [aba, setAba] = useState<'buscar' | 'perfis'>('perfis')
+  const [aba, setAba] = useState<'buscar' | 'perfis'>('buscar')
   const [perfis, setPerfis] = useState<PerfilConteudo[]>([])
   const [carregandoPerfis, setCarregandoPerfis] = useState(true)
   const [aberto, setAberto] = useState<PerfilConteudo | null>(null)
@@ -32,6 +35,7 @@ export default function ContentTrackerPage() {
   const [buscando, setBuscando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const [freq, setFreq] = useState('3 dias')
 
   const [atualizando, setAtualizando] = useState(false)
   const [trans, setTrans] = useState<{ v: VideoViral; status: string; texto?: string; erro?: string } | null>(null)
@@ -49,10 +53,10 @@ export default function ContentTrackerPage() {
     if (!r.success) { setErro(r.error || 'Falha.'); return }
     setPreview(r.videos)
   }
-  async function rastrear() {
+  async function rastrear(freqDias: number | null) {
     const u = url.trim(); if (!u || salvando) return
     setSalvando(true); setErro(null)
-    const r = await salvarPerfilConteudo(u, ehInstagram ? igCookie.trim() : '')
+    const r = await salvarPerfilConteudo(u, ehInstagram ? igCookie.trim() : '', freqDias)
     setSalvando(false)
     if (!r.success) { setErro(r.error || 'Falha ao salvar.'); return }
     if (r.data) setPerfis(r.data)
@@ -128,39 +132,84 @@ export default function ContentTrackerPage() {
         <p className="text-sm text-muted-foreground mt-1">Espione perfis de <b>TikTok</b>, <b>Instagram</b> e <b>YouTube</b> — os conteúdos mais virais, acompanhados ao longo do tempo, com transcrição.</p>
       </div>
 
-      {/* Abas */}
+      {/* Abas — mesma estrutura do Rastreador de Anúncios */}
       <div className="flex items-center gap-1.5">
-        {([['perfis', `Perfis rastreados${perfis.length ? ` (${perfis.length})` : ''}`], ['buscar', 'Buscar perfil']] as ['perfis' | 'buscar', string][]).map(([k, label]) => (
+        {([['buscar', 'Buscar perfil'], ['perfis', `Perfis rastreados${perfis.length ? ` (${perfis.length})` : ''}`]] as ['buscar' | 'perfis', string][]).map(([k, label]) => (
           <button key={k} onClick={() => setAba(k)} className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${aba === k ? 'bg-primary/15 text-primary border border-primary/30' : 'text-muted-foreground border border-transparent hover:text-foreground hover:bg-white/5'}`}>{label}</button>
         ))}
       </div>
 
       {aba === 'buscar' && (
         <>
-          <div className={`${cardCls} p-5 space-y-3`}>
+          {/* Busca por perfil */}
+          <div className={`${cardCls} p-5`}>
+            <div className="flex items-center gap-2 mb-3">
+              <Link2 className="w-4 h-4 text-muted-foreground" />
+              <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Busca de perfil</span>
+            </div>
+            <label className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">URL do perfil (TikTok · Instagram · YouTube)</label>
             <div className="flex flex-col sm:flex-row gap-2">
               <input value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && buscar()}
-                placeholder="https://www.tiktok.com/@perfil  ·  youtube.com/@canal  ·  instagram.com/perfil"
-                className="flex-1 px-4 py-3 rounded-xl text-sm bg-background border border-border text-foreground focus:border-primary/50 outline-none" />
-              <button onClick={buscar} disabled={buscando || !url.trim()} className="px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 bg-white/5 border border-border text-foreground hover:bg-white/10 disabled:opacity-50 whitespace-nowrap">
-                {buscando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} {buscando ? 'Buscando...' : 'Prévia'}
-              </button>
-              <button onClick={rastrear} disabled={salvando || !url.trim()} className="px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 bg-primary text-white hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
-                {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Rastrear perfil
+                placeholder="https://www.tiktok.com/@perfil" className="flex-1 px-3 py-2.5 rounded-lg text-sm font-mono bg-background border border-border text-foreground focus:border-primary/50 outline-none" />
+              <button onClick={buscar} disabled={buscando || !url.trim()}
+                className="px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 bg-primary text-white hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
+                <Search className="w-4 h-4" /> {buscando ? 'Buscando...' : 'Buscar virais'}
               </button>
             </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5">Cole o perfil do concorrente. A gente puxa os conteúdos mais virais (por views).</p>
+
             {ehInstagram && (
-              <div>
+              <div className="mt-3">
                 <input value={igCookie} onChange={(e) => setIgCookie(e.target.value)} placeholder="Cookie sessionid do Instagram (conta dedicada logada)"
-                  className="w-full px-4 py-2.5 rounded-xl text-xs font-mono bg-background border border-border text-foreground outline-none" />
+                  className="w-full px-3 py-2.5 rounded-lg text-xs font-mono bg-background border border-border text-foreground outline-none" />
                 <p className="text-[11px] text-muted-foreground mt-1">Instagram exige login: cole o <b>sessionid</b> de uma conta dedicada. TikTok e YouTube não precisam.</p>
               </div>
             )}
-            {erro && <p className="text-xs text-rose-300/90">{erro}</p>}
-            <p className="text-[11px] text-muted-foreground">Use <b>Prévia</b> pra dar uma espiada, ou <b>Rastrear perfil</b> pra salvar e acompanhar ao longo do tempo.</p>
+
+            {/* Salvar + Agendamento (igual ao Rastreador de Anúncios) */}
+            <div className="mt-5 pt-4 border-t border-white/5">
+              <div className="flex items-center gap-2 mb-2">
+                <CalendarClock className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Acompanhar / puxar virais automaticamente a cada</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {FREQ.map((f) => (
+                  <button key={f} onClick={() => setFreq(f)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${freq === f ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 text-muted-foreground hover:bg-white/5'}`}>{f}</button>
+                ))}
+                <div className="ml-auto flex items-center gap-2">
+                  <button onClick={() => rastrear(null)} disabled={salvando || !url.trim()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-white/10 text-muted-foreground hover:bg-white/5 disabled:opacity-40">
+                    {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bookmark className="w-4 h-4" />} Só salvar
+                  </button>
+                  <button onClick={() => rastrear(FREQ_NUM[freq] ?? 3)} disabled={salvando || !url.trim()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40">
+                    <CalendarClock className="w-4 h-4" /> Rastrear ({freq})
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
+
+          {erro && (
+            <div className="rounded-xl p-3 flex items-start gap-2.5" style={{ backgroundColor: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)' }}>
+              <Info className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" /><p className="text-xs text-rose-200/90">{erro}</p>
+            </div>
+          )}
+
           {buscando && <div className="text-center text-sm text-muted-foreground py-8 flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Puxando e ordenando por views... (até 1 min)</div>}
           {preview && <GridVirais videos={preview} onTranscrever={(v) => transcrever(v, ehInstagram ? igCookie.trim() : '')} />}
+
+          {/* Estado vazio inicial */}
+          {!preview && !buscando && (
+            <div className={`${cardCls} p-12 flex flex-col items-center justify-center text-center`}>
+              <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3" style={{ backgroundColor: '#1a2022' }}>
+                <Clapperboard className="w-6 h-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">Cole um perfil pra ver os conteúdos virais</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">A gente puxa os vídeos mais virais do perfil (por views) — com thumbnail, views, likes e opção de transcrever cada um.</p>
+            </div>
+          )}
         </>
       )}
 
@@ -188,6 +237,11 @@ export default function ContentTrackerPage() {
                   <div className="p-3">
                     <p className="text-sm font-bold text-foreground truncate">@{p.handle}</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">{p.virais.length} virais · atualizado {haQuanto(p.ultimaBusca)}</p>
+                    <p className="text-[10px] mt-1">
+                      {p.freqDias
+                        ? <span className="inline-flex items-center gap-1 text-emerald-300"><Clock className="w-3 h-3" /> rastreando a cada {p.freqDias}d</span>
+                        : <span className="text-muted-foreground/70">sem agendamento</span>}
+                    </p>
                   </div>
                 </div>
               )

@@ -20,6 +20,7 @@ export interface PerfilConteudo {
   handle: string
   addedAt: string
   ultimaBusca: string | null
+  freqDias: number | null   // re-puxa os virais a cada N dias (null = só salvo, sem agendamento)
   virais: VideoViral[]
 }
 
@@ -76,19 +77,20 @@ export async function listarPerfisConteudo(): Promise<{ success: boolean; data: 
 }
 
 // Adiciona um perfil pra rastrear (já puxa os virais e cacheia).
-export async function salvarPerfilConteudo(url: string, igCookie = ''): Promise<{ success: boolean; data?: PerfilConteudo[]; error?: string }> {
+export async function salvarPerfilConteudo(url: string, igCookie = '', freqDias: number | null = null): Promise<{ success: boolean; data?: PerfilConteudo[]; error?: string }> {
   try {
     const orgId = await resolveOrgId()
     if (!orgId) throw new Error('Organização não encontrada')
     const perfis = await lerPerfis(orgId)
     const norm = normalizar(url)
-    if (perfis.some((p) => normalizar(p.url) === norm)) return { success: true, data: perfis } // já existe
+    const existente = perfis.find((p) => normalizar(p.url) === norm)
+    if (existente) { existente.freqDias = freqDias; await gravarPerfis(orgId, perfis); return { success: true, data: perfis } }
     const r = await buscarViraisPerfil(url, igCookie)
     if (!r.success) return { success: false, error: r.error }
     const agora = new Date().toISOString()
     const novo: PerfilConteudo = {
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-      url, plataforma: plataformaDe(url), handle: handleDe(url), addedAt: agora, ultimaBusca: agora, virais: r.videos.slice(0, 24),
+      url, plataforma: plataformaDe(url), handle: handleDe(url), addedAt: agora, ultimaBusca: agora, freqDias, virais: r.videos.slice(0, 24),
     }
     perfis.unshift(novo)
     await gravarPerfis(orgId, perfis)
