@@ -204,7 +204,7 @@ export default function Sidebar() {
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-border" />
               </div>
             )}
-            <div className={`overflow-hidden transition-all duration-300 ${ferramentasOpen && !collapsed ? 'max-h-60 opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className={`overflow-hidden transition-all duration-300 ${ferramentasOpen && !collapsed ? 'max-h-[560px] opacity-100' : 'max-h-0 opacity-0'}`}>
               <div className="ml-3 border-l border-white/5 pl-3 py-1 space-y-1">
                 {ferramentas.map(({ href, label, icon: Icon, beta }) => {
                   const active = pathname === href
