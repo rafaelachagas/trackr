@@ -1,4 +1,6 @@
 import os
+import json
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -26,8 +28,71 @@ TRANSCRIBE_LOCK = threading.Lock()
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 
+# Extensões de mídia direta (baixa com requests). Qualquer outra coisa é tratada
+# como PÁGINA de conteúdo (TikTok/Instagram/YouTube) e resolvida pelo yt-dlp.
+MEDIA_EXT = (".mp4", ".mov", ".webm", ".m4a", ".mp3", ".wav", ".aac", ".ogg")
 
-def baixar(video_url: str) -> str:
+
+def _cookies_file(ig_cookie: str):
+    """Monta um cookies.txt (Netscape) com o sessionid do Instagram, pra o
+    yt-dlp entrar como a conta logada. Devolve o caminho ou None."""
+    if not ig_cookie:
+        return None
+    val = ig_cookie.strip()
+    if val.startswith("sessionid="):
+        val = val.split("=", 1)[1]
+    fd, path = tempfile.mkstemp(suffix=".txt")
+    with os.fdopen(fd, "w") as f:
+        f.write("# Netscape HTTP Cookie File\n")
+        f.write(".instagram.com\tTRUE\t/\tTRUE\t2147483647\tsessionid\t%s\n" % val)
+    return path
+
+
+def _ytdlp_audio_wav(url: str, cookies: str = None) -> str:
+    """Baixa o áudio de uma página de conteúdo via yt-dlp e converte pra wav
+    16k mono (o que o Whisper quer)."""
+    d = tempfile.mkdtemp()
+    try:
+        cmd = ["yt-dlp", "-f", "bestaudio/best", "--no-playlist", "--no-warnings",
+               "--user-agent", UA, "-o", os.path.join(d, "src.%(ext)s"), url]
+        if cookies:
+            cmd += ["--cookies", cookies]
+        r = subprocess.run(cmd, capture_output=True, timeout=600)
+        srcs = [f for f in os.listdir(d) if f.startswith("src.")]
+        if r.returncode != 0 or not srcs:
+            raise RuntimeError("yt-dlp: " + r.stderr[-300:].decode(errors="ignore"))
+        src = os.path.join(d, srcs[0])
+        fd, wav = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        r2 = subprocess.run(["ffmpeg", "-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", wav],
+                            capture_output=True, timeout=600)
+        if r2.returncode != 0 or os.path.getsize(wav) < 1000:
+            raise RuntimeError("ffmpeg: " + r2.stderr[-200:].decode(errors="ignore"))
+        return wav
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _ytdlp_video_mp4(url: str, cookies: str = None) -> str:
+    """Baixa o vídeo (mp4) de uma página de conteúdo via yt-dlp."""
+    d = tempfile.mkdtemp()
+    try:
+        cmd = ["yt-dlp", "-f", "mp4/bestvideo+bestaudio/best", "--no-playlist", "--no-warnings",
+               "--merge-output-format", "mp4", "--user-agent", UA, "-o", os.path.join(d, "v.%(ext)s"), url]
+        if cookies:
+            cmd += ["--cookies", cookies]
+        r = subprocess.run(cmd, capture_output=True, timeout=600)
+        vs = [f for f in os.listdir(d) if f.startswith("v.")]
+        if r.returncode != 0 or not vs:
+            raise RuntimeError("yt-dlp: " + r.stderr[-300:].decode(errors="ignore"))
+        final = os.path.join(tempfile.gettempdir(), uuid.uuid4().hex + ".mp4")
+        shutil.move(os.path.join(d, vs[0]), final)
+        return final
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def baixar(video_url: str, cookies: str = None) -> str:
     # m3u8 (streaming HLS — padrão da VTurb) não é um arquivo: o ffmpeg junta os
     # segmentos e extrai só o áudio (wav 16k mono, o que o Whisper quer).
     if ".m3u8" in video_url.lower():
@@ -43,6 +108,11 @@ def baixar(video_url: str) -> str:
             os.path.exists(path) and os.remove(path)
             raise RuntimeError(f"ffmpeg falhou no m3u8: {r.stderr[-300:].decode(errors='ignore')}")
         return path
+    # Página de conteúdo (TikTok/Instagram/YouTube/etc.) — não é mídia direta:
+    # o yt-dlp resolve e baixa o áudio.
+    low = video_url.lower().split("?")[0]
+    if not low.endswith(MEDIA_EXT):
+        return _ytdlp_audio_wav(video_url, cookies)
     r = requests.get(video_url, headers={"User-Agent": UA}, stream=True, timeout=60)
     r.raise_for_status()
     fd, path = tempfile.mkstemp(suffix=".mp4")
@@ -66,7 +136,7 @@ JOBS = {}
 JOBS_LOCK = threading.Lock()
 
 
-def _rodar_job(job_id: str, video_url: str):
+def _rodar_job(job_id: str, video_url: str, cookies: str = None):
     with JOBS_LOCK:
         JOBS[job_id]["status"] = "fila"
     if not TRANSCRIBE_LOCK.acquire(timeout=7200):
@@ -77,7 +147,7 @@ def _rodar_job(job_id: str, video_url: str):
     try:
         with JOBS_LOCK:
             JOBS[job_id]["status"] = "rodando"
-        path = baixar(video_url)
+        path = baixar(video_url, cookies)
         segments, info = model.transcribe(path, language="pt", vad_filter=True)
         texto = " ".join(s.text.strip() for s in segments).strip()
         with JOBS_LOCK:
@@ -89,6 +159,8 @@ def _rodar_job(job_id: str, video_url: str):
         TRANSCRIBE_LOCK.release()
         if path and os.path.exists(path):
             os.remove(path)
+        if cookies and os.path.exists(cookies):
+            os.remove(cookies)
 
 
 def _limpar_jobs_velhos():
@@ -103,15 +175,18 @@ def transcribe_async():
     if APIKEY and request.args.get("key") != APIKEY:
         return jsonify(error="nao autorizado"), 401
     video_url = request.args.get("video_url")
-    if not video_url and request.is_json:
-        video_url = (request.json or {}).get("video_url")
+    ig_cookie = request.args.get("ig_cookie")
+    if request.is_json:
+        video_url = video_url or (request.json or {}).get("video_url")
+        ig_cookie = ig_cookie or (request.json or {}).get("ig_cookie")
     if not video_url:
         return jsonify(error="video_url ausente"), 400
     _limpar_jobs_velhos()
+    cookies = _cookies_file(ig_cookie)
     job_id = uuid.uuid4().hex
     with JOBS_LOCK:
         JOBS[job_id] = {"status": "fila", "criado": time.time()}
-    threading.Thread(target=_rodar_job, args=(job_id, video_url), daemon=True).start()
+    threading.Thread(target=_rodar_job, args=(job_id, video_url, cookies), daemon=True).start()
     return jsonify(ok=True, job_id=job_id)
 
 
@@ -140,6 +215,7 @@ def download():
 
     path = None
     try:
+        low = video_url.lower().split("?")[0]
         if ".m3u8" in video_url.lower():
             fd, path = tempfile.mkstemp(suffix=".mp4")
             os.close(fd)
@@ -148,6 +224,14 @@ def download():
             r = subprocess.run(cmd, capture_output=True, timeout=1800)
             if r.returncode != 0 or os.path.getsize(path) < 10000:
                 raise RuntimeError(f"ffmpeg: {r.stderr[-300:].decode(errors='ignore')}")
+        elif not low.endswith(MEDIA_EXT):
+            # Página de conteúdo (TikTok/Instagram/YouTube) → yt-dlp baixa o mp4.
+            cookies = _cookies_file(request.args.get("ig_cookie"))
+            try:
+                path = _ytdlp_video_mp4(video_url, cookies)
+            finally:
+                if cookies and os.path.exists(cookies):
+                    os.remove(cookies)
         else:
             r = requests.get(video_url, headers={"User-Agent": UA}, stream=True, timeout=60)
             r.raise_for_status()
@@ -213,6 +297,57 @@ def transcribe():
         TRANSCRIBE_LOCK.release()
         if path and os.path.exists(path):
             os.remove(path)
+
+
+# ---- Rastreador de conteúdos: lista os vídeos mais virais de um perfil ----
+# GET /perfil?url=<perfil>&limit=20&ig_cookie=<sessionid?>
+# Usa yt-dlp pra extrair os vídeos do perfil com view_count e ordena por views.
+@app.get("/perfil")
+def perfil():
+    if APIKEY and request.args.get("key") != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    url = request.args.get("url")
+    if not url:
+        return jsonify(error="url ausente"), 400
+    limit = min(max(int(request.args.get("limit", "20")), 1), 50)
+    cookies = _cookies_file(request.args.get("ig_cookie"))
+    try:
+        # dump-json (metadados completos, com view_count). playlist-end limita
+        # quantos vídeos ele extrai — extração completa é ~1s por vídeo.
+        cmd = ["yt-dlp", "-J", "--flat-playlist", "--no-warnings", "--user-agent", UA,
+               "--playlist-end", str(min(limit * 2, 60)), url]
+        if cookies:
+            cmd += ["--cookies", cookies]
+        r = subprocess.run(cmd, capture_output=True, timeout=180)
+        if r.returncode != 0:
+            return jsonify(error="yt-dlp: " + r.stderr[-400:].decode(errors="ignore")), 502
+        data = json.loads(r.stdout.decode(errors="ignore") or "{}")
+        entries = data.get("entries") or []
+        vids = []
+        for e in entries:
+            if not e:
+                continue
+            vids.append({
+                "id": e.get("id"),
+                "url": e.get("url") or e.get("webpage_url"),
+                "titulo": (e.get("title") or "").strip()[:200],
+                "views": e.get("view_count"),
+                "likes": e.get("like_count"),
+                "comentarios": e.get("comment_count"),
+                "duracao": e.get("duration"),
+                "thumb": e.get("thumbnail") or (e.get("thumbnails") or [{}])[-1].get("url"),
+            })
+        com_views = [v for v in vids if isinstance(v.get("views"), int)]
+        com_views.sort(key=lambda v: v["views"], reverse=True)
+        # se nenhum trouxe views (plataforma não expõe no flat), devolve na ordem
+        # original (mais recentes primeiro) pra pelo menos listar.
+        saida = (com_views or vids)[:limit]
+        return jsonify(ok=True, videos=saida, total=len(vids), com_views=len(com_views))
+    except Exception as e:
+        return jsonify(error=f"falha no perfil: {e}"), 500
+    finally:
+        if cookies and os.path.exists(cookies):
+            os.remove(cookies)
 
 
 if __name__ == "__main__":

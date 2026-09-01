@@ -17,9 +17,13 @@ function fetchTimeout(url: string, ms: number): Promise<Response> {
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const videoUrl: string = body?.video_url || ''
+  // Cookie do Instagram (sessionid) — só necessário pra transcrever conteúdo de
+  // perfil privado/logado. TikTok/YouTube não usam.
+  const igCookie: string = body?.ig_cookie || ''
   if (!videoUrl) return NextResponse.json({ error: 'video_url ausente.' }, { status: 400 })
   try {
-    const r = await fetchTimeout(`${TRANSCRITOR_URL}/transcribe_async?video_url=${encodeURIComponent(videoUrl)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}`, 30000)
+    const extra = igCookie ? `&ig_cookie=${encodeURIComponent(igCookie)}` : ''
+    const r = await fetchTimeout(`${TRANSCRITOR_URL}/transcribe_async?video_url=${encodeURIComponent(videoUrl)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}${extra}`, 30000)
     const j = await r.json().catch(() => null)
     if (!j?.job_id) return NextResponse.json({ error: j?.error || 'Transcritor na VPS ainda não tem o modo assíncrono — rode o rebuild do vps-transcritor.' }, { status: 502 })
     return NextResponse.json(j)

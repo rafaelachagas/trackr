@@ -8,7 +8,7 @@ import {
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
   Wrench, Binoculars, Search, Video, MonitorPlay, Brain, FolderSearch, Wand2, Bell,
-  Filter as FilterIcon,
+  Filter as FilterIcon, FileText, Clapperboard,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -33,6 +33,8 @@ const dataSources = [
 
 const ferramentas = [
   { href: '/tools/ad-tracker', label: 'Rastreador de Anúncios', icon: Binoculars },
+  { href: '/tools/content-tracker', label: 'Rastreador de Conteúdos', icon: Clapperboard },
+  { href: '/tools/transcribe', label: 'Transcrição rápida', icon: FileText },
   { href: '/tools/page-analyzer', label: 'Analisador de Páginas', icon: Search },
   { href: '/tools/swipe-file', label: 'Swipe File', icon: FolderSearch },
   { href: '/tools/copy-generator', label: 'Gerador de Copy', icon: Wand2 },

@@ -29,6 +29,8 @@ import {
   MonitorPlay,
   Filter as FilterIcon,
   Bell,
+  FileText,
+  Clapperboard,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
@@ -60,6 +62,8 @@ const dataSources = [
 // código continua no repo pra quando isso for retomado, só não fica visível.
 const ferramentas = [
   { href: '/tools/ad-tracker', label: 'Rastreador de Anúncios', icon: Binoculars, beta: true },
+  { href: '/tools/content-tracker', label: 'Rastreador de Conteúdos', icon: Clapperboard, beta: true },
+  { href: '/tools/transcribe', label: 'Transcrição rápida', icon: FileText, beta: true },
   { href: '/tools/page-analyzer', label: 'Analisador de Páginas', icon: Search, beta: true },
   { href: '/tools/alerts', label: 'Central de Alertas', icon: Bell, beta: true },
   { href: '/tools/simulator', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
