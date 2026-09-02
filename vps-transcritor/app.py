@@ -393,15 +393,17 @@ def _ig_uid_do_handle(s, handle: str) -> str:
     cached = _IG_UID_CACHE.get(handle.lower())
     if cached:
         return cached
-    html = s.get(f"https://www.instagram.com/{handle}/", timeout=45).text
-    m = (re.search(r'"profilePage_(\d+)"', html)
-         or re.search(r'"user_id":"(\d+)"', html)
-         or re.search(r'"id":"(\d+)"', html))
-    if not m:
-        if "Página não encontrada" in html or "Page Not Found" in html or "not-found" in html:
-            raise RuntimeError("perfil não encontrado")
-        raise RuntimeError("não consegui ler o perfil (Instagram pode ter mudado a página)")
-    uid = m.group(1)
+    # Resolve o uid pelo @ direto (mesmo endpoint do feed, robusto).
+    r = s.get(f"https://www.instagram.com/api/v1/feed/user/{handle}/username/?count=1",
+              headers=_ig_headers(handle), timeout=45)
+    if r.status_code == 404:
+        raise RuntimeError("perfil não encontrado")
+    if r.status_code != 200:
+        raise RuntimeError(f"não consegui resolver o perfil ({r.status_code})")
+    u = ((r.json() or {}).get("user")) or {}
+    uid = str(u.get("pk") or u.get("id") or "")
+    if not uid:
+        raise RuntimeError("não consegui resolver o perfil")
     _IG_UID_CACHE[handle.lower()] = uid
     return uid
 
@@ -433,65 +435,58 @@ def _ig_feed_item_to_dict(it: dict) -> dict:
     }
 
 
-def _ig_meta_from_html(html: str) -> dict:
-    def g(pat):
-        m = re.search(pat, html)
-        return m.group(1) if m else None
-
-    def dec(x):
-        if not x:
-            return None
-        try:
-            return json.loads('"' + x + '"')
-        except Exception:
-            return x
+def _ig_headers(handle: str) -> dict:
     return {
-        "nome": dec(g(r'"full_name":"([^"]*)"')),
-        "bio": dec(g(r'"biography":"([^"]*)"')),
-        "link": dec(g(r'"external_url":"([^"]*)"')),
+        "x-ig-app-id": IG_APP_ID,
+        "x-requested-with": "XMLHttpRequest",
+        "Referer": f"https://www.instagram.com/{handle}/",
+    }
+
+
+def _ig_user_meta(u: dict) -> dict:
+    return {
+        "nome": u.get("full_name") or None,
+        "bio": u.get("biography") or None,
+        "link": u.get("external_url") or None,
     }
 
 
 def _ig_feed(handle: str, sessionid: str, limit: int):
     s, _ = _ig_cffi_session(sessionid)
-    html = s.get(f"https://www.instagram.com/{handle}/", timeout=45).text
-    m = (re.search(r'"profilePage_(\d+)"', html)
-         or re.search(r'"user_id":"(\d+)"', html)
-         or re.search(r'"id":"(\d+)"', html))
-    if not m:
-        if "not-found" in html or "Page Not Found" in html:
-            raise RuntimeError("perfil não encontrado")
-        raise RuntimeError("não consegui ler o perfil (Instagram pode ter mudado a página)")
-    uid = m.group(1)
-    _IG_UID_CACHE[handle.lower()] = uid
-    meta = _ig_meta_from_html(html)
-    hh = {
-        "x-ig-app-id": IG_APP_ID,
-        "x-requested-with": "XMLHttpRequest",
-        "Referer": f"https://www.instagram.com/{handle}/",
-    }
-    vids, max_id, guard = [], "", 0
-    while len(vids) < limit and guard < 8:
+    hh = _ig_headers(handle)
+    # 1ª página resolve pelo @ direto (robusto — não depende do HTML): esse
+    # endpoint devolve o objeto `user` (uid, nome, bio) + os primeiros posts.
+    api = f"https://www.instagram.com/api/v1/feed/user/{handle}/username/?count=12"
+    r = s.get(api, headers=hh, timeout=45)
+    if r.status_code == 401:
+        raise RuntimeError("cookie do Instagram inválido/expirado (reconecte a conta)")
+    if r.status_code == 404:
+        raise RuntimeError("perfil não encontrado")
+    if r.status_code != 200:
+        raise RuntimeError(f"feed {r.status_code}: {r.text[:120]}")
+    data = r.json() or {}
+    u = data.get("user") or {}
+    uid = str(u.get("pk") or u.get("id") or "")
+    if uid:
+        _IG_UID_CACHE[handle.lower()] = uid
+    meta = _ig_user_meta(u)
+    if not meta.get("nome"):
+        meta["nome"] = handle
+    vids = [_ig_feed_item_to_dict(it) for it in (data.get("items") or [])]
+    max_id = data.get("next_max_id") or ""
+    more = data.get("more_available")
+    # Paginação: as próximas páginas vão por uid.
+    guard = 0
+    while len(vids) < limit and more and max_id and uid and guard < 8:
         guard += 1
-        api = f"https://www.instagram.com/api/v1/feed/user/{uid}/?count=12"
-        if max_id:
-            api += f"&max_id={max_id}"
-        r = s.get(api, headers=hh, timeout=45)
-        if r.status_code == 401:
-            raise RuntimeError("cookie do Instagram inválido/expirado (reconecte a conta)")
+        r = s.get(f"https://www.instagram.com/api/v1/feed/user/{uid}/?count=12&max_id={max_id}", headers=hh, timeout=45)
         if r.status_code != 200:
-            # primeira página falhando = erro; nas seguintes, para e devolve o que tem
-            if not vids:
-                raise RuntimeError(f"feed {r.status_code}: {r.text[:120]}")
             break
         data = r.json() or {}
         for it in (data.get("items") or []):
             vids.append(_ig_feed_item_to_dict(it))
-        if not data.get("more_available"):
-            break
+        more = data.get("more_available")
         max_id = data.get("next_max_id") or ""
-        if not max_id:
-            break
     return vids[:limit], meta
 
 
