@@ -60,6 +60,20 @@ def _yt_proxy():
     return ["--proxy", PROXY_URL] if PROXY_URL else []
 
 
+# Detecta se um erro foi do PROXY (sem saldo/GB, fora do ar, credencial mudou) e
+# devolve um aviso claro pro usuário saber que é só recarregar. Senão, None.
+def _erro_proxy(txt: str):
+    low = (txt or "").lower()
+    marcas = ["proxy", "407 ", "proxyerror", "tunnel connection failed",
+              "unable to connect to proxy", "cannot connect to proxy",
+              "failed to establish a new connection", "econnrefused",
+              "remote end closed connection", "max retries exceeded"]
+    if any(m in low for m in marcas):
+        return ("⚠️ PROXY: o proxy residencial falhou — provavelmente acabou o "
+                "saldo (GB) ou ele caiu. Recarregue o proxy (IPRoyal) e tente de novo.")
+    return None
+
+
 def _cookies_file(ig_cookie: str):
     """Monta um cookies.txt (Netscape) com o sessionid do Instagram, pra o
     yt-dlp entrar como a conta logada. Devolve o caminho ou None."""
@@ -87,19 +101,21 @@ def _ytdlp_audio_wav(url: str, cookies: str = None) -> str:
                    "--user-agent", UA] + _yt_extra(url) + _yt_proxy() + ["-o", os.path.join(d, "src.%(ext)s"), url]
             if with_cookies and cookies:
                 cmd += ["--cookies", cookies]
-            return subprocess.run(cmd, capture_output=True, timeout=600)
+            # 2h de teto: aguenta baixar o áudio de um vídeo de várias horas.
+            return subprocess.run(cmd, capture_output=True, timeout=7200)
         r = _run(False)
         srcs = [f for f in os.listdir(d) if f.startswith("src.")]
         if (r.returncode != 0 or not srcs) and cookies:
             r = _run(True)  # reserva: com a conta conectada
             srcs = [f for f in os.listdir(d) if f.startswith("src.")]
         if r.returncode != 0 or not srcs:
-            raise RuntimeError("yt-dlp: " + r.stderr[-300:].decode(errors="ignore"))
+            err = r.stderr[-400:].decode(errors="ignore")
+            raise RuntimeError(_erro_proxy(err) or ("yt-dlp: " + err))
         src = os.path.join(d, srcs[0])
         fd, wav = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
         r2 = subprocess.run(["ffmpeg", "-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", wav],
-                            capture_output=True, timeout=600)
+                            capture_output=True, timeout=7200)
         if r2.returncode != 0 or os.path.getsize(wav) < 1000:
             raise RuntimeError("ffmpeg: " + r2.stderr[-200:].decode(errors="ignore"))
         return wav
@@ -115,10 +131,11 @@ def _ytdlp_video_mp4(url: str, cookies: str = None) -> str:
                "--merge-output-format", "mp4", "--user-agent", UA] + _yt_extra(url) + _yt_proxy() + ["-o", os.path.join(d, "v.%(ext)s"), url]
         if cookies:
             cmd += ["--cookies", cookies]
-        r = subprocess.run(cmd, capture_output=True, timeout=600)
+        r = subprocess.run(cmd, capture_output=True, timeout=7200)
         vs = [f for f in os.listdir(d) if f.startswith("v.")]
         if r.returncode != 0 or not vs:
-            raise RuntimeError("yt-dlp: " + r.stderr[-300:].decode(errors="ignore"))
+            err = r.stderr[-400:].decode(errors="ignore")
+            raise RuntimeError(_erro_proxy(err) or ("yt-dlp: " + err))
         final = os.path.join(tempfile.gettempdir(), uuid.uuid4().hex + ".mp4")
         shutil.move(os.path.join(d, vs[0]), final)
         return final
@@ -137,7 +154,7 @@ def baixar(video_url: str, cookies: str = None) -> str:
             "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", path,
         ]
         # 30 min de teto: sobra pra extrair o áudio de uma VSL de 1h.
-        r = subprocess.run(cmd, capture_output=True, timeout=1800)
+        r = subprocess.run(cmd, capture_output=True, timeout=7200)
         if r.returncode != 0 or os.path.getsize(path) < 1000:
             os.path.exists(path) and os.remove(path)
             raise RuntimeError(f"ffmpeg falhou no m3u8: {r.stderr[-300:].decode(errors='ignore')}")
@@ -198,7 +215,7 @@ def _rodar_job(job_id: str, video_url: str, cookies: str = None):
 
 
 def _limpar_jobs_velhos():
-    corte = time.time() - 6 * 3600
+    corte = time.time() - 24 * 3600
     with JOBS_LOCK:
         for k in [k for k, v in JOBS.items() if v.get("criado", 0) < corte]:
             del JOBS[k]
@@ -255,7 +272,7 @@ def download():
             os.close(fd)
             cmd = ["ffmpeg", "-y", "-user_agent", UA, "-i", video_url, "-c", "copy",
                    "-bsf:a", "aac_adtstoasc", path]
-            r = subprocess.run(cmd, capture_output=True, timeout=1800)
+            r = subprocess.run(cmd, capture_output=True, timeout=7200)
             if r.returncode != 0 or os.path.getsize(path) < 10000:
                 raise RuntimeError(f"ffmpeg: {r.stderr[-300:].decode(errors='ignore')}")
         elif not low.endswith(MEDIA_EXT):
@@ -463,7 +480,7 @@ def perfil():
             return jsonify(ok=True, videos=vids, total=len(vids),
                            com_views=sum(1 for v in vids if isinstance(v.get("views"), int)), fonte=fonte)
         except Exception as e:
-            return jsonify(error=f"instagram: {e}"), 502
+            return jsonify(error=_erro_proxy(str(e)) or f"instagram: {e}"), 502
 
     cookies = _cookies_file(request.args.get("ig_cookie"))
     try:
