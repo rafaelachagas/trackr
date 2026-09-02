@@ -1,14 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Clapperboard, Search, Play, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock } from 'lucide-react'
-import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2, Clapperboard, Search, Play, Pause, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock, Download, Volume2, VolumeX, ChevronLeft, ChevronRight } from 'lucide-react'
+import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, linkBaixarStory, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
 
 const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 const FREQ = ['1 dia', '3 dias', '5 dias', '7 dias', '14 dias']
 
 const nf = new Intl.NumberFormat('pt-BR', { notation: 'compact' })
 const fmtDur = (s: number | null) => (s == null ? '' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`)
+// timestamp unix (s) → "agora" / "3 h" / "1 d", estilo Instagram
+const fmtQuando = (ts: number | null | undefined) => {
+  if (!ts) return ''
+  const seg = Math.max(0, Date.now() / 1000 - ts)
+  if (seg < 60) return 'agora'
+  if (seg < 3600) return `${Math.floor(seg / 60)} min`
+  if (seg < 86400) return `${Math.floor(seg / 3600)} h`
+  return `${Math.floor(seg / 86400)} d`
+}
 const PLAT: Record<string, { label: string; cor: string }> = {
   tiktok: { label: 'TikTok', cor: '#25F4EE' }, instagram: { label: 'Instagram', cor: '#E1306C' },
   youtube: { label: 'YouTube', cor: '#FF0000' }, outro: { label: 'Perfil', cor: '#8FCBFF' },
@@ -365,25 +374,146 @@ function Viewer({ videos, url, onTranscrever }: { videos: VideoViral[]; url: str
           </button>
         )}
       </div>
-      {stories && stories.length > 0 && <StoriesStrip itens={stories} onTranscrever={onTranscrever} />}
+      {stories && stories.length > 0 && <StoriesStrip itens={stories} handle={(url.match(/instagram\.com\/([A-Za-z0-9_.]+)/i)?.[1]) || 'perfil'} onTranscrever={onTranscrever} />}
       {avisoStories && <p className="text-[11px] text-muted-foreground">{avisoStories}</p>}
       <GridVirais videos={lista} onTranscrever={onTranscrever} />
     </div>
   )
 }
 
-function StoriesStrip({ itens, onTranscrever }: { itens: StoryItem[]; onTranscrever: (v: VideoViral) => void }) {
+function StoriesStrip({ itens, handle, onTranscrever }: { itens: StoryItem[]; handle: string; onTranscrever: (v: VideoViral) => void }) {
+  const [aberto, setAberto] = useState<number | null>(null)
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2">
-      {itens.map((s, i) => (
-        <div key={s.id || i} className="shrink-0 w-24">
-          <a href={s.url} target="_blank" rel="noreferrer" className="block relative rounded-xl overflow-hidden aspect-[9/16] bg-black/30 border-2" style={{ borderColor: '#E1306C' }}>
-            {s.thumb ? <img src={s.thumb} alt="" className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full flex items-center justify-center"><Play className="w-5 h-5 text-white/70" /></div>}
-          </a>
-          <button onClick={() => onTranscrever({ id: s.id, url: s.url, titulo: 'Story', views: null, likes: null, comentarios: null, duracao: s.duracao, thumb: s.thumb })}
-            className="mt-1 w-full text-[10px] font-semibold text-violet-300 hover:underline">transcrever</button>
+    <>
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {itens.map((s, i) => (
+          <button key={s.id || i} onClick={() => setAberto(i)} className="shrink-0 w-24 group">
+            <div className="block relative rounded-xl overflow-hidden aspect-[9/16] bg-black/30 border-2 group-hover:brightness-110 transition" style={{ borderColor: '#E1306C' }}>
+              {s.thumb ? <img src={s.thumb} alt="" className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full flex items-center justify-center"><Play className="w-5 h-5 text-white/70" /></div>}
+              {s.tipo === 'video' && <span className="absolute bottom-1 right-1 bg-black/60 rounded-full p-0.5"><Play className="w-3 h-3 text-white fill-white" /></span>}
+            </div>
+            <span className="mt-1 block text-[10px] font-medium text-muted-foreground">{fmtQuando(s.quando)}</span>
+          </button>
+        ))}
+      </div>
+      {aberto !== null && (
+        <StoryViewer itens={itens} inicio={aberto} handle={handle} onClose={() => setAberto(null)} onTranscrever={onTranscrever} />
+      )}
+    </>
+  )
+}
+
+// Visualizador de stories no formato do Instagram (9:16, barras de progresso,
+// auto-play, navegação por toque/setas) + baixar e transcrever.
+function StoryViewer({ itens, inicio, handle, onClose, onTranscrever }: { itens: StoryItem[]; inicio: number; handle: string; onClose: () => void; onTranscrever: (v: VideoViral) => void }) {
+  const [idx, setIdx] = useState(inicio)
+  const [prog, setProg] = useState(0)
+  const [pausado, setPausado] = useState(false)
+  const [mudo, setMudo] = useState(true)
+  const [baixando, setBaixando] = useState(false)
+  const vidRef = useRef<HTMLVideoElement | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const s = itens[idx]
+  const ehVideo = s?.tipo === 'video'
+  const durFoto = 5 // segundos que uma foto fica na tela
+
+  const irPara = (n: number) => { if (n < 0) { setIdx(0) } else if (n >= itens.length) { onClose() } else { setIdx(n); setProg(0) } }
+  const proximo = () => irPara(idx + 1)
+  const anterior = () => { setProg(0); setIdx((i) => Math.max(0, i - 1)) }
+
+  // Progresso: vídeo segue o próprio tempo; foto usa timer de durFoto.
+  useEffect(() => {
+    setProg(0)
+    if (ehVideo) return // o <video> dispara onTimeUpdate/onEnded
+    let t0 = performance.now(); let acc = 0
+    const tick = (now: number) => {
+      if (!pausado) { acc += now - t0; setProg(Math.min(1, acc / (durFoto * 1000))) }
+      t0 = now
+      if (acc >= durFoto * 1000) { proximo(); return }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, pausado, ehVideo])
+
+  // Teclado: setas navegam, espaço pausa, esc fecha.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') proximo()
+      else if (e.key === 'ArrowLeft') anterior()
+      else if (e.key === 'Escape') onClose()
+      else if (e.key === ' ') { e.preventDefault(); setPausado((p) => !p) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx])
+
+  useEffect(() => { const v = vidRef.current; if (!v) return; if (pausado) v.pause(); else v.play().catch(() => {}) }, [pausado, idx])
+
+  async function baixar() {
+    if (!s) return
+    setBaixando(true)
+    try {
+      const link = await linkBaixarStory(s.url)
+      const a = document.createElement('a'); a.href = link; a.rel = 'noreferrer'; document.body.appendChild(a); a.click(); a.remove()
+    } finally { setTimeout(() => setBaixando(false), 1200) }
+  }
+
+  if (!s) return null
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center" onClick={onClose}>
+      {/* setas laterais (desktop) */}
+      <button onClick={(e) => { e.stopPropagation(); anterior() }} className="hidden md:flex absolute left-4 lg:left-10 w-10 h-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-30" disabled={idx === 0}><ChevronLeft className="w-6 h-6" /></button>
+      <button onClick={(e) => { e.stopPropagation(); proximo() }} className="hidden md:flex absolute right-4 lg:right-10 w-10 h-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white"><ChevronRight className="w-6 h-6" /></button>
+
+      <div className="relative h-full max-h-[92vh] aspect-[9/16] bg-black rounded-xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {/* barras de progresso */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex gap-1 p-2">
+          {itens.map((_, i) => (
+            <div key={i} className="flex-1 h-0.5 rounded-full bg-white/30 overflow-hidden">
+              <div className="h-full bg-white transition-[width] duration-100" style={{ width: i < idx ? '100%' : i === idx ? `${prog * 100}%` : '0%' }} />
+            </div>
+          ))}
         </div>
-      ))}
+        {/* header */}
+        <div className="absolute top-3 left-0 right-0 z-20 flex items-center gap-2.5 px-3 pt-3">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-pink-500 to-amber-400 flex items-center justify-center text-[11px] font-bold text-white uppercase ring-2 ring-white/20">{handle.slice(0, 2)}</div>
+          <span className="text-white text-sm font-semibold drop-shadow">{handle}</span>
+          <span className="text-white/70 text-xs">{fmtQuando(s.quando)}</span>
+          <div className="ml-auto flex items-center gap-1">
+            {ehVideo && <button onClick={() => setMudo((m) => !m)} className="p-1.5 text-white/90 hover:text-white">{mudo ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}</button>}
+            <button onClick={() => setPausado((p) => !p)} className="p-1.5 text-white/90 hover:text-white">{pausado ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}</button>
+            <button onClick={onClose} className="p-1.5 text-white/90 hover:text-white"><X className="w-5 h-5" /></button>
+          </div>
+        </div>
+
+        {/* mídia */}
+        {ehVideo ? (
+          <video ref={vidRef} key={s.id} src={s.url} className="w-full h-full object-contain bg-black" autoPlay playsInline muted={mudo}
+            onTimeUpdate={(e) => { const v = e.currentTarget; if (v.duration) setProg(v.currentTime / v.duration) }}
+            onEnded={proximo} onError={proximo} />
+        ) : (
+          <img src={s.url || s.thumb || ''} alt="" className="w-full h-full object-contain bg-black" />
+        )}
+
+        {/* zonas de toque (mobile): esquerda volta, direita avança */}
+        <button className="md:hidden absolute inset-y-0 left-0 w-1/3 z-10" onClick={anterior} aria-label="anterior" />
+        <button className="md:hidden absolute inset-y-0 right-0 w-1/3 z-10" onClick={proximo} aria-label="próximo" />
+
+        {/* ações */}
+        <div className="absolute bottom-0 left-0 right-0 z-20 p-3 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent">
+          <button onClick={baixar} disabled={baixando}
+            className="flex-1 px-3 py-2.5 rounded-xl text-sm font-semibold bg-white/15 hover:bg-white/25 text-white inline-flex items-center justify-center gap-2 disabled:opacity-60">
+            {baixando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Baixar
+          </button>
+          <button onClick={() => onTranscrever({ id: s.id, url: s.url, titulo: `Story de @${handle}`, views: null, likes: null, comentarios: null, duracao: s.duracao, thumb: s.thumb })}
+            className="flex-1 px-3 py-2.5 rounded-xl text-sm font-semibold bg-violet-500/90 hover:bg-violet-500 text-white inline-flex items-center justify-center gap-2">
+            <FileText className="w-4 h-4" /> Transcrever
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

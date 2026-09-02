@@ -132,7 +132,14 @@ export async function buscarViraisPerfil(url: string, igCookie = '', limit = 24)
   }
 }
 
-export interface StoryItem { id: string; url: string; thumb: string | null; duracao: number | null; quando: number | null }
+export interface StoryItem { id: string; url: string; thumb: string | null; duracao: number | null; quando: number | null; tipo?: 'video' | 'foto' }
+
+// Gera um link assinado pro navegador baixar a mídia do story pela nossa origem
+// (força o salvamento e não expõe a chave/IP da VPS).
+export async function linkBaixarStory(cdnUrl: string): Promise<string> {
+  const { assinarVslUrl } = await import('@/lib/vigia-pagina')
+  return `/api/rastreador/story-download?u=${encodeURIComponent(cdnUrl)}&t=${encodeURIComponent(assinarVslUrl(cdnUrl))}`
+}
 
 // Stories ativos (24h) de um perfil do Instagram. Usa o cookie guardado.
 export async function verStoriesPerfil(url: string): Promise<{ success: boolean; itens: StoryItem[]; aviso?: string; error?: string }> {
