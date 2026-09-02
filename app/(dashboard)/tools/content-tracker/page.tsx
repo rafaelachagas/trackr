@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Clapperboard, Search, Play, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock } from 'lucide-react'
-import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, type PerfilConteudo, type VideoViral } from '@/app/actions/conteudo'
+import { Loader2, Clapperboard, Search, Play, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock } from 'lucide-react'
+import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, type PerfilConteudo, type VideoViral } from '@/app/actions/conteudo'
 
 const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 const FREQ = ['1 dia', '3 dias', '5 dias', '7 dias', '14 dias']
@@ -30,8 +30,12 @@ export default function ContentTrackerPage() {
 
   // Busca avulsa (aba Buscar)
   const [url, setUrl] = useState('')
-  const [igCookie, setIgCookie] = useState('')
   const [preview, setPreview] = useState<VideoViral[] | null>(null)
+  // Instagram: cookie configurado UMA VEZ no servidor (não é por busca).
+  const [igConfigurado, setIgConfigurado] = useState<boolean | null>(null)
+  const [igSetup, setIgSetup] = useState(false)
+  const [igInput, setIgInput] = useState('')
+  const [salvandoIg, setSalvandoIg] = useState(false)
   const [buscando, setBuscando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -43,12 +47,27 @@ export default function ContentTrackerPage() {
 
   const ehInstagram = /instagram\.com/i.test(url)
 
-  useEffect(() => { (async () => { const r = await listarPerfisConteudo(); if (r.success) setPerfis(r.data); setCarregandoPerfis(false) })() }, [])
+  useEffect(() => {
+    (async () => {
+      const [r, s] = await Promise.all([listarPerfisConteudo(), statusInstagram()])
+      if (r.success) setPerfis(r.data)
+      setIgConfigurado(s.configurado)
+      setCarregandoPerfis(false)
+    })()
+  }, [])
+
+  async function conectarInstagram() {
+    if (!igInput.trim() || salvandoIg) return
+    setSalvandoIg(true)
+    const r = await salvarCookieInstagram(igInput.trim())
+    setSalvandoIg(false)
+    if (r.success) { setIgConfigurado(true); setIgSetup(false); setIgInput('') } else setErro(r.error || 'Falha ao salvar cookie.')
+  }
 
   async function buscar() {
     const u = url.trim(); if (!u || buscando) return
     setBuscando(true); setErro(null); setPreview(null)
-    const r = await buscarViraisPerfil(u, ehInstagram ? igCookie.trim() : '', 24)
+    const r = await buscarViraisPerfil(u, '', 24)
     setBuscando(false)
     if (!r.success) { setErro(r.error || 'Falha.'); return }
     setPreview(r.videos)
@@ -56,7 +75,7 @@ export default function ContentTrackerPage() {
   async function rastrear(freqDias: number | null) {
     const u = url.trim(); if (!u || salvando) return
     setSalvando(true); setErro(null)
-    const r = await salvarPerfilConteudo(u, ehInstagram ? igCookie.trim() : '', freqDias)
+    const r = await salvarPerfilConteudo(u, '', freqDias)
     setSalvando(false)
     if (!r.success) { setErro(r.error || 'Falha ao salvar.'); return }
     if (r.data) setPerfis(r.data)
@@ -69,19 +88,19 @@ export default function ContentTrackerPage() {
   }
   async function atualizar(id: string) {
     setAtualizando(true)
-    const r = await atualizarViraisPerfil(id, igCookie.trim())
+    const r = await atualizarViraisPerfil(id, '')
     setAtualizando(false)
     if (r.success && r.perfil) {
       setPerfis((ps) => ps.map((p) => (p.id === id ? r.perfil! : p)))
       if (aberto?.id === id) setAberto(r.perfil)
     } else if (r.error) setErro(r.error)
   }
-  async function transcrever(v: VideoViral, igc = '') {
+  async function transcrever(v: VideoViral) {
     setTrans({ v, status: 'Baixando o vídeo...' })
     try {
       const ini = await fetch('/api/rastreador/transcrever-async', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ video_url: v.url, ig_cookie: igc }),
+        body: JSON.stringify({ video_url: v.url }),
       }).then((r) => r.json())
       if (!ini?.job_id) throw new Error(ini?.error || 'Não consegui iniciar.')
       for (;;) {
@@ -113,12 +132,8 @@ export default function ContentTrackerPage() {
             {atualizando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Atualizar virais
           </button>
         </div>
-        {aberto.plataforma === 'instagram' && (
-          <input value={igCookie} onChange={(e) => setIgCookie(e.target.value)} placeholder="Cookie sessionid do Instagram (pra atualizar/transcrever)"
-            className="w-full px-4 py-2.5 rounded-xl text-xs font-mono bg-card border border-border text-foreground outline-none" />
-        )}
         {erro && <p className="text-xs text-rose-300/90">{erro}</p>}
-        <GridVirais videos={aberto.virais} onTranscrever={(v) => transcrever(v, aberto.plataforma === 'instagram' ? igCookie.trim() : '')} />
+        <GridVirais videos={aberto.virais} onTranscrever={(v) => transcrever(v)} />
       </div>
     )
   }
@@ -158,13 +173,36 @@ export default function ContentTrackerPage() {
             </div>
             <p className="text-[11px] text-muted-foreground mt-1.5">Cole o perfil do concorrente. A gente puxa os conteúdos mais virais (por views).</p>
 
-            {ehInstagram && (
-              <div className="mt-3">
-                <input value={igCookie} onChange={(e) => setIgCookie(e.target.value)} placeholder="Cookie sessionid do Instagram (conta dedicada logada)"
-                  className="w-full px-3 py-2.5 rounded-lg text-xs font-mono bg-background border border-border text-foreground outline-none" />
-                <p className="text-[11px] text-muted-foreground mt-1">Instagram exige login: cole o <b>sessionid</b> de uma conta dedicada. TikTok e YouTube não precisam.</p>
+            {/* Conexão do Instagram — configurada UMA vez, vale pra todo mundo */}
+            <div className="mt-4 pt-4 border-t border-white/5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <AtSign className="w-4 h-4" style={{ color: '#E1306C' }} />
+                  {igConfigurado == null
+                    ? <span className="text-xs text-muted-foreground">verificando Instagram...</span>
+                    : igConfigurado
+                      ? <span className="text-xs font-semibold text-emerald-300 inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Instagram conectado</span>
+                      : <span className="text-xs text-muted-foreground">Instagram não conectado — TikTok e YouTube funcionam sem isso</span>}
+                </div>
+                <button onClick={() => setIgSetup((v) => !v)} className="text-[11px] font-semibold text-primary hover:underline">
+                  {igConfigurado ? 'trocar conta' : 'conectar Instagram'}
+                </button>
               </div>
-            )}
+              {igSetup && (
+                <div className="mt-3 rounded-xl border border-white/10 bg-background/50 p-3">
+                  <p className="text-[11px] text-muted-foreground mb-2 flex items-center gap-1.5"><Lock className="w-3 h-3" /> Cole o <b>sessionid</b> de uma conta dedicada do Instagram (uma vez só). Fica guardado no servidor e vale pra todos os usuários. Dura semanas.</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input value={igInput} onChange={(e) => setIgInput(e.target.value)} placeholder="sessionid da conta dedicada"
+                      className="flex-1 px-3 py-2 rounded-lg text-xs font-mono bg-background border border-border text-foreground outline-none" />
+                    <button onClick={conectarInstagram} disabled={salvandoIg || !igInput.trim()}
+                      className="px-4 py-2 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                      {salvandoIg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Conectar
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/70 mt-1.5">Como pegar: logado na conta, F12 → Application → Cookies → instagram.com → copie o valor de <b>sessionid</b>.</p>
+                </div>
+              )}
+            </div>
 
             {/* Salvar + Agendamento (igual ao Rastreador de Anúncios) */}
             <div className="mt-5 pt-4 border-t border-white/5">
@@ -198,7 +236,7 @@ export default function ContentTrackerPage() {
           )}
 
           {buscando && <div className="text-center text-sm text-muted-foreground py-8 flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Puxando e ordenando por views... (até 1 min)</div>}
-          {preview && <GridVirais videos={preview} onTranscrever={(v) => transcrever(v, ehInstagram ? igCookie.trim() : '')} />}
+          {preview && <GridVirais videos={preview} onTranscrever={(v) => transcrever(v)} />}
 
           {/* Estado vazio inicial */}
           {!preview && !buscando && (

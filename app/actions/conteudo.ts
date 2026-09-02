@@ -51,9 +51,41 @@ async function gravarPerfis(orgId: string, perfis: PerfilConteudo[]) {
     { onConflict: 'chave' })
 }
 
-// Puxa os vídeos virais de um perfil pelo transcritor da VPS (yt-dlp).
+// Cookie do Instagram — configurado UMA VEZ pelo admin, guardado no servidor.
+// Qualquer usuário do The Track usa esse cookie sem precisar colar nada.
+const CHAVE_IG = 'instagram_sessionid'
+
+async function cookieInstagram(): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', CHAVE_IG).maybeSingle()
+    return (data?.valor || '').toString().trim()
+  } catch { return '' }
+}
+
+// Só diz SE está configurado (nunca devolve o cookie em si pro cliente).
+export async function statusInstagram(): Promise<{ configurado: boolean }> {
+  return { configurado: !!(await cookieInstagram()) }
+}
+
+export async function salvarCookieInstagram(cookie: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    let val = (cookie || '').trim()
+    if (val.toLowerCase().startsWith('sessionid=')) val = val.split('=', 2)[1]
+    await supabaseAdmin.from('configuracoes').upsert(
+      { chave: CHAVE_IG, valor: val, org_id: orgId, updated_at: new Date().toISOString() },
+      { onConflict: 'chave' })
+    return { success: true }
+  } catch (e: any) { return { success: false, error: e.message } }
+}
+
+// Puxa os vídeos virais de um perfil pelo transcritor da VPS (yt-dlp). Se for
+// Instagram e não vier cookie, usa o cookie guardado no servidor.
 export async function buscarViraisPerfil(url: string, igCookie = '', limit = 24): Promise<{ success: boolean; videos: VideoViral[]; error?: string }> {
   if (!/^https?:\/\//i.test(url)) return { success: false, videos: [], error: 'Cole a URL do perfil (com https://).' }
+  if (!igCookie && /instagram\.com/i.test(url)) igCookie = await cookieInstagram()
+  if (/instagram\.com/i.test(url) && !igCookie) return { success: false, videos: [], error: 'Instagram ainda não conectado — configure o cookie da conta dedicada (uma vez) no topo da aba.' }
   try {
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 190000)
