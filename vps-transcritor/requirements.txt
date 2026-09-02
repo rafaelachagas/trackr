@@ -4,3 +4,6 @@ requests==2.32.3
 yt-dlp
 instagrapi==2.1.2
 pillow
+# curl_cffi imita o TLS do Chrome — sem isso o Instagram devolve 429 nas APIs
+# internas (detecta o fingerprint do requests/python como bot).
+curl_cffi==0.7.4

@@ -1,10 +1,12 @@
 import os
 import json
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
 import time
+import urllib.parse
 import uuid
 import requests
 from flask import Flask, request, jsonify
@@ -362,89 +364,131 @@ def _ig_sessionid(raw: str) -> str:
     return v
 
 
-def _ig_web_profile(handle: str, sessionid: str, limit: int):
-    headers = {
-        "User-Agent": UA,
+# --- Scraper próprio do Instagram via curl_cffi ---
+# O Instagram bloqueia (429) as APIs internas quando a requisição vem do
+# fingerprint TLS do requests/python. curl_cffi com impersonate="chrome" imita
+# o TLS do Chrome de verdade e passa. Fluxo: (1) abre a página HTML do perfil
+# (pública, 200) pra extrair o uid; (2) puxa os posts pelo /api/v1/feed/user/
+# (que responde 200 com play_count/like_count) — o web_profile_info está
+# entupido de 429 e não serve mais.
+IG_IMPERSONATE = "chrome120"
+_IG_UID_CACHE = {}
+
+
+def _ig_cffi_session(sessionid: str):
+    from curl_cffi import requests as cr
+    uid = urllib.parse.unquote(sessionid).split(":")[0] if sessionid else ""
+    kw = {"impersonate": IG_IMPERSONATE}
+    if PROXY_URL:
+        kw["proxies"] = {"http": PROXY_URL, "https": PROXY_URL}
+    s = cr.Session(**kw)
+    if sessionid:
+        s.cookies.set("sessionid", sessionid, domain=".instagram.com")
+        if uid:
+            s.cookies.set("ds_user_id", uid, domain=".instagram.com")
+    return s, uid
+
+
+def _ig_uid_do_handle(s, handle: str) -> str:
+    cached = _IG_UID_CACHE.get(handle.lower())
+    if cached:
+        return cached
+    html = s.get(f"https://www.instagram.com/{handle}/", timeout=45).text
+    m = (re.search(r'"profilePage_(\d+)"', html)
+         or re.search(r'"user_id":"(\d+)"', html)
+         or re.search(r'"id":"(\d+)"', html))
+    if not m:
+        if "Página não encontrada" in html or "Page Not Found" in html or "not-found" in html:
+            raise RuntimeError("perfil não encontrado")
+        raise RuntimeError("não consegui ler o perfil (Instagram pode ter mudado a página)")
+    uid = m.group(1)
+    _IG_UID_CACHE[handle.lower()] = uid
+    return uid
+
+
+def _ig_feed_item_to_dict(it: dict) -> dict:
+    code = it.get("code") or ""
+    mt = it.get("media_type")  # 1 foto, 2 vídeo, 8 carrossel
+    is_video = mt == 2
+    views = it.get("play_count") or it.get("ig_play_count") or it.get("view_count")
+    # thumbnail: no carrossel vem no primeiro filho
+    node = it
+    if mt == 8 and it.get("carousel_media"):
+        node = it["carousel_media"][0]
+        if node.get("media_type") == 2:
+            is_video = True
+            views = views or node.get("play_count") or node.get("view_count")
+    cands = ((node.get("image_versions2") or {}).get("candidates")) or []
+    thumb = cands[0].get("url") if cands else None
+    cap = ((it.get("caption") or {}) or {}).get("text") or ""
+    return {
+        "id": str(it.get("pk") or it.get("id") or ""),
+        "url": f"https://www.instagram.com/{'reel' if is_video else 'p'}/{code}/",
+        "titulo": cap.strip()[:200],
+        "views": views if is_video else None,
+        "likes": it.get("like_count"),
+        "comentarios": it.get("comment_count"),
+        "duracao": it.get("video_duration"),
+        "thumb": thumb,
+    }
+
+
+def _ig_feed(handle: str, sessionid: str, limit: int):
+    s, _ = _ig_cffi_session(sessionid)
+    uid = _ig_uid_do_handle(s, handle)
+    hh = {
         "x-ig-app-id": IG_APP_ID,
         "x-requested-with": "XMLHttpRequest",
         "Referer": f"https://www.instagram.com/{handle}/",
-        "Accept": "*/*",
-        "Cookie": f"sessionid={sessionid}",
     }
-    api = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={handle}"
-    r = requests.get(api, headers=headers, proxies=_proxies(), timeout=30)
-    if r.status_code == 401 or r.status_code == 403:
-        raise RuntimeError("cookie do Instagram inválido/expirado (reconecte a conta)")
-    if r.status_code == 404:
-        raise RuntimeError("perfil não encontrado")
+    vids, max_id, guard = [], "", 0
+    while len(vids) < limit and guard < 8:
+        guard += 1
+        api = f"https://www.instagram.com/api/v1/feed/user/{uid}/?count=12"
+        if max_id:
+            api += f"&max_id={max_id}"
+        r = s.get(api, headers=hh, timeout=45)
+        if r.status_code == 401:
+            raise RuntimeError("cookie do Instagram inválido/expirado (reconecte a conta)")
+        if r.status_code != 200:
+            # primeira página falhando = erro; nas seguintes, para e devolve o que tem
+            if not vids:
+                raise RuntimeError(f"feed {r.status_code}: {r.text[:120]}")
+            break
+        data = r.json() or {}
+        for it in (data.get("items") or []):
+            vids.append(_ig_feed_item_to_dict(it))
+        if not data.get("more_available"):
+            break
+        max_id = data.get("next_max_id") or ""
+        if not max_id:
+            break
+    return vids[:limit]
+
+
+def _ig_stories(handle: str, sessionid: str):
+    s, _ = _ig_cffi_session(sessionid)
+    uid = _ig_uid_do_handle(s, handle)
+    hh = {"x-ig-app-id": IG_APP_ID, "x-requested-with": "XMLHttpRequest",
+          "Referer": f"https://www.instagram.com/{handle}/"}
+    r = s.get(f"https://www.instagram.com/api/v1/feed/reels_media/?reel_ids={uid}", headers=hh, timeout=45)
     if r.status_code != 200:
-        raise RuntimeError(f"web_profile_info {r.status_code}: {r.text[:160]}")
-    user = ((r.json() or {}).get("data") or {}).get("user") or {}
-    if not user:
-        raise RuntimeError("resposta vazia (cookie pode ter caído)")
-    edges = ((user.get("edge_owner_to_timeline_media") or {}).get("edges")) or []
-    vids = []
-    for e in edges[:limit]:
-        n = e.get("node") or {}
-        cedges = ((n.get("edge_media_to_caption") or {}).get("edges")) or []
-        cap = ((cedges[0].get("node") or {}).get("text") if cedges else "") or ""
-        code = n.get("shortcode")
-        is_video = bool(n.get("is_video"))
-        likes = ((n.get("edge_liked_by") or {}).get("count"))
-        if likes is None:
-            likes = ((n.get("edge_media_preview_like") or {}).get("count"))
-        vids.append({
-            "id": n.get("id"),
-            "url": f"https://www.instagram.com/{'reel' if is_video else 'p'}/{code}/",
-            "titulo": cap.strip()[:200],
-            "views": n.get("video_view_count") if is_video else None,
-            "likes": likes,
-            "comentarios": ((n.get("edge_media_to_comment") or {}).get("count")),
-            "duracao": n.get("video_duration"),
-            "thumb": n.get("display_url") or n.get("thumbnail_src"),
+        return []
+    reels = ((r.json() or {}).get("reels") or {}).get(str(uid)) or {}
+    itens = []
+    for it in (reels.get("items") or []):
+        mt = it.get("media_type")
+        vv = (it.get("video_versions") or [{}])
+        cands = ((it.get("image_versions2") or {}).get("candidates")) or []
+        itens.append({
+            "id": str(it.get("pk") or ""),
+            "url": (vv[0].get("url") if mt == 2 and vv and vv[0] else None) or (cands[0].get("url") if cands else None),
+            "thumb": cands[0].get("url") if cands else None,
+            "duracao": it.get("video_duration"),
+            "quando": it.get("taken_at"),
+            "tipo": "video" if mt == 2 else "foto",
         })
-    return vids
-
-
-# Cliente instagrapi cacheado por sessionid (usa a API mobile, aguenta mais
-# rate-limit que o endpoint web e mantém a sessão como um celular real).
-_IG_CLIENTS = {}
-
-
-def _ig_client(sid: str):
-    c = _IG_CLIENTS.get(sid)
-    if c is not None:
-        return c
-    from instagrapi import Client
-    cl = Client()
-    cl.delay_range = [2, 5]
-    if PROXY_URL:
-        cl.set_proxy(PROXY_URL)
-    cl.login_by_sessionid(sid)
-    _IG_CLIENTS[sid] = cl
-    return cl
-
-
-def _media_to_dict(m):
-    is_video = int(getattr(m, "media_type", 1)) == 2
-    thumb = getattr(m, "thumbnail_url", None)
-    return {
-        "id": str(getattr(m, "pk", "") or ""),
-        "url": f"https://www.instagram.com/p/{getattr(m, 'code', '')}/",
-        "titulo": (getattr(m, "caption_text", "") or "")[:200],
-        "views": getattr(m, "play_count", None) or getattr(m, "view_count", None) if is_video else None,
-        "likes": getattr(m, "like_count", None),
-        "comentarios": getattr(m, "comment_count", None),
-        "duracao": getattr(m, "video_duration", None),
-        "thumb": str(thumb) if thumb else None,
-    }
-
-
-def _ig_medias(handle: str, sid: str, limit: int):
-    cl = _ig_client(sid)
-    uid = cl.user_id_from_username(handle)
-    medias = cl.user_medias(uid, limit)
-    return [_media_to_dict(m) for m in medias]
+    return itens
 
 
 # ---- Rastreador de conteúdos: lista os vídeos mais virais de um perfil ----
@@ -470,15 +514,9 @@ def perfil():
         if not handle:
             return jsonify(error="perfil inválido"), 400
         try:
-            try:
-                vids = _ig_medias(handle, sid, limit)  # API mobile (instagrapi)
-                fonte = "ig-mobile"
-            except Exception:
-                _IG_CLIENTS.pop(sid, None)
-                vids = _ig_web_profile(handle, sid, limit)  # reserva: endpoint web
-                fonte = "ig-web"
+            vids = _ig_feed(handle, sid, limit)  # curl_cffi + /feed/user/
             return jsonify(ok=True, videos=vids, total=len(vids),
-                           com_views=sum(1 for v in vids if isinstance(v.get("views"), int)), fonte=fonte)
+                           com_views=sum(1 for v in vids if isinstance(v.get("views"), int)), fonte="ig-feed")
         except Exception as e:
             return jsonify(error=_erro_proxy(str(e)) or f"instagram: {e}"), 502
 
@@ -537,38 +575,14 @@ def stories():
     handle = m.group(1) if m else ""
     if not handle:
         return jsonify(error="perfil inválido"), 400
-    cookies = _cookies_file(request.args.get("ig_cookie"))
-    if not cookies:
+    sid = _ig_sessionid(request.args.get("ig_cookie", ""))
+    if not sid:
         return jsonify(error="Instagram não conectado (sem cookie)."), 400
     try:
-        stories_url = f"https://www.instagram.com/stories/{handle}/"
-        cmd = ["yt-dlp", "-J", "--no-warnings", "--user-agent", UA] + _yt_proxy() + ["--cookies", cookies, stories_url]
-        r = subprocess.run(cmd, capture_output=True, timeout=120)
-        if r.returncode != 0:
-            err = r.stderr[-300:].decode(errors="ignore")
-            # Sem stories ativos não é erro de verdade.
-            if "no video" in err.lower() or "no media" in err.lower() or "empty" in err.lower():
-                return jsonify(ok=True, itens=[])
-            return jsonify(ok=True, itens=[], aviso=err)
-        data = json.loads(r.stdout.decode(errors="ignore") or "{}")
-        entries = data.get("entries") or ([data] if data.get("id") else [])
-        itens = []
-        for e in entries:
-            if not e:
-                continue
-            itens.append({
-                "id": e.get("id"),
-                "url": e.get("webpage_url") or e.get("url"),
-                "thumb": e.get("thumbnail") or (e.get("thumbnails") or [{}])[-1].get("url"),
-                "duracao": e.get("duration"),
-                "quando": e.get("timestamp"),
-            })
+        itens = _ig_stories(handle, sid)
         return jsonify(ok=True, itens=itens, total=len(itens))
     except Exception as e:
-        return jsonify(ok=True, itens=[], aviso=f"falha nos stories: {e}")
-    finally:
-        if cookies and os.path.exists(cookies):
-            os.remove(cookies)
+        return jsonify(ok=True, itens=[], aviso=_erro_proxy(str(e)) or f"falha nos stories: {e}")
 
 
 # ---- Login do Instagram (nosso backend) ----
