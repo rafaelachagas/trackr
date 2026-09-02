@@ -2,3 +2,5 @@ faster-whisper==1.0.3
 flask==3.0.3
 requests==2.32.3
 yt-dlp
+instagrapi==2.1.2
+pillow

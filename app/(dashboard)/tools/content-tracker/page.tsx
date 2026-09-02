@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Clapperboard, Search, Play, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock } from 'lucide-react'
-import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, verStoriesPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
+import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
 
 const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 const FREQ = ['1 dia', '3 dias', '5 dias', '7 dias', '14 dias']
@@ -34,6 +34,11 @@ export default function ContentTrackerPage() {
   // Instagram: cookie configurado UMA VEZ no servidor (não é por busca).
   const [igConfigurado, setIgConfigurado] = useState<boolean | null>(null)
   const [igSetup, setIgSetup] = useState(false)
+  const [igModo, setIgModo] = useState<'login' | 'cookie'>('login')
+  const [igUser, setIgUser] = useState('')
+  const [igPass, setIgPass] = useState('')
+  const [igCode, setIgCode] = useState('')
+  const [ig2fa, setIg2fa] = useState(false)
   const [igInput, setIgInput] = useState('')
   const [salvandoIg, setSalvandoIg] = useState(false)
   const [buscando, setBuscando] = useState(false)
@@ -62,6 +67,15 @@ export default function ContentTrackerPage() {
     const r = await salvarCookieInstagram(igInput.trim())
     setSalvandoIg(false)
     if (r.success) { setIgConfigurado(true); setIgSetup(false); setIgInput('') } else setErro(r.error || 'Falha ao salvar cookie.')
+  }
+  async function conectarLogin() {
+    if (!igUser.trim() || !igPass || salvandoIg) return
+    setSalvandoIg(true); setErro(null)
+    const r = await conectarInstagramLogin(igUser, igPass, igCode)
+    setSalvandoIg(false)
+    if (r.success) { setIgConfigurado(true); setIgSetup(false); setIg2fa(false); setIgUser(''); setIgPass(''); setIgCode('') }
+    else if (r.twoFactor) { setIg2fa(true); setErro(r.error || 'Digite o código do 2FA.') }
+    else setErro(r.error || 'Falha no login.')
   }
 
   async function buscar() {
@@ -190,16 +204,42 @@ export default function ContentTrackerPage() {
               </div>
               {igSetup && (
                 <div className="mt-3 rounded-xl border border-white/10 bg-background/50 p-3">
-                  <p className="text-[11px] text-muted-foreground mb-2 flex items-center gap-1.5"><Lock className="w-3 h-3" /> Cole o <b>sessionid</b> de uma conta dedicada do Instagram (uma vez só). Fica guardado no servidor e vale pra todos os usuários. Dura semanas.</p>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input value={igInput} onChange={(e) => setIgInput(e.target.value)} placeholder="sessionid da conta dedicada"
-                      className="flex-1 px-3 py-2 rounded-lg text-xs font-mono bg-background border border-border text-foreground outline-none" />
-                    <button onClick={conectarInstagram} disabled={salvandoIg || !igInput.trim()}
-                      className="px-4 py-2 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
-                      {salvandoIg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Conectar
-                    </button>
+                  <div className="flex items-center gap-1.5 mb-2 text-[11px]">
+                    <button onClick={() => setIgModo('login')} className={`px-2 py-1 rounded ${igModo === 'login' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'}`}>Login (@ e senha)</button>
+                    <button onClick={() => setIgModo('cookie')} className={`px-2 py-1 rounded ${igModo === 'cookie' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'}`}>Cookie (avançado)</button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground/70 mt-1.5">Como pegar: logado na conta, F12 → Application → Cookies → instagram.com → copie o valor de <b>sessionid</b>.</p>
+
+                  {igModo === 'login' ? (
+                    <>
+                      <p className="text-[11px] text-muted-foreground mb-2 flex items-start gap-1.5"><Lock className="w-3 h-3 mt-0.5 shrink-0" /> Entre com a <b>conta dedicada</b> (não a principal). A senha só é usada pra logar — <b>não fica guardada</b>, só a sessão. Vale pra todos os usuários.</p>
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <input value={igUser} onChange={(e) => setIgUser(e.target.value)} placeholder="@usuário" autoComplete="off"
+                          className="px-3 py-2 rounded-lg text-sm bg-background border border-border text-foreground outline-none" />
+                        <input value={igPass} onChange={(e) => setIgPass(e.target.value)} type="password" placeholder="senha" autoComplete="new-password"
+                          className="px-3 py-2 rounded-lg text-sm bg-background border border-border text-foreground outline-none" />
+                      </div>
+                      {ig2fa && (
+                        <input value={igCode} onChange={(e) => setIgCode(e.target.value)} placeholder="código do 2FA (app autenticador)" inputMode="numeric"
+                          className="mt-2 w-full px-3 py-2 rounded-lg text-sm bg-background border border-amber-500/40 text-foreground outline-none" />
+                      )}
+                      <button onClick={conectarLogin} disabled={salvandoIg || !igUser.trim() || !igPass}
+                        className="mt-2 px-4 py-2 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-1.5">
+                        {salvandoIg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} {ig2fa ? 'Confirmar código' : 'Conectar conta'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-muted-foreground mb-2 flex items-start gap-1.5"><Lock className="w-3 h-3 mt-0.5 shrink-0" /> Cole o <b>sessionid</b> da conta dedicada (F12 → Application → Cookies → instagram.com → sessionid).</p>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input value={igInput} onChange={(e) => setIgInput(e.target.value)} placeholder="sessionid"
+                          className="flex-1 px-3 py-2 rounded-lg text-xs font-mono bg-background border border-border text-foreground outline-none" />
+                        <button onClick={conectarInstagram} disabled={salvandoIg || !igInput.trim()}
+                          className="px-4 py-2 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          {salvandoIg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Conectar
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

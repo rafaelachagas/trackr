@@ -67,6 +67,36 @@ export async function statusInstagram(): Promise<{ configurado: boolean }> {
   return { configurado: !!(await cookieInstagram()) }
 }
 
+// Conectar Instagram por LOGIN (@ + senha): nosso backend (instagrapi) loga e
+// devolve o sessionid, que a gente guarda. O usuário não mexe em cookie. A senha
+// NÃO é guardada — só passa pra VPS logar e pegar a sessão.
+export async function conectarInstagramLogin(username: string, password: string, code = ''): Promise<{ success: boolean; twoFactor?: boolean; checkpoint?: boolean; error?: string }> {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    if (!username.trim() || !password) return { success: false, error: 'Usuário e senha são obrigatórios.' }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 90000)
+    const r = await fetch(`${TRANSCRITOR_URL}/ig_login`, {
+      method: 'POST', signal: ctrl.signal, cache: 'no-store',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key: TRANSCRITOR_APIKEY, username: username.trim(), password, code }),
+    }).finally(() => clearTimeout(t))
+    const j = await r.json().catch(() => null)
+    if (!j) return { success: false, error: 'Resposta inválida do servidor.' }
+    if (j.twoFactor) return { success: false, twoFactor: true, error: j.error }
+    if (j.checkpoint) return { success: false, checkpoint: true, error: j.error }
+    if (!j.ok || !j.sessionid) return { success: false, error: j.error || 'Falha no login.' }
+    // Guarda o sessionid (não a senha).
+    await supabaseAdmin.from('configuracoes').upsert(
+      { chave: CHAVE_IG, valor: String(j.sessionid).trim(), org_id: orgId, updated_at: new Date().toISOString() },
+      { onConflict: 'chave' })
+    return { success: true }
+  } catch (e: any) {
+    return { success: false, error: e?.name === 'AbortError' ? 'O login demorou demais.' : e.message }
+  }
+}
+
 export async function salvarCookieInstagram(cookie: string): Promise<{ success: boolean; error?: string }> {
   try {
     const orgId = await resolveOrgId()

@@ -472,5 +472,45 @@ def stories():
             os.remove(cookies)
 
 
+# ---- Login do Instagram (nosso backend) ----
+# POST /ig_login {username, password, code?} → loga com a instagrapi e devolve o
+# sessionid pra guardar. É o "conectar conta" sem o usuário mexer em cookie.
+# Se o Insta pedir 2FA, devolve {twoFactor:true} e o app manda de novo com o code.
+@app.post("/ig_login")
+def ig_login():
+    if APIKEY and (request.args.get("key") or (request.json or {}).get("key")) != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    body = request.json or {}
+    u = (body.get("username") or "").strip().lstrip("@")
+    p = body.get("password") or ""
+    code = (body.get("code") or "").strip()
+    if not u or not p:
+        return jsonify(error="usuário e senha são obrigatórios"), 400
+    try:
+        from instagrapi import Client
+        from instagrapi.exceptions import TwoFactorRequired, ChallengeRequired, BadPassword
+        cl = Client()
+        cl.delay_range = [1, 3]
+        try:
+            cl.login(u, p, verification_code=code)
+        except TwoFactorRequired:
+            return jsonify(twoFactor=True, error="Conta com 2FA — digite o código do app autenticador."), 200
+        sid = cl.sessionid
+        if not sid:
+            return jsonify(error="login sem sessionid (tenta de novo)"), 200
+        return jsonify(ok=True, sessionid=sid)
+    except Exception as e:
+        name = e.__class__.__name__
+        msg = str(e)
+        low = (name + " " + msg).lower()
+        if "twofactor" in low or "two_factor" in low:
+            return jsonify(twoFactor=True, error="Conta com 2FA — digite o código."), 200
+        if "challenge" in low or "checkpoint" in low:
+            return jsonify(checkpoint=True, error="O Instagram pediu verificação (checkpoint). Abra o app do Insta, aprove o login, e tente de novo — ou desative o 2FA na conta dedicada."), 200
+        if "badpassword" in low or "bad_password" in low or "incorrect" in low:
+            return jsonify(error="Usuário ou senha incorretos."), 200
+        return jsonify(error=f"{name}: {msg[:250]}"), 200
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8082")))
