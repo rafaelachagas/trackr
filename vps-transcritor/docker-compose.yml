@@ -8,6 +8,9 @@ services:
       - TRANSCRITOR_APIKEY=${TRANSCRITOR_APIKEY:-troque-esta-chave}
       - WHISPER_MODEL=${WHISPER_MODEL:-small}
       - WHISPER_COMPUTE=int8
+      # Proxy residencial (opcional): defina PROXY_URL no arquivo .env desta pasta
+      # (http://user:pass@host:port). Sem ele, funciona direto.
+      - PROXY_URL=${PROXY_URL:-}
     volumes:
       # Cache do modelo baixado (não re-baixa a cada restart).
       - whisper-cache:/root/.cache/huggingface
