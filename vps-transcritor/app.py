@@ -33,19 +33,23 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 MEDIA_EXT = (".mp4", ".mov", ".webm", ".m4a", ".mp3", ".wav", ".aac", ".ogg")
 
 
-def _yt_extra(url: str):
-    """YouTube bloqueia IP de datacenter ('confirm you're not a bot'). Usar
-    clients alternativos (tv/mweb/web_safari) costuma furar o bloqueio sem cookie."""
-    low = (url or "").lower()
-    if "youtube.com" in low or "youtu.be" in low:
-        return ["--extractor-args", "youtube:player_client=tv,web_safari,mweb"]
-    return []
-
-
 # Proxy residencial (opcional): quando setado, TUDO sai por esse IP — resolve os
 # bloqueios de IP de datacenter (YouTube/Instagram). Vem do env PROXY_URL, no
 # formato http://user:pass@host:port. Sem ele, funciona direto (TikTok/IG público).
 PROXY_URL = os.environ.get("PROXY_URL", "").strip()
+
+
+def _yt_extra(url: str):
+    """YouTube bloqueia IP de datacenter ('confirm you're not a bot'). SEM proxy,
+    os clients alternativos (tv/mweb) ajudam a furar. COM proxy residencial, o
+    client PADRÃO funciona — e os alternativos aí dão 'page needs to be reloaded'.
+    Então: com proxy, não passa extractor-args."""
+    if PROXY_URL:
+        return []
+    low = (url or "").lower()
+    if "youtube.com" in low or "youtu.be" in low:
+        return ["--extractor-args", "youtube:player_client=tv,web_safari,mweb"]
+    return []
 
 
 def _proxies():
