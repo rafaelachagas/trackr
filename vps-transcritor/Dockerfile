@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# yt-dlp nightly: os extratores de YouTube/Instagram/TikTok mudam quase toda
+# semana; a nightly traz os contornos mais novos de bloqueio.
+RUN pip install --no-cache-dir -U --pre yt-dlp
 
 COPY app.py .
 

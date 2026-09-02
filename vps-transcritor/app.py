@@ -33,6 +33,15 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 MEDIA_EXT = (".mp4", ".mov", ".webm", ".m4a", ".mp3", ".wav", ".aac", ".ogg")
 
 
+def _yt_extra(url: str):
+    """YouTube bloqueia IP de datacenter ('confirm you're not a bot'). Usar
+    clients alternativos (tv/mweb/web_safari) costuma furar o bloqueio sem cookie."""
+    low = (url or "").lower()
+    if "youtube.com" in low or "youtu.be" in low:
+        return ["--extractor-args", "youtube:player_client=tv,web_safari,mweb"]
+    return []
+
+
 def _cookies_file(ig_cookie: str):
     """Monta um cookies.txt (Netscape) com o sessionid do Instagram, pra o
     yt-dlp entrar como a conta logada. Devolve o caminho ou None."""
@@ -50,15 +59,22 @@ def _cookies_file(ig_cookie: str):
 
 def _ytdlp_audio_wav(url: str, cookies: str = None) -> str:
     """Baixa o áudio de uma página de conteúdo via yt-dlp e converte pra wav
-    16k mono (o que o Whisper quer)."""
+    16k mono (o que o Whisper quer). Tenta ANÔNIMO primeiro (sem login); só usa
+    o cookie como reserva se o conteúdo exigir login. Assim transcrever um link
+    público funciona mesmo sem conta conectada."""
     d = tempfile.mkdtemp()
     try:
-        cmd = ["yt-dlp", "-f", "bestaudio/best", "--no-playlist", "--no-warnings",
-               "--user-agent", UA, "-o", os.path.join(d, "src.%(ext)s"), url]
-        if cookies:
-            cmd += ["--cookies", cookies]
-        r = subprocess.run(cmd, capture_output=True, timeout=600)
+        def _run(with_cookies):
+            cmd = ["yt-dlp", "-f", "bestaudio/best", "--no-playlist", "--no-warnings",
+                   "--user-agent", UA] + _yt_extra(url) + ["-o", os.path.join(d, "src.%(ext)s"), url]
+            if with_cookies and cookies:
+                cmd += ["--cookies", cookies]
+            return subprocess.run(cmd, capture_output=True, timeout=600)
+        r = _run(False)
         srcs = [f for f in os.listdir(d) if f.startswith("src.")]
+        if (r.returncode != 0 or not srcs) and cookies:
+            r = _run(True)  # reserva: com a conta conectada
+            srcs = [f for f in os.listdir(d) if f.startswith("src.")]
         if r.returncode != 0 or not srcs:
             raise RuntimeError("yt-dlp: " + r.stderr[-300:].decode(errors="ignore"))
         src = os.path.join(d, srcs[0])
@@ -78,7 +94,7 @@ def _ytdlp_video_mp4(url: str, cookies: str = None) -> str:
     d = tempfile.mkdtemp()
     try:
         cmd = ["yt-dlp", "-f", "mp4/bestvideo+bestaudio/best", "--no-playlist", "--no-warnings",
-               "--merge-output-format", "mp4", "--user-agent", UA, "-o", os.path.join(d, "v.%(ext)s"), url]
+               "--merge-output-format", "mp4", "--user-agent", UA] + _yt_extra(url) + ["-o", os.path.join(d, "v.%(ext)s"), url]
         if cookies:
             cmd += ["--cookies", cookies]
         r = subprocess.run(cmd, capture_output=True, timeout=600)
@@ -355,9 +371,48 @@ def _ig_web_profile(handle: str, sessionid: str, limit: int):
     return vids
 
 
+# Cliente instagrapi cacheado por sessionid (usa a API mobile, aguenta mais
+# rate-limit que o endpoint web e mantém a sessão como um celular real).
+_IG_CLIENTS = {}
+
+
+def _ig_client(sid: str):
+    c = _IG_CLIENTS.get(sid)
+    if c is not None:
+        return c
+    from instagrapi import Client
+    cl = Client()
+    cl.delay_range = [2, 5]
+    cl.login_by_sessionid(sid)
+    _IG_CLIENTS[sid] = cl
+    return cl
+
+
+def _media_to_dict(m):
+    is_video = int(getattr(m, "media_type", 1)) == 2
+    thumb = getattr(m, "thumbnail_url", None)
+    return {
+        "id": str(getattr(m, "pk", "") or ""),
+        "url": f"https://www.instagram.com/p/{getattr(m, 'code', '')}/",
+        "titulo": (getattr(m, "caption_text", "") or "")[:200],
+        "views": getattr(m, "play_count", None) or getattr(m, "view_count", None) if is_video else None,
+        "likes": getattr(m, "like_count", None),
+        "comentarios": getattr(m, "comment_count", None),
+        "duracao": getattr(m, "video_duration", None),
+        "thumb": str(thumb) if thumb else None,
+    }
+
+
+def _ig_medias(handle: str, sid: str, limit: int):
+    cl = _ig_client(sid)
+    uid = cl.user_id_from_username(handle)
+    medias = cl.user_medias(uid, limit)
+    return [_media_to_dict(m) for m in medias]
+
+
 # ---- Rastreador de conteúdos: lista os vídeos mais virais de um perfil ----
 # GET /perfil?url=<perfil>&limit=20&ig_cookie=<sessionid?>
-# Instagram: usa nosso scraper (API web deles). TikTok/YouTube: yt-dlp.
+# Instagram: instagrapi (API mobile) com fallback pro endpoint web. TikTok/YT: yt-dlp.
 @app.get("/perfil")
 def perfil():
     if APIKEY and request.args.get("key") != APIKEY:
@@ -378,9 +433,15 @@ def perfil():
         if not handle:
             return jsonify(error="perfil inválido"), 400
         try:
-            vids = _ig_web_profile(handle, sid, limit)
+            try:
+                vids = _ig_medias(handle, sid, limit)  # API mobile (instagrapi)
+                fonte = "ig-mobile"
+            except Exception:
+                _IG_CLIENTS.pop(sid, None)
+                vids = _ig_web_profile(handle, sid, limit)  # reserva: endpoint web
+                fonte = "ig-web"
             return jsonify(ok=True, videos=vids, total=len(vids),
-                           com_views=sum(1 for v in vids if isinstance(v.get("views"), int)), fonte="ig-web")
+                           com_views=sum(1 for v in vids if isinstance(v.get("views"), int)), fonte=fonte)
         except Exception as e:
             return jsonify(error=f"instagram: {e}"), 502
 
@@ -388,8 +449,9 @@ def perfil():
     try:
         # dump-json (metadados completos, com view_count). playlist-end limita
         # quantos vídeos ele extrai — extração completa é ~1s por vídeo.
-        cmd = ["yt-dlp", "-J", "--flat-playlist", "--no-warnings", "--user-agent", UA,
-               "--playlist-end", str(min(limit * 2, 60)), url]
+        cmd = ["yt-dlp", "-J", "--flat-playlist", "--no-warnings", "--user-agent", UA]
+        cmd += _yt_extra(url)
+        cmd += ["--playlist-end", str(min(limit * 2, 60)), url]
         if cookies:
             cmd += ["--cookies", cookies]
         r = subprocess.run(cmd, capture_output=True, timeout=180)
