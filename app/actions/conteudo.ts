@@ -102,6 +102,28 @@ export async function buscarViraisPerfil(url: string, igCookie = '', limit = 24)
   }
 }
 
+export interface StoryItem { id: string; url: string; thumb: string | null; duracao: number | null; quando: number | null }
+
+// Stories ativos (24h) de um perfil do Instagram. Usa o cookie guardado.
+export async function verStoriesPerfil(url: string): Promise<{ success: boolean; itens: StoryItem[]; aviso?: string; error?: string }> {
+  if (!/instagram\.com/i.test(url)) return { success: false, itens: [], error: 'Stories só do Instagram.' }
+  const cookie = await cookieInstagram()
+  if (!cookie) return { success: false, itens: [], error: 'Instagram não conectado.' }
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 120000)
+    const r = await fetch(`${TRANSCRITOR_URL}/stories?url=${encodeURIComponent(url)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}&ig_cookie=${encodeURIComponent(cookie)}`, {
+      signal: ctrl.signal, cache: 'no-store',
+    }).finally(() => clearTimeout(t))
+    const j = await r.json().catch(() => null)
+    if (!j) return { success: false, itens: [], error: 'Resposta inválida.' }
+    if (j.error) return { success: false, itens: [], error: j.error }
+    return { success: true, itens: j.itens || [], aviso: j.aviso }
+  } catch (e: any) {
+    return { success: false, itens: [], error: e?.name === 'AbortError' ? 'Stories demoraram demais.' : 'Falha ao buscar stories.' }
+  }
+}
+
 export async function listarPerfisConteudo(): Promise<{ success: boolean; data: PerfilConteudo[] }> {
   const orgId = await resolveOrgId()
   if (!orgId) return { success: false, data: [] }

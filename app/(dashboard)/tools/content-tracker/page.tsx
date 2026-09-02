@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Clapperboard, Search, Play, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock } from 'lucide-react'
-import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, type PerfilConteudo, type VideoViral } from '@/app/actions/conteudo'
+import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, verStoriesPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
 
 const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 const FREQ = ['1 dia', '3 dias', '5 dias', '7 dias', '14 dias']
@@ -133,7 +133,7 @@ export default function ContentTrackerPage() {
           </button>
         </div>
         {erro && <p className="text-xs text-rose-300/90">{erro}</p>}
-        <GridVirais videos={aberto.virais} onTranscrever={(v) => transcrever(v)} />
+        <Viewer videos={aberto.virais} url={aberto.url} onTranscrever={transcrever} />
       </div>
     )
   }
@@ -235,8 +235,8 @@ export default function ContentTrackerPage() {
             </div>
           )}
 
-          {buscando && <div className="text-center text-sm text-muted-foreground py-8 flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Puxando e ordenando por views... (até 1 min)</div>}
-          {preview && <GridVirais videos={preview} onTranscrever={(v) => transcrever(v)} />}
+          {buscando && <div className="text-center text-sm text-muted-foreground py-8 flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Puxando o feed do perfil... (até 1 min)</div>}
+          {preview && <Viewer videos={preview} url={url} onTranscrever={transcrever} />}
 
           {/* Estado vazio inicial */}
           {!preview && !buscando && (
@@ -289,6 +289,61 @@ export default function ContentTrackerPage() {
       )}
 
       {trans && <ModalTrans trans={trans} onClose={() => setTrans(null)} copiado={copiado} onCopy={() => { navigator.clipboard.writeText(trans.texto || ''); setCopiado(true); setTimeout(() => setCopiado(false), 1500) }} />}
+    </div>
+  )
+}
+
+// Visualizador de feed: toggle Recentes/Virais + stories (Instagram) + grade.
+function Viewer({ videos, url, onTranscrever }: { videos: VideoViral[]; url: string; onTranscrever: (v: VideoViral) => void }) {
+  const [ordem, setOrdem] = useState<'recentes' | 'virais'>('recentes')
+  const [stories, setStories] = useState<StoryItem[] | null>(null)
+  const [loadingStories, setLoadingStories] = useState(false)
+  const [avisoStories, setAvisoStories] = useState<string | null>(null)
+  const ehIg = /instagram\.com/i.test(url)
+  const lista = useMemo(() => (ordem === 'virais' ? [...videos].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)) : videos), [videos, ordem])
+
+  async function carregarStories() {
+    setLoadingStories(true); setAvisoStories(null)
+    const r = await verStoriesPerfil(url)
+    setLoadingStories(false)
+    if (r.success) { setStories(r.itens); if (!r.itens.length) setAvisoStories('Nenhum story ativo agora (ou a conta conectada não segue esse perfil).') }
+    else setAvisoStories(r.error || 'Falha ao buscar stories.')
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-semibold">
+          {(['recentes', 'virais'] as const).map((o) => (
+            <button key={o} onClick={() => setOrdem(o)} className={`px-3 py-1.5 transition ${ordem === o ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-white/5'}`}>{o === 'recentes' ? 'Recentes' : 'Mais virais'}</button>
+          ))}
+        </div>
+        {ehIg && (
+          <button onClick={carregarStories} disabled={loadingStories}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-pink-500/30 bg-pink-500/10 text-pink-300 hover:bg-pink-500/20 inline-flex items-center gap-1.5 disabled:opacity-50">
+            {loadingStories ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} Ver stories
+          </button>
+        )}
+      </div>
+      {stories && stories.length > 0 && <StoriesStrip itens={stories} onTranscrever={onTranscrever} />}
+      {avisoStories && <p className="text-[11px] text-muted-foreground">{avisoStories}</p>}
+      <GridVirais videos={lista} onTranscrever={onTranscrever} />
+    </div>
+  )
+}
+
+function StoriesStrip({ itens, onTranscrever }: { itens: StoryItem[]; onTranscrever: (v: VideoViral) => void }) {
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-2">
+      {itens.map((s, i) => (
+        <div key={s.id || i} className="shrink-0 w-24">
+          <a href={s.url} target="_blank" rel="noreferrer" className="block relative rounded-xl overflow-hidden aspect-[9/16] bg-black/30 border-2" style={{ borderColor: '#E1306C' }}>
+            {s.thumb ? <img src={s.thumb} alt="" className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full flex items-center justify-center"><Play className="w-5 h-5 text-white/70" /></div>}
+          </a>
+          <button onClick={() => onTranscrever({ id: s.id, url: s.url, titulo: 'Story', views: null, likes: null, comentarios: null, duracao: s.duracao, thumb: s.thumb })}
+            className="mt-1 w-full text-[10px] font-semibold text-violet-300 hover:underline">transcrever</button>
+        </div>
+      ))}
     </div>
   )
 }

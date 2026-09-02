@@ -338,13 +338,61 @@ def perfil():
                 "thumb": e.get("thumbnail") or (e.get("thumbnails") or [{}])[-1].get("url"),
             })
         com_views = [v for v in vids if isinstance(v.get("views"), int)]
-        com_views.sort(key=lambda v: v["views"], reverse=True)
-        # se nenhum trouxe views (plataforma não expõe no flat), devolve na ordem
-        # original (mais recentes primeiro) pra pelo menos listar.
-        saida = (com_views or vids)[:limit]
+        # Devolve na ORDEM RECENTE (do feed). O The Track ordena por views quando
+        # quer a aba "virais" — assim a mesma resposta serve pro feed e pros virais.
+        saida = vids[:limit]
         return jsonify(ok=True, videos=saida, total=len(vids), com_views=len(com_views))
     except Exception as e:
         return jsonify(error=f"falha no perfil: {e}"), 500
+    finally:
+        if cookies and os.path.exists(cookies):
+            os.remove(cookies)
+
+
+# ---- Stories ativos de um perfil do Instagram (efêmeros, 24h) ----
+# GET /stories?url=<perfil>&ig_cookie=<sessionid>. Precisa do cookie e que a
+# conta conectada consiga ver os stories (perfil público ou seguido).
+@app.get("/stories")
+def stories():
+    if APIKEY and request.args.get("key") != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    url = request.args.get("url", "")
+    if "instagram.com" not in url.lower():
+        return jsonify(error="stories só do Instagram"), 400
+    import re as _re
+    m = _re.search(r"instagram\.com/([A-Za-z0-9_.]+)", url)
+    handle = m.group(1) if m else ""
+    if not handle:
+        return jsonify(error="perfil inválido"), 400
+    cookies = _cookies_file(request.args.get("ig_cookie"))
+    if not cookies:
+        return jsonify(error="Instagram não conectado (sem cookie)."), 400
+    try:
+        stories_url = f"https://www.instagram.com/stories/{handle}/"
+        cmd = ["yt-dlp", "-J", "--no-warnings", "--user-agent", UA, "--cookies", cookies, stories_url]
+        r = subprocess.run(cmd, capture_output=True, timeout=120)
+        if r.returncode != 0:
+            err = r.stderr[-300:].decode(errors="ignore")
+            # Sem stories ativos não é erro de verdade.
+            if "no video" in err.lower() or "no media" in err.lower() or "empty" in err.lower():
+                return jsonify(ok=True, itens=[])
+            return jsonify(ok=True, itens=[], aviso=err)
+        data = json.loads(r.stdout.decode(errors="ignore") or "{}")
+        entries = data.get("entries") or ([data] if data.get("id") else [])
+        itens = []
+        for e in entries:
+            if not e:
+                continue
+            itens.append({
+                "id": e.get("id"),
+                "url": e.get("webpage_url") or e.get("url"),
+                "thumb": e.get("thumbnail") or (e.get("thumbnails") or [{}])[-1].get("url"),
+                "duracao": e.get("duration"),
+                "quando": e.get("timestamp"),
+            })
+        return jsonify(ok=True, itens=itens, total=len(itens))
+    except Exception as e:
+        return jsonify(ok=True, itens=[], aviso=f"falha nos stories: {e}")
     finally:
         if cookies and os.path.exists(cookies):
             os.remove(cookies)
