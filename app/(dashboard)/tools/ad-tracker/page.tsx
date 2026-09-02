@@ -55,7 +55,7 @@ export default function RastreadorPage() {
   const { isPrivate } = useDashboard()
   const [aba, setAba] = useState<Aba>('buscar')
   const [link, setLink] = useState('')
-  const [freq, setFreq] = useState('3 dias')
+  const [freq, setFreq] = useState('1 dia')
   const [loading, setLoading] = useState(false)
   const [res, setRes] = useState<Resultado | null>(null)
   const [ordem, setOrdem] = useState<Ordem>('antigos')

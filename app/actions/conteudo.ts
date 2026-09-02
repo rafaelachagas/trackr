@@ -12,6 +12,7 @@ import { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } from '@/lib/transcritor'
 export interface VideoViral {
   id: string; url: string; titulo: string; views: number | null; likes: number | null
   comentarios: number | null; duracao: number | null; thumb: string | null
+  data?: number | null   // unix (s) da publicação — pra filtro por período
 }
 export interface PerfilMeta { nome?: string | null; bio?: string | null; link?: string | null }
 export interface PerfilConteudo {
@@ -117,7 +118,7 @@ export async function salvarCookieInstagram(cookie: string): Promise<{ success: 
 
 // Puxa os vídeos virais de um perfil pelo transcritor da VPS (yt-dlp). Se for
 // Instagram e não vier cookie, usa o cookie guardado no servidor.
-export async function buscarViraisPerfil(url: string, igCookie = '', limit = 24): Promise<{ success: boolean; videos: VideoViral[]; perfil?: PerfilMeta; error?: string }> {
+export async function buscarViraisPerfil(url: string, igCookie = '', limit = 60): Promise<{ success: boolean; videos: VideoViral[]; perfil?: PerfilMeta; error?: string }> {
   if (!/^https?:\/\//i.test(url)) return { success: false, videos: [], error: 'Cole a URL do perfil (com https://).' }
   if (!igCookie && /instagram\.com/i.test(url)) igCookie = await cookieInstagram()
   if (/instagram\.com/i.test(url) && !igCookie) return { success: false, videos: [], error: 'Instagram ainda não conectado — configure o cookie da conta dedicada (uma vez) no topo da aba.' }
@@ -169,7 +170,20 @@ export async function verStoriesPerfil(url: string): Promise<{ success: boolean;
 export async function listarPerfisConteudo(): Promise<{ success: boolean; data: PerfilConteudo[] }> {
   const orgId = await resolveOrgId()
   if (!orgId) return { success: false, data: [] }
-  return { success: true, data: await lerPerfis(orgId) }
+  let perfis = await lerPerfis(orgId)
+  // Migração única: perfis sem agendamento passam a puxar todo dia (freq padrão).
+  try {
+    const flag = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', `conteudo_freq_migrado_${orgId}`).maybeSingle()
+    if (!flag.data?.valor) {
+      let mudou = false
+      for (const p of perfis) if (p.freqDias == null) { p.freqDias = 1; mudou = true }
+      if (mudou) await gravarPerfis(orgId, perfis)
+      await supabaseAdmin.from('configuracoes').upsert(
+        { chave: `conteudo_freq_migrado_${orgId}`, valor: '1', org_id: orgId, updated_at: new Date().toISOString() },
+        { onConflict: 'chave' })
+    }
+  } catch { /* migração é best-effort */ }
+  return { success: true, data: perfis }
 }
 
 // --- Correlação: descobre se dois perfis são a MESMA pessoa ---
@@ -213,7 +227,7 @@ export async function salvarPerfilConteudo(url: string, igCookie = '', freqDias:
     const agora = new Date().toISOString()
     const novo: PerfilConteudo = {
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-      url, plataforma: plataformaDe(url), handle: handleDe(url), addedAt: agora, ultimaBusca: agora, freqDias, virais: r.videos.slice(0, 24),
+      url, plataforma: plataformaDe(url), handle: handleDe(url), addedAt: agora, ultimaBusca: agora, freqDias, virais: r.videos.slice(0, 60),
       nome: r.perfil?.nome ?? null, bio: r.perfil?.bio ?? null, link: r.perfil?.link ?? null,
     }
     // Correlação: acha o melhor candidato entre os já rastreados.
@@ -285,7 +299,7 @@ export async function atualizarViraisPerfil(id: string, igCookie = ''): Promise<
     if (!p) return { success: false, error: 'Perfil não encontrado.' }
     const r = await buscarViraisPerfil(p.url, igCookie)
     if (!r.success) return { success: false, error: r.error }
-    p.virais = r.videos.slice(0, 24)
+    p.virais = r.videos.slice(0, 60)
     if (r.perfil) { p.nome = r.perfil.nome ?? p.nome; p.bio = r.perfil.bio ?? p.bio; p.link = r.perfil.link ?? p.link }
     p.ultimaBusca = new Date().toISOString()
     await gravarPerfis(orgId, perfis)

@@ -42,6 +42,19 @@ export async function atualizarBiblioteca(
 
 export async function listarBibliotecas() {
   try {
+    // Migração única: bibliotecas sem agendamento passam a puxar todo dia.
+    try {
+      const orgId = await resolveOrgId()
+      if (orgId) {
+        const flag = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', `rastreador_freq_migrado_${orgId}`).maybeSingle()
+        if (!flag.data?.valor) {
+          await supabaseAdmin.from('rastreador_bibliotecas').update({ freq_dias: 1 }).eq('org_id', orgId).is('freq_dias', null)
+          await supabaseAdmin.from('configuracoes').upsert(
+            { chave: `rastreador_freq_migrado_${orgId}`, valor: '1', org_id: orgId, updated_at: new Date().toISOString() },
+            { onConflict: 'chave' })
+        }
+      }
+    } catch { /* best-effort */ }
     const { data, error } = await supabaseAdmin
       .from('rastreador_bibliotecas')
       .select('*')

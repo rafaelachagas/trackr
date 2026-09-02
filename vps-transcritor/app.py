@@ -432,6 +432,7 @@ def _ig_feed_item_to_dict(it: dict) -> dict:
         "comentarios": it.get("comment_count"),
         "duracao": it.get("video_duration"),
         "thumb": thumb,
+        "data": it.get("taken_at"),  # unix (s) — pra filtro por período
     }
 
 
@@ -477,7 +478,7 @@ def _ig_feed(handle: str, sessionid: str, limit: int):
     more = data.get("more_available")
     # Paginação: as próximas páginas vão por uid.
     guard = 0
-    while len(vids) < limit and more and max_id and uid and guard < 8:
+    while len(vids) < limit and more and max_id and uid and guard < 10:
         guard += 1
         r = s.get(f"https://www.instagram.com/api/v1/feed/user/{uid}/?count=12&max_id={max_id}", headers=hh, timeout=45)
         if r.status_code != 200:
@@ -525,7 +526,7 @@ def perfil():
     url = request.args.get("url")
     if not url:
         return jsonify(error="url ausente"), 400
-    limit = min(max(int(request.args.get("limit", "20")), 1), 50)
+    limit = min(max(int(request.args.get("limit", "20")), 1), 90)
 
     # Instagram → scraper próprio (API web interna), não yt-dlp.
     if "instagram.com" in url.lower():
@@ -552,7 +553,7 @@ def perfil():
         # quantos vídeos ele extrai — extração completa é ~1s por vídeo.
         cmd = ["yt-dlp", "-J", "--flat-playlist", "--no-warnings", "--user-agent", UA]
         cmd += _yt_extra(url) + _yt_proxy()
-        cmd += ["--playlist-end", str(min(limit * 2, 60)), url]
+        cmd += ["--playlist-end", str(min(limit * 2, 120)), url]
         if cookies:
             cmd += ["--cookies", cookies]
         r = subprocess.run(cmd, capture_output=True, timeout=180)
@@ -573,6 +574,7 @@ def perfil():
                 "comentarios": e.get("comment_count"),
                 "duracao": e.get("duration"),
                 "thumb": e.get("thumbnail") or (e.get("thumbnails") or [{}])[-1].get("url"),
+                "data": e.get("timestamp") or e.get("release_timestamp"),
             })
         com_views = [v for v in vids if isinstance(v.get("views"), int)]
         meta = {

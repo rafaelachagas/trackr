@@ -8,8 +8,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 # yt-dlp nightly: os extratores de YouTube/Instagram/TikTok mudam quase toda
-# semana; a nightly traz os contornos mais novos de bloqueio.
-RUN pip install --no-cache-dir -U --pre yt-dlp
+# semana; a nightly traz os contornos mais novos de bloqueio. O `>=` (bump a
+# data quando precisar) força uma versão mínima que funciona E quebra o cache
+# de layer do Docker, senão o rebuild mantém uma nightly velha e quebrada.
+RUN pip install --no-cache-dir -U --pre "yt-dlp>=2026.8.30"
 
 COPY app.py .
 

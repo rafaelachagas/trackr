@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Clapperboard, Search, Play, Pause, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock, Download, Volume2, VolumeX, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, Clapperboard, Search, Play, Pause, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock, Download, Volume2, VolumeX, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
 import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, linkBaixarStory, agruparPerfis, desagruparPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
 
 const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
@@ -55,7 +55,7 @@ export default function ContentTrackerPage() {
   const [buscando, setBuscando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
-  const [freq, setFreq] = useState('3 dias')
+  const [freq, setFreq] = useState('1 dia')
 
   const [atualizando, setAtualizando] = useState(false)
   const [trans, setTrans] = useState<{ v: VideoViral; status: string; texto?: string; erro?: string } | null>(null)
@@ -412,11 +412,27 @@ export default function ContentTrackerPage() {
 // Visualizador de feed: toggle Recentes/Virais + stories (Instagram) + grade.
 function Viewer({ videos, url, onTranscrever }: { videos: VideoViral[]; url: string; onTranscrever: (v: VideoViral) => void }) {
   const [ordem, setOrdem] = useState<'recentes' | 'virais'>('recentes')
+  const [periodo, setPeriodo] = useState<'todo' | '7' | '30' | '90' | 'custom'>('todo')
+  const [desde, setDesde] = useState('') // yyyy-mm-dd, quando periodo==='custom'
   const [stories, setStories] = useState<StoryItem[] | null>(null)
   const [loadingStories, setLoadingStories] = useState(false)
   const [avisoStories, setAvisoStories] = useState<string | null>(null)
   const ehIg = /instagram\.com/i.test(url)
-  const lista = useMemo(() => (ordem === 'virais' ? [...videos].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)) : videos), [videos, ordem])
+  const temData = useMemo(() => videos.some((v) => v.data), [videos])
+
+  const lista = useMemo(() => {
+    let arr = videos
+    // filtro por período (usa a data de publicação, quando existe)
+    if (periodo !== 'todo' && temData) {
+      let corte = 0
+      if (periodo === 'custom') { if (desde) corte = new Date(desde + 'T00:00:00').getTime() / 1000 }
+      else corte = Date.now() / 1000 - Number(periodo) * 86400
+      if (corte) arr = arr.filter((v) => (v.data ?? 0) >= corte)
+    }
+    // ordenação: mais virais = views desc (sem views vai pro fim); recentes = data desc
+    if (ordem === 'virais') return [...arr].sort((a, b) => (b.views ?? -1) - (a.views ?? -1))
+    return [...arr].sort((a, b) => (b.data ?? 0) - (a.data ?? 0))
+  }, [videos, ordem, periodo, desde, temData])
 
   async function carregarStories() {
     setLoadingStories(true); setAvisoStories(null)
@@ -440,6 +456,18 @@ function Viewer({ videos, url, onTranscrever }: { videos: VideoViral[]; url: str
             {loadingStories ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} Ver stories
           </button>
         )}
+      </div>
+      {/* filtro por período — combina com "Mais virais" pra ver o top de cada janela */}
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground inline-flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" /> período:</span>
+        {([['todo', 'Todo período'], ['7', '7 dias'], ['30', '30 dias'], ['90', '90 dias'], ['custom', 'Data…']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setPeriodo(k)} className={`px-2.5 py-1 rounded-lg font-semibold border transition ${periodo === k ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-white/5'}`}>{label}</button>
+        ))}
+        {periodo === 'custom' && (
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="px-2 py-1 rounded-lg bg-black/30 border border-border text-foreground/90" title="a partir desta data" />
+        )}
+        {!temData && <span className="text-muted-foreground/60">(sem data disponível nesta plataforma)</span>}
+        <span className="ml-auto text-muted-foreground/70">{lista.length} conteúdos</span>
       </div>
       {stories && stories.length > 0 && <StoriesStrip itens={stories} handle={(url.match(/instagram\.com\/([A-Za-z0-9_.]+)/i)?.[1]) || 'perfil'} onTranscrever={onTranscrever} />}
       {avisoStories && <p className="text-[11px] text-muted-foreground">{avisoStories}</p>}
@@ -614,21 +642,53 @@ function GridVirais({ videos, onTranscrever }: { videos: VideoViral[]; onTranscr
 }
 
 function ModalTrans({ trans, onClose, copiado, onCopy }: { trans: any; onClose: () => void; copiado: boolean; onCopy: () => void }) {
+  const v = trans.v as VideoViral
+  function salvarTxt() {
+    const nome = (v.titulo || 'conteudo').slice(0, 40).replace(/[^\wÀ-ſ]+/g, '_').replace(/^_|_$/g, '') || 'transcricao'
+    const blob = new Blob([trans.texto || ''], { type: 'text/plain;charset=utf-8' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `transcricao-${nome}.txt`
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href)
+  }
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
-      <div className="bg-card border border-border rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-auto p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <p className="text-sm font-bold text-foreground line-clamp-2">{trans.v.titulo || 'Transcrição'}</p>
-          <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground shrink-0"><X className="w-5 h-5" /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl max-w-4xl w-full max-h-[88vh] overflow-hidden flex flex-col md:flex-row" onClick={(e) => e.stopPropagation()}>
+        {/* ESQUERDA: o post */}
+        <div className="md:w-[300px] shrink-0 border-b md:border-b-0 md:border-r border-border bg-black/20 p-4 flex flex-col gap-3">
+          <div className="relative rounded-xl overflow-hidden aspect-[9/16] bg-black/40 max-h-[46vh] md:max-h-none">
+            {v.thumb ? <img src={v.thumb} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Play className="w-8 h-8 text-white/40" /></div>}
+            {v.duracao != null && <span className="absolute bottom-1.5 right-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/70 text-white">{fmtDur(v.duracao)}</span>}
+          </div>
+          <p className="text-xs text-foreground/90 leading-snug line-clamp-3">{v.titulo || 'sem legenda'}</p>
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground tabular-nums flex-wrap">
+            {v.views != null && <span className="inline-flex items-center gap-1"><Eye className="w-3.5 h-3.5" /> {nf.format(v.views)}</span>}
+            {v.likes != null && <span className="inline-flex items-center gap-1"><Heart className="w-3.5 h-3.5" /> {nf.format(v.likes)}</span>}
+            {v.comentarios != null && <span className="inline-flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" /> {nf.format(v.comentarios)}</span>}
+          </div>
+          {v.data ? <p className="text-[10px] text-muted-foreground/70">publicado {fmtQuando(v.data)} atrás</p> : null}
+          <a href={v.url} target="_blank" rel="noreferrer" className="mt-auto px-3 py-2 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5 inline-flex items-center justify-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Abrir o post</a>
         </div>
-        {trans.status ? <p className="text-sm text-primary/90 flex items-center gap-2 py-8 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> {trans.status}</p>
-          : trans.erro ? <p className="text-sm text-rose-300/90">{trans.erro}</p>
-            : (<>
-              <button onClick={onCopy} className="mb-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5 inline-flex items-center gap-1">
-                {copiado ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />} {copiado ? 'Copiado' : 'Copiar'}
-              </button>
-              <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{trans.texto}</p>
-            </>)}
+        {/* DIREITA: a transcrição */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
+            <p className="text-sm font-bold text-foreground inline-flex items-center gap-2"><FileText className="w-4 h-4 text-violet-300" /> Transcrição</p>
+            <div className="flex items-center gap-2">
+              {!trans.status && !trans.erro && (<>
+                <button onClick={onCopy} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5 inline-flex items-center gap-1">
+                  {copiado ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />} {copiado ? 'Copiado' : 'Copiar'}
+                </button>
+                <button onClick={salvarTxt} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 inline-flex items-center gap-1">
+                  <Download className="w-3.5 h-3.5" /> Salvar .txt
+                </button>
+              </>)}
+              <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground shrink-0"><X className="w-5 h-5" /></button>
+            </div>
+          </div>
+          <div className="p-4 overflow-auto">
+            {trans.status ? <p className="text-sm text-primary/90 flex items-center gap-2 py-12 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> {trans.status}</p>
+              : trans.erro ? <p className="text-sm text-rose-300/90 py-4">{trans.erro}</p>
+                : <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{trans.texto}</p>}
+          </div>
+        </div>
       </div>
     </div>
   )
