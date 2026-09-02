@@ -299,9 +299,65 @@ def transcribe():
             os.remove(path)
 
 
+# Scraper PRÓPRIO do Instagram: chama a API web interna deles (a mesma do site),
+# com o sessionid. Muito mais confiável que o yt-dlp pra LISTAR o feed do perfil.
+IG_APP_ID = "936619743392459"
+
+
+def _ig_sessionid(raw: str) -> str:
+    v = (raw or "").strip()
+    if v.lower().startswith("sessionid="):
+        v = v.split("=", 1)[1]
+    return v
+
+
+def _ig_web_profile(handle: str, sessionid: str, limit: int):
+    headers = {
+        "User-Agent": UA,
+        "x-ig-app-id": IG_APP_ID,
+        "x-requested-with": "XMLHttpRequest",
+        "Referer": f"https://www.instagram.com/{handle}/",
+        "Accept": "*/*",
+        "Cookie": f"sessionid={sessionid}",
+    }
+    api = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={handle}"
+    r = requests.get(api, headers=headers, timeout=30)
+    if r.status_code == 401 or r.status_code == 403:
+        raise RuntimeError("cookie do Instagram inválido/expirado (reconecte a conta)")
+    if r.status_code == 404:
+        raise RuntimeError("perfil não encontrado")
+    if r.status_code != 200:
+        raise RuntimeError(f"web_profile_info {r.status_code}: {r.text[:160]}")
+    user = ((r.json() or {}).get("data") or {}).get("user") or {}
+    if not user:
+        raise RuntimeError("resposta vazia (cookie pode ter caído)")
+    edges = ((user.get("edge_owner_to_timeline_media") or {}).get("edges")) or []
+    vids = []
+    for e in edges[:limit]:
+        n = e.get("node") or {}
+        cedges = ((n.get("edge_media_to_caption") or {}).get("edges")) or []
+        cap = ((cedges[0].get("node") or {}).get("text") if cedges else "") or ""
+        code = n.get("shortcode")
+        is_video = bool(n.get("is_video"))
+        likes = ((n.get("edge_liked_by") or {}).get("count"))
+        if likes is None:
+            likes = ((n.get("edge_media_preview_like") or {}).get("count"))
+        vids.append({
+            "id": n.get("id"),
+            "url": f"https://www.instagram.com/{'reel' if is_video else 'p'}/{code}/",
+            "titulo": cap.strip()[:200],
+            "views": n.get("video_view_count") if is_video else None,
+            "likes": likes,
+            "comentarios": ((n.get("edge_media_to_comment") or {}).get("count")),
+            "duracao": n.get("video_duration"),
+            "thumb": n.get("display_url") or n.get("thumbnail_src"),
+        })
+    return vids
+
+
 # ---- Rastreador de conteúdos: lista os vídeos mais virais de um perfil ----
 # GET /perfil?url=<perfil>&limit=20&ig_cookie=<sessionid?>
-# Usa yt-dlp pra extrair os vídeos do perfil com view_count e ordena por views.
+# Instagram: usa nosso scraper (API web deles). TikTok/YouTube: yt-dlp.
 @app.get("/perfil")
 def perfil():
     if APIKEY and request.args.get("key") != APIKEY:
@@ -310,6 +366,24 @@ def perfil():
     if not url:
         return jsonify(error="url ausente"), 400
     limit = min(max(int(request.args.get("limit", "20")), 1), 50)
+
+    # Instagram → scraper próprio (API web interna), não yt-dlp.
+    if "instagram.com" in url.lower():
+        sid = _ig_sessionid(request.args.get("ig_cookie", ""))
+        if not sid:
+            return jsonify(error="Instagram não conectado (sem cookie)."), 400
+        import re as _re
+        m = _re.search(r"instagram\.com/([A-Za-z0-9_.]+)", url)
+        handle = m.group(1) if m else ""
+        if not handle:
+            return jsonify(error="perfil inválido"), 400
+        try:
+            vids = _ig_web_profile(handle, sid, limit)
+            return jsonify(ok=True, videos=vids, total=len(vids),
+                           com_views=sum(1 for v in vids if isinstance(v.get("views"), int)), fonte="ig-web")
+        except Exception as e:
+            return jsonify(error=f"instagram: {e}"), 502
+
     cookies = _cookies_file(request.args.get("ig_cookie"))
     try:
         # dump-json (metadados completos, com view_count). playlist-end limita
