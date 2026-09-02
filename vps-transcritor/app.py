@@ -42,6 +42,20 @@ def _yt_extra(url: str):
     return []
 
 
+# Proxy residencial (opcional): quando setado, TUDO sai por esse IP — resolve os
+# bloqueios de IP de datacenter (YouTube/Instagram). Vem do env PROXY_URL, no
+# formato http://user:pass@host:port. Sem ele, funciona direto (TikTok/IG público).
+PROXY_URL = os.environ.get("PROXY_URL", "").strip()
+
+
+def _proxies():
+    return {"http": PROXY_URL, "https": PROXY_URL} if PROXY_URL else None
+
+
+def _yt_proxy():
+    return ["--proxy", PROXY_URL] if PROXY_URL else []
+
+
 def _cookies_file(ig_cookie: str):
     """Monta um cookies.txt (Netscape) com o sessionid do Instagram, pra o
     yt-dlp entrar como a conta logada. Devolve o caminho ou None."""
@@ -66,7 +80,7 @@ def _ytdlp_audio_wav(url: str, cookies: str = None) -> str:
     try:
         def _run(with_cookies):
             cmd = ["yt-dlp", "-f", "bestaudio/best", "--no-playlist", "--no-warnings",
-                   "--user-agent", UA] + _yt_extra(url) + ["-o", os.path.join(d, "src.%(ext)s"), url]
+                   "--user-agent", UA] + _yt_extra(url) + _yt_proxy() + ["-o", os.path.join(d, "src.%(ext)s"), url]
             if with_cookies and cookies:
                 cmd += ["--cookies", cookies]
             return subprocess.run(cmd, capture_output=True, timeout=600)
@@ -94,7 +108,7 @@ def _ytdlp_video_mp4(url: str, cookies: str = None) -> str:
     d = tempfile.mkdtemp()
     try:
         cmd = ["yt-dlp", "-f", "mp4/bestvideo+bestaudio/best", "--no-playlist", "--no-warnings",
-               "--merge-output-format", "mp4", "--user-agent", UA] + _yt_extra(url) + ["-o", os.path.join(d, "v.%(ext)s"), url]
+               "--merge-output-format", "mp4", "--user-agent", UA] + _yt_extra(url) + _yt_proxy() + ["-o", os.path.join(d, "v.%(ext)s"), url]
         if cookies:
             cmd += ["--cookies", cookies]
         r = subprocess.run(cmd, capture_output=True, timeout=600)
@@ -337,7 +351,7 @@ def _ig_web_profile(handle: str, sessionid: str, limit: int):
         "Cookie": f"sessionid={sessionid}",
     }
     api = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={handle}"
-    r = requests.get(api, headers=headers, timeout=30)
+    r = requests.get(api, headers=headers, proxies=_proxies(), timeout=30)
     if r.status_code == 401 or r.status_code == 403:
         raise RuntimeError("cookie do Instagram inválido/expirado (reconecte a conta)")
     if r.status_code == 404:
@@ -383,6 +397,8 @@ def _ig_client(sid: str):
     from instagrapi import Client
     cl = Client()
     cl.delay_range = [2, 5]
+    if PROXY_URL:
+        cl.set_proxy(PROXY_URL)
     cl.login_by_sessionid(sid)
     _IG_CLIENTS[sid] = cl
     return cl
@@ -450,7 +466,7 @@ def perfil():
         # dump-json (metadados completos, com view_count). playlist-end limita
         # quantos vídeos ele extrai — extração completa é ~1s por vídeo.
         cmd = ["yt-dlp", "-J", "--flat-playlist", "--no-warnings", "--user-agent", UA]
-        cmd += _yt_extra(url)
+        cmd += _yt_extra(url) + _yt_proxy()
         cmd += ["--playlist-end", str(min(limit * 2, 60)), url]
         if cookies:
             cmd += ["--cookies", cookies]
@@ -505,7 +521,7 @@ def stories():
         return jsonify(error="Instagram não conectado (sem cookie)."), 400
     try:
         stories_url = f"https://www.instagram.com/stories/{handle}/"
-        cmd = ["yt-dlp", "-J", "--no-warnings", "--user-agent", UA, "--cookies", cookies, stories_url]
+        cmd = ["yt-dlp", "-J", "--no-warnings", "--user-agent", UA] + _yt_proxy() + ["--cookies", cookies, stories_url]
         r = subprocess.run(cmd, capture_output=True, timeout=120)
         if r.returncode != 0:
             err = r.stderr[-300:].decode(errors="ignore")
