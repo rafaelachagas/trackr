@@ -10,7 +10,6 @@ import { baixarTxt, baixarMd, baixarPdf, baixarDocx } from '@/lib/exportDoc'
 
 export default function TranscreverPage() {
   const [url, setUrl] = useState('')
-  const [igCookie, setIgCookie] = useState('')
   const [status, setStatus] = useState<string | null>(null)
   const [texto, setTexto] = useState('')
   const [erro, setErro] = useState<string | null>(null)
@@ -32,7 +31,7 @@ export default function TranscreverPage() {
     try {
       const ini = await fetch('/api/rastreador/transcrever-async', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ video_url: u, ig_cookie: ehInstagram ? igCookie.trim() : '' }),
+        body: JSON.stringify({ video_url: u }),
       }).then((r) => r.json())
       if (!ini?.job_id) throw new Error(ini?.error || 'Não consegui iniciar a transcrição.')
       // Poll do resultado.
@@ -82,17 +81,10 @@ export default function TranscreverPage() {
         </div>
 
         {ehInstagram && (
-          <div>
-            <input
-              value={igCookie} onChange={(e) => setIgCookie(e.target.value)}
-              placeholder="Cookie sessionid do Instagram (só pra conteúdo do Insta)"
-              className="w-full px-4 py-2.5 rounded-xl text-xs font-mono bg-background border border-border text-foreground focus:border-primary/50 outline-none"
-            />
-            <p className="text-[11px] text-muted-foreground mt-1">O Instagram exige login. Cole o <b>sessionid</b> de uma conta logada (dá pra pegar no navegador). TikTok e YouTube não precisam.</p>
-          </div>
+          <p className="text-[11px] text-muted-foreground">Instagram usa a conta já conectada em <b>Rastreador de Conteúdos</b> — não precisa colar nada. TikTok e YouTube funcionam soltos.</p>
         )}
 
-        {status && <p className="text-xs text-primary/90 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {status} {segundos > 0 && `· ${Math.floor(segundos / 60)}m ${segundos % 60}s`}</p>}
+        {status &&<p className="text-xs text-primary/90 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {status} {segundos > 0 && `· ${Math.floor(segundos / 60)}m ${segundos % 60}s`}</p>}
         {erro && <p className="text-xs text-rose-300/90">{erro}</p>}
       </div>
 
