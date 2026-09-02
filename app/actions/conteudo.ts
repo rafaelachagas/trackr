@@ -118,7 +118,7 @@ export async function salvarCookieInstagram(cookie: string): Promise<{ success: 
 
 // Puxa os vídeos virais de um perfil pelo transcritor da VPS (yt-dlp). Se for
 // Instagram e não vier cookie, usa o cookie guardado no servidor.
-export async function buscarViraisPerfil(url: string, igCookie = '', limit = 60): Promise<{ success: boolean; videos: VideoViral[]; perfil?: PerfilMeta; error?: string }> {
+export async function buscarViraisPerfil(url: string, igCookie = '', limit = 60, cursor = ''): Promise<{ success: boolean; videos: VideoViral[]; perfil?: PerfilMeta; proximo?: string; mais?: boolean; error?: string }> {
   if (!/^https?:\/\//i.test(url)) return { success: false, videos: [], error: 'Cole a URL do perfil (com https://).' }
   if (!igCookie && /instagram\.com/i.test(url)) igCookie = await cookieInstagram()
   if (/instagram\.com/i.test(url) && !igCookie) return { success: false, videos: [], error: 'Instagram ainda não conectado — configure o cookie da conta dedicada (uma vez) no topo da aba.' }
@@ -126,16 +126,23 @@ export async function buscarViraisPerfil(url: string, igCookie = '', limit = 60)
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 190000)
     const extra = igCookie ? `&ig_cookie=${encodeURIComponent(igCookie)}` : ''
-    const r = await fetch(`${TRANSCRITOR_URL}/perfil?url=${encodeURIComponent(url)}&limit=${limit}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}${extra}`, {
+    const cur = cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''
+    const r = await fetch(`${TRANSCRITOR_URL}/perfil?url=${encodeURIComponent(url)}&limit=${limit}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}${extra}${cur}`, {
       signal: ctrl.signal, cache: 'no-store',
     }).finally(() => clearTimeout(t))
     const j = await r.json().catch(() => null)
     if (!j) return { success: false, videos: [], error: 'Resposta inválida do serviço.' }
     if (j.error) return { success: false, videos: [], error: j.error }
-    return { success: true, videos: j.videos || [], perfil: j.perfil || undefined }
+    return { success: true, videos: j.videos || [], perfil: j.perfil || undefined, proximo: j.proximo || '', mais: !!j.mais }
   } catch (e: any) {
     return { success: false, videos: [], error: e?.name === 'AbortError' ? 'O perfil demorou demais (timeout).' : 'Não consegui falar com o serviço na VPS.' }
   }
+}
+
+// Uma página adicional de conteúdos (pro "Todo o período" varrer o histórico).
+export async function carregarPaginaConteudo(url: string, cursor: string, limit = 60): Promise<{ success: boolean; videos: VideoViral[]; proximo?: string; mais?: boolean; error?: string }> {
+  const r = await buscarViraisPerfil(url, '', limit, cursor)
+  return { success: r.success, videos: r.videos, proximo: r.proximo, mais: r.mais, error: r.error }
 }
 
 export interface StoryItem { id: string; url: string; thumb: string | null; duracao: number | null; quando: number | null; tipo?: 'video' | 'foto' }

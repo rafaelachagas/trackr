@@ -452,47 +452,48 @@ def _ig_user_meta(u: dict) -> dict:
     }
 
 
-def _ig_feed(handle: str, sessionid: str, limit: int):
+def _ig_feed(handle: str, sessionid: str, limit: int, cursor: str = ""):
+    # Sempre pelo endpoint by-username (resolve pelo @ e é o único que pagina).
+    # `cursor` = max_id pra continuar de onde parou. Devolve também o próximo
+    # cursor e se ainda há mais, pra varredura de "todo o período" página a página.
     s, _ = _ig_cffi_session(sessionid)
     hh = _ig_headers(handle)
-    # 1ª página resolve pelo @ direto (robusto — não depende do HTML): esse
-    # endpoint devolve o objeto `user` (uid, nome, bio) + os primeiros posts.
-    api = f"https://www.instagram.com/api/v1/feed/user/{handle}/username/?count=12"
-    r = s.get(api, headers=hh, timeout=45)
-    if r.status_code == 401:
-        raise RuntimeError("cookie do Instagram inválido/expirado (reconecte a conta)")
-    if r.status_code == 404:
-        raise RuntimeError("perfil não encontrado")
-    if r.status_code != 200:
-        raise RuntimeError(f"feed {r.status_code}: {r.text[:120]}")
-    data = r.json() or {}
-    u = data.get("user") or {}
-    uid = str(u.get("pk") or u.get("id") or "")
-    if uid:
-        _IG_UID_CACHE[handle.lower()] = uid
-    meta = _ig_user_meta(u)
-    if not meta.get("nome"):
-        meta["nome"] = handle
-    vids = [_ig_feed_item_to_dict(it) for it in (data.get("items") or [])]
-    max_id = data.get("next_max_id") or ""
-    more = data.get("more_available")
-    # Paginação: continua no MESMO endpoint by-username com max_id (o endpoint
-    # por uid não pagina — devolve vazio com max_id).
-    guard = 0
-    while len(vids) < limit and more and max_id and guard < 12:
+    vids, meta, max_id, more, guard = [], {}, (cursor or ""), True, 0
+    while len(vids) < limit and more and guard < 14:
         guard += 1
-        r = s.get(f"https://www.instagram.com/api/v1/feed/user/{handle}/username/?count=12&max_id={max_id}", headers=hh, timeout=45)
+        api = f"https://www.instagram.com/api/v1/feed/user/{handle}/username/?count=12"
+        if max_id:
+            api += f"&max_id={max_id}"
+        r = s.get(api, headers=hh, timeout=45)
+        if r.status_code == 401:
+            raise RuntimeError("cookie do Instagram inválido/expirado (reconecte a conta)")
+        if r.status_code == 404:
+            raise RuntimeError("perfil não encontrado")
         if r.status_code != 200:
+            if not vids and not cursor:
+                raise RuntimeError(f"feed {r.status_code}: {r.text[:120]}")
             break
         data = r.json() or {}
+        if not meta:  # primeira página: captura nome/bio/uid
+            u = data.get("user") or {}
+            uid = str(u.get("pk") or u.get("id") or "")
+            if uid:
+                _IG_UID_CACHE[handle.lower()] = uid
+            meta = _ig_user_meta(u)
+            if not meta.get("nome"):
+                meta["nome"] = handle
         novos = data.get("items") or []
         if not novos:
+            more = False
             break
         for it in novos:
             vids.append(_ig_feed_item_to_dict(it))
-        more = data.get("more_available")
+        more = bool(data.get("more_available"))
         max_id = data.get("next_max_id") or ""
-    return vids[:limit], meta
+        if not max_id:
+            more = False
+    proximo = max_id if more else ""
+    return vids, proximo, bool(more and proximo), meta
 
 
 def _ig_stories(handle: str, sessionid: str):
@@ -530,7 +531,8 @@ def perfil():
     url = request.args.get("url")
     if not url:
         return jsonify(error="url ausente"), 400
-    limit = min(max(int(request.args.get("limit", "20")), 1), 90)
+    limit = min(max(int(request.args.get("limit", "20")), 1), 120)
+    cursor = request.args.get("cursor", "")
 
     # Instagram → scraper próprio (API web interna), não yt-dlp.
     if "instagram.com" in url.lower():
@@ -543,10 +545,10 @@ def perfil():
         if not handle:
             return jsonify(error="perfil inválido"), 400
         try:
-            vids, meta = _ig_feed(handle, sid, limit)  # curl_cffi + /feed/user/
+            vids, proximo, mais, meta = _ig_feed(handle, sid, limit, cursor)
             if not (meta.get("nome")):
                 meta["nome"] = handle
-            return jsonify(ok=True, videos=vids, total=len(vids), perfil=meta,
+            return jsonify(ok=True, videos=vids, total=len(vids), perfil=meta, proximo=proximo, mais=mais,
                            com_views=sum(1 for v in vids if isinstance(v.get("views"), int)), fonte="ig-feed")
         except Exception as e:
             return jsonify(error=_erro_proxy(str(e)) or f"instagram: {e}"), 502
@@ -555,9 +557,12 @@ def perfil():
     try:
         # dump-json (metadados completos, com view_count). playlist-end limita
         # quantos vídeos ele extrai — extração completa é ~1s por vídeo.
+        # cursor = deslocamento (nº de vídeos já lidos). playlist-start/end pega a
+        # próxima janela, pra varredura de "todo o período" página a página.
+        off = int(cursor) if str(cursor).isdigit() else 0
         cmd = ["yt-dlp", "-J", "--flat-playlist", "--no-warnings", "--user-agent", UA]
         cmd += _yt_extra(url) + _yt_proxy()
-        cmd += ["--playlist-end", str(min(limit * 2, 120)), url]
+        cmd += ["--playlist-start", str(off + 1), "--playlist-end", str(off + limit), url]
         if cookies:
             cmd += ["--cookies", cookies]
         r = subprocess.run(cmd, capture_output=True, timeout=180)
@@ -589,7 +594,10 @@ def perfil():
         # Devolve na ORDEM RECENTE (do feed). O The Track ordena por views quando
         # quer a aba "virais" — assim a mesma resposta serve pro feed e pros virais.
         saida = vids[:limit]
-        return jsonify(ok=True, videos=saida, total=len(vids), perfil=meta, com_views=len(com_views))
+        # se veio a janela cheia, provavelmente ainda há mais (próxima janela)
+        mais = len(vids) >= limit
+        proximo = str(off + len(vids)) if mais else ""
+        return jsonify(ok=True, videos=saida, total=len(vids), perfil=meta, proximo=proximo, mais=mais, com_views=len(com_views))
     except Exception as e:
         return jsonify(error=f"falha no perfil: {e}"), 500
     finally:

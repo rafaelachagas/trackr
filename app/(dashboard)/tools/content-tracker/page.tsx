@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Clapperboard, Search, Play, Pause, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock, Download, Volume2, VolumeX, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
-import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, linkBaixarStory, agruparPerfis, desagruparPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
+import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, carregarPaginaConteudo, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, linkBaixarStory, agruparPerfis, desagruparPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
+import SeletorPeriodoVturb, { type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
 
 const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 const FREQ = ['1 dia', '3 dias', '5 dias', '7 dias', '14 dias']
@@ -412,27 +413,60 @@ export default function ContentTrackerPage() {
 // Visualizador de feed: toggle Recentes/Virais + stories (Instagram) + grade.
 function Viewer({ videos, url, onTranscrever }: { videos: VideoViral[]; url: string; onTranscrever: (v: VideoViral) => void }) {
   const [ordem, setOrdem] = useState<'recentes' | 'virais'>('recentes')
-  const [periodo, setPeriodo] = useState<'todo' | '7' | '30' | '90' | 'custom'>('todo')
-  const [desde, setDesde] = useState('') // yyyy-mm-dd, quando periodo==='custom'
+  // default = janela que cobre o que já está no cache (não varre ao abrir); o
+  // usuário escolhe "Todo o Período" ou uma data antiga pra puxar o histórico.
+  const [range, setRange] = useState<RangePeriodo>(() => {
+    const hojeStr = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
+    const ds = videos.map((v) => v.data).filter(Boolean) as number[]
+    const iniStr = ds.length ? new Date(Math.min(...ds) * 1000 - 3 * 3600 * 1000).toISOString().slice(0, 10) : hojeStr
+    return { ini: iniStr, fim: hojeStr }
+  })
+  const [historico, setHistorico] = useState<VideoViral[] | null>(null) // varredura completa (supera o cache)
+  const [crawling, setCrawling] = useState(false)
+  const [crawlMsg, setCrawlMsg] = useState('')
+  const [esgotou, setEsgotou] = useState(false)
   const [stories, setStories] = useState<StoryItem[] | null>(null)
   const [loadingStories, setLoadingStories] = useState(false)
   const [avisoStories, setAvisoStories] = useState<string | null>(null)
   const ehIg = /instagram\.com/i.test(url)
-  const temData = useMemo(() => videos.some((v) => v.data), [videos])
+
+  const base = historico ?? videos
+  const temData = useMemo(() => base.some((v) => v.data), [base])
+  const iniUnix = new Date(range.ini + 'T00:00:00-03:00').getTime() / 1000
+  const fimUnix = new Date(range.fim + 'T23:59:59-03:00').getTime() / 1000
+  const maisAntigo = useMemo(() => Math.min(...base.map((v) => v.data ?? Infinity)), [base])
+
+  // Varre o histórico quando o período pedido é mais antigo do que o já carregado.
+  useEffect(() => {
+    if (!temData || crawling || esgotou) return
+    if (iniUnix >= maisAntigo) return // já temos posts velhos o bastante
+    let cancel = false
+    ;(async () => {
+      setCrawling(true); setCrawlMsg('Puxando o histórico…')
+      let acc: VideoViral[] = [], cursor = '', pgs = 0
+      while (!cancel && pgs < 80) {
+        pgs++
+        const r = await carregarPaginaConteudo(url, cursor, 60)
+        if (!r.success || !r.videos.length) { setEsgotou(true); break }
+        acc = acc.concat(r.videos)
+        setHistorico([...acc]); setCrawlMsg(`${acc.length} conteúdos carregados…`)
+        const velho = Math.min(...acc.map((v) => v.data ?? Infinity))
+        if (!r.mais || !r.proximo) { setEsgotou(true); break }
+        if (velho <= iniUnix) break // cobriu o período pedido
+        cursor = r.proximo
+      }
+      if (!cancel) { setCrawling(false); setCrawlMsg('') }
+    })()
+    return () => { cancel = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [iniUnix])
 
   const lista = useMemo(() => {
-    let arr = videos
-    // filtro por período (usa a data de publicação, quando existe)
-    if (periodo !== 'todo' && temData) {
-      let corte = 0
-      if (periodo === 'custom') { if (desde) corte = new Date(desde + 'T00:00:00').getTime() / 1000 }
-      else corte = Date.now() / 1000 - Number(periodo) * 86400
-      if (corte) arr = arr.filter((v) => (v.data ?? 0) >= corte)
-    }
-    // ordenação: mais virais = views desc (sem views vai pro fim); recentes = data desc
+    let arr = base
+    if (temData) arr = arr.filter((v) => v.data == null || ((v.data >= iniUnix) && (v.data <= fimUnix)))
     if (ordem === 'virais') return [...arr].sort((a, b) => (b.views ?? -1) - (a.views ?? -1))
     return [...arr].sort((a, b) => (b.data ?? 0) - (a.data ?? 0))
-  }, [videos, ordem, periodo, desde, temData])
+  }, [base, ordem, iniUnix, fimUnix, temData])
 
   async function carregarStories() {
     setLoadingStories(true); setAvisoStories(null)
@@ -457,16 +491,14 @@ function Viewer({ videos, url, onTranscrever }: { videos: VideoViral[]; url: str
           </button>
         )}
       </div>
-      {/* filtro por período — combina com "Mais virais" pra ver o top de cada janela */}
-      <div className="flex items-center gap-2 flex-wrap text-xs">
+      {/* filtro por período — mesmo seletor do resto do app (presets + calendário).
+          "Todo o Período" (ou qualquer data antiga) varre o histórico sob demanda. */}
+      <div className="flex items-center gap-3 flex-wrap text-xs">
         <span className="text-muted-foreground inline-flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" /> período:</span>
-        {([['todo', 'Todo período'], ['7', '7 dias'], ['30', '30 dias'], ['90', '90 dias'], ['custom', 'Data…']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setPeriodo(k)} className={`px-2.5 py-1 rounded-lg font-semibold border transition ${periodo === k ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-white/5'}`}>{label}</button>
-        ))}
-        {periodo === 'custom' && (
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="px-2 py-1 rounded-lg bg-black/30 border border-border text-foreground/90" title="a partir desta data" />
-        )}
-        {!temData && <span className="text-muted-foreground/60">(sem data disponível nesta plataforma)</span>}
+        {temData
+          ? <SeletorPeriodoVturb range={range} onChange={setRange} />
+          : <span className="text-muted-foreground/60">(sem data disponível nesta plataforma)</span>}
+        {crawling && <span className="inline-flex items-center gap-1.5 text-primary/90"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {crawlMsg}</span>}
         <span className="ml-auto text-muted-foreground/70">{lista.length} conteúdos</span>
       </div>
       {stories && stories.length > 0 && <StoriesStrip itens={stories} handle={(url.match(/instagram\.com\/([A-Za-z0-9_.]+)/i)?.[1]) || 'perfil'} onTranscrever={onTranscrever} />}
