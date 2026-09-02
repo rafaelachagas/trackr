@@ -476,15 +476,19 @@ def _ig_feed(handle: str, sessionid: str, limit: int):
     vids = [_ig_feed_item_to_dict(it) for it in (data.get("items") or [])]
     max_id = data.get("next_max_id") or ""
     more = data.get("more_available")
-    # Paginação: as próximas páginas vão por uid.
+    # Paginação: continua no MESMO endpoint by-username com max_id (o endpoint
+    # por uid não pagina — devolve vazio com max_id).
     guard = 0
-    while len(vids) < limit and more and max_id and uid and guard < 10:
+    while len(vids) < limit and more and max_id and guard < 12:
         guard += 1
-        r = s.get(f"https://www.instagram.com/api/v1/feed/user/{uid}/?count=12&max_id={max_id}", headers=hh, timeout=45)
+        r = s.get(f"https://www.instagram.com/api/v1/feed/user/{handle}/username/?count=12&max_id={max_id}", headers=hh, timeout=45)
         if r.status_code != 200:
             break
         data = r.json() or {}
-        for it in (data.get("items") or []):
+        novos = data.get("items") or []
+        if not novos:
+            break
+        for it in novos:
             vids.append(_ig_feed_item_to_dict(it))
         more = data.get("more_available")
         max_id = data.get("next_max_id") or ""
