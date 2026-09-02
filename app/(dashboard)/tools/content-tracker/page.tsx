@@ -443,12 +443,13 @@ function Viewer({ videos, url, onTranscrever }: { videos: VideoViral[]; url: str
     let cancel = false
     ;(async () => {
       setCrawling(true); setCrawlMsg('Puxando o histórico…')
-      let acc: VideoViral[] = [], cursor = '', pgs = 0
+      const vistos = new Set<string>(), acc: VideoViral[] = []
+      let cursor = '', pgs = 0
       while (!cancel && pgs < 80) {
         pgs++
         const r = await carregarPaginaConteudo(url, cursor, 60)
         if (!r.success || !r.videos.length) { setEsgotou(true); break }
-        acc = acc.concat(r.videos)
+        for (const v of r.videos) { const k = v.id || v.url; if (k && !vistos.has(k)) { vistos.add(k); acc.push(v) } }
         setHistorico([...acc]); setCrawlMsg(`${acc.length} conteúdos carregados…`)
         const velho = Math.min(...acc.map((v) => v.data ?? Infinity))
         if (!r.mais || !r.proximo) { setEsgotou(true); break }
