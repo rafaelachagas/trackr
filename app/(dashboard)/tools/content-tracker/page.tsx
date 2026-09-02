@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Clapperboard, Search, Play, Pause, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock, Download, Volume2, VolumeX, ChevronLeft, ChevronRight } from 'lucide-react'
-import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, linkBaixarStory, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
+import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, linkBaixarStory, agruparPerfis, desagruparPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
 
 const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 const FREQ = ['1 dia', '3 dias', '5 dias', '7 dias', '14 dias']
@@ -35,7 +35,9 @@ export default function ContentTrackerPage() {
   const [aba, setAba] = useState<'buscar' | 'perfis'>('buscar')
   const [perfis, setPerfis] = useState<PerfilConteudo[]>([])
   const [carregandoPerfis, setCarregandoPerfis] = useState(true)
-  const [aberto, setAberto] = useState<PerfilConteudo | null>(null)
+  const [aberto, setAberto] = useState<PerfilConteudo[] | null>(null)  // um GRUPO (1+ plataformas da mesma pessoa)
+  const [tab, setTab] = useState(0)
+  const [sugestao, setSugestao] = useState<{ novoId: string; comId: string; comHandle: string; comNome?: string | null } | null>(null)
 
   // Busca avulsa (aba Buscar)
   const [url, setUrl] = useState('')
@@ -102,12 +104,13 @@ export default function ContentTrackerPage() {
     setSalvando(false)
     if (!r.success) { setErro(r.error || 'Falha ao salvar.'); return }
     if (r.data) setPerfis(r.data)
+    if (r.sugestao && r.novoId) setSugestao({ novoId: r.novoId, comId: r.sugestao.comId, comHandle: r.sugestao.comHandle, comNome: r.sugestao.comNome })
     setUrl(''); setPreview(null); setAba('perfis')
   }
   async function remover(id: string) {
     if (!confirm('Parar de rastrear este perfil?')) return
     const r = await removerPerfilConteudo(id)
-    if (r.success) { setPerfis(r.data); if (aberto?.id === id) setAberto(null) }
+    if (r.success) { setPerfis(r.data); if (aberto?.some((p) => p.id === id)) setAberto(null) }
   }
   async function atualizar(id: string) {
     setAtualizando(true)
@@ -115,9 +118,33 @@ export default function ContentTrackerPage() {
     setAtualizando(false)
     if (r.success && r.perfil) {
       setPerfis((ps) => ps.map((p) => (p.id === id ? r.perfil! : p)))
-      if (aberto?.id === id) setAberto(r.perfil)
+      setAberto((g) => g ? g.map((p) => (p.id === id ? r.perfil! : p)) : g)
     } else if (r.error) setErro(r.error)
   }
+  async function juntar(novoId: string, comId: string) {
+    const r = await agruparPerfis(novoId, comId)
+    if (r.success) setPerfis(r.data)
+    setSugestao(null)
+  }
+  async function separar(id: string) {
+    const r = await desagruparPerfil(id)
+    if (r.success) { setPerfis(r.data); setAberto(null) }
+  }
+  async function removerGrupo(ids: string[]) {
+    if (!confirm(ids.length > 1 ? 'Parar de rastrear esta pessoa (todas as plataformas)?' : 'Parar de rastrear este perfil?')) return
+    let data = perfis
+    for (const id of ids) { const r = await removerPerfilConteudo(id); if (r.success) data = r.data }
+    setPerfis(data)
+    if (aberto?.some((p) => ids.includes(p.id))) setAberto(null)
+  }
+
+  // Agrupa perfis da mesma pessoa (mesmo grupoId) num card só.
+  const grupos = useMemo(() => {
+    const map = new Map<string, PerfilConteudo[]>()
+    for (const p of perfis) { const k = p.grupoId || p.id; const arr = map.get(k); if (arr) arr.push(p); else map.set(k, [p]) }
+    return Array.from(map.values())
+  }, [perfis])
+  const novoPerfil = sugestao ? perfis.find((p) => p.id === sugestao.novoId) : null
   async function transcrever(v: VideoViral) {
     setTrans({ v, status: 'Baixando o vídeo...' })
     try {
@@ -138,25 +165,44 @@ export default function ContentTrackerPage() {
 
   const cardCls = 'bg-card border border-border rounded-2xl'
 
-  // ---------- DETALHE DE UM PERFIL (espionagem) ----------
+  // ---------- DETALHE DE UM PERFIL/GRUPO (espionagem) ----------
   if (aberto) {
-    const plat = PLAT[aberto.plataforma]
+    const membros = aberto
+    const atual = membros[Math.min(tab, membros.length - 1)]
+    const plat = PLAT[atual.plataforma]
+    const nome = membros.find((m) => m.nome)?.nome
     return (
       <div className="max-w-6xl mx-auto space-y-5 py-2">
         <button onClick={() => setAberto(null)} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"><ArrowLeft className="w-4 h-4" /> Perfis rastreados</button>
         <div className={`${cardCls} p-5 flex items-center gap-4 flex-wrap`}>
-          <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-black shrink-0" style={{ backgroundColor: plat.cor + '22', color: plat.cor }}>{aberto.handle.slice(0, 2).toUpperCase()}</div>
+          <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-black shrink-0" style={{ backgroundColor: plat.cor + '22', color: plat.cor }}>{(nome || atual.handle).slice(0, 2).toUpperCase()}</div>
           <div className="min-w-0 flex-1">
-            <p className="text-lg font-bold text-foreground truncate">@{aberto.handle}</p>
-            <p className="text-xs text-muted-foreground"><span style={{ color: plat.cor }}>{plat.label}</span> · {aberto.virais.length} virais · atualizado {haQuanto(aberto.ultimaBusca)}</p>
+            <p className="text-lg font-bold text-foreground truncate">{nome || `@${atual.handle}`}</p>
+            <p className="text-xs text-muted-foreground"><span style={{ color: plat.cor }}>{plat.label}</span> · @{atual.handle} · {atual.virais.length} virais · atualizado {haQuanto(atual.ultimaBusca)}</p>
           </div>
-          <a href={aberto.url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5">Abrir perfil</a>
-          <button onClick={() => atualizar(aberto.id)} disabled={atualizando} className="px-3 py-2 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5">
+          <a href={atual.url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5">Abrir perfil</a>
+          <button onClick={() => atualizar(atual.id)} disabled={atualizando} className="px-3 py-2 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5">
             {atualizando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Atualizar virais
           </button>
         </div>
+        {/* abas de plataforma (quando é a mesma pessoa em mais de uma rede) */}
+        {membros.length > 1 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {membros.map((m, i) => {
+              const pl = PLAT[m.plataforma]
+              return (
+                <button key={m.id} onClick={() => setTab(i)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border inline-flex items-center gap-1.5 transition ${i === tab ? 'text-white' : 'text-muted-foreground border-border hover:bg-white/5'}`}
+                  style={i === tab ? { backgroundColor: pl.cor + '22', borderColor: pl.cor + '66', color: pl.cor } : {}}>
+                  {pl.label} · @{m.handle}
+                </button>
+              )
+            })}
+            <button onClick={() => separar(atual.id)} className="ml-auto text-[11px] text-muted-foreground hover:text-rose-300">separar esta aba</button>
+          </div>
+        )}
         {erro && <p className="text-xs text-rose-300/90">{erro}</p>}
-        <Viewer videos={aberto.virais} url={aberto.url} onTranscrever={transcrever} />
+        <Viewer key={atual.id} videos={atual.virais} url={atual.url} onTranscrever={transcrever} />
       </div>
     )
   }
@@ -310,29 +356,50 @@ export default function ContentTrackerPage() {
             <p className="text-xs text-muted-foreground mt-1">Vá em <b>Buscar perfil</b>, cole um @ do TikTok/Insta/YouTube e clique em <b>Rastrear perfil</b>.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {perfis.map((p) => {
-              const plat = PLAT[p.plataforma]
-              const topThumb = p.virais[0]?.thumb
-              return (
-                <div key={p.id} className={`${cardCls} overflow-hidden group cursor-pointer`} onClick={() => setAberto(p)}>
-                  <div className="relative h-32 bg-black/30 overflow-hidden">
-                    {topThumb && <img src={topThumb} alt="" className="w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition" loading="lazy" />}
-                    <span className="absolute top-2 left-2 text-[10px] font-black px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: plat.cor + 'cc' }}>{plat.label}</span>
-                    <button onClick={(e) => { e.stopPropagation(); remover(p.id) }} className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white/80 hover:text-rose-300 hover:bg-black/80 transition"><Trash2 className="w-3.5 h-3.5" /></button>
-                  </div>
-                  <div className="p-3">
-                    <p className="text-sm font-bold text-foreground truncate">@{p.handle}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">{p.virais.length} virais · atualizado {haQuanto(p.ultimaBusca)}</p>
-                    <p className="text-[10px] mt-1">
-                      {p.freqDias
-                        ? <span className="inline-flex items-center gap-1 text-emerald-300"><Clock className="w-3 h-3" /> rastreando a cada {p.freqDias}d</span>
-                        : <span className="text-muted-foreground/70">sem agendamento</span>}
-                    </p>
-                  </div>
+          <div className="space-y-4">
+            {/* sugestão de agrupamento (correlação de sinal médio) */}
+            {sugestao && novoPerfil && (
+              <div className="rounded-xl border border-primary/30 bg-primary/10 p-3.5 flex items-center gap-3 flex-wrap">
+                <Info className="w-4 h-4 text-primary shrink-0" />
+                <p className="text-xs text-foreground/90 flex-1 min-w-[200px]">
+                  <b>@{novoPerfil.handle}</b> parece ser a mesma pessoa que <b>@{sugestao.comHandle}</b>{sugestao.comNome ? ` (${sugestao.comNome})` : ''}. Juntar num card só, com abas?
+                </p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => juntar(sugestao.novoId, sugestao.comId)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90">Juntar</button>
+                  <button onClick={() => setSugestao(null)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:bg-white/5">Agora não</button>
                 </div>
-              )
-            })}
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {grupos.map((g) => {
+                const rep = g.reduce((a, b) => (b.virais.length > a.virais.length ? b : a))
+                const nome = g.find((m) => m.nome)?.nome
+                const topThumb = rep.virais[0]?.thumb
+                const totalVirais = g.reduce((s, m) => s + m.virais.length, 0)
+                const ultima = g.map((m) => m.ultimaBusca).filter(Boolean).sort().slice(-1)[0] || null
+                const rastreando = g.filter((m) => m.freqDias)
+                return (
+                  <div key={g.map((m) => m.id).join('_')} className={`${cardCls} overflow-hidden group cursor-pointer`} onClick={() => { setAberto(g); setTab(0) }}>
+                    <div className="relative h-32 bg-black/30 overflow-hidden">
+                      {topThumb && <img src={topThumb} alt="" className="w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition" loading="lazy" />}
+                      <div className="absolute top-2 left-2 flex gap-1">
+                        {g.map((m) => { const pl = PLAT[m.plataforma]; return <span key={m.id} className="text-[10px] font-black px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: pl.cor + 'cc' }}>{pl.label}</span> })}
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); removerGrupo(g.map((m) => m.id)) }} className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white/80 hover:text-rose-300 hover:bg-black/80 transition"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-sm font-bold text-foreground truncate">{nome || `@${rep.handle}`}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{g.length > 1 ? `${g.length} plataformas · ` : ''}{totalVirais} virais · atualizado {haQuanto(ultima)}</p>
+                      <p className="text-[10px] mt-1">
+                        {rastreando.length
+                          ? <span className="inline-flex items-center gap-1 text-emerald-300"><Clock className="w-3 h-3" /> rastreando {rastreando.length > 1 ? `${rastreando.length} redes` : `a cada ${rastreando[0].freqDias}d`}</span>
+                          : <span className="text-muted-foreground/70">sem agendamento</span>}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )
       )}

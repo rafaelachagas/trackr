@@ -433,9 +433,38 @@ def _ig_feed_item_to_dict(it: dict) -> dict:
     }
 
 
+def _ig_meta_from_html(html: str) -> dict:
+    def g(pat):
+        m = re.search(pat, html)
+        return m.group(1) if m else None
+
+    def dec(x):
+        if not x:
+            return None
+        try:
+            return json.loads('"' + x + '"')
+        except Exception:
+            return x
+    return {
+        "nome": dec(g(r'"full_name":"([^"]*)"')),
+        "bio": dec(g(r'"biography":"([^"]*)"')),
+        "link": dec(g(r'"external_url":"([^"]*)"')),
+    }
+
+
 def _ig_feed(handle: str, sessionid: str, limit: int):
     s, _ = _ig_cffi_session(sessionid)
-    uid = _ig_uid_do_handle(s, handle)
+    html = s.get(f"https://www.instagram.com/{handle}/", timeout=45).text
+    m = (re.search(r'"profilePage_(\d+)"', html)
+         or re.search(r'"user_id":"(\d+)"', html)
+         or re.search(r'"id":"(\d+)"', html))
+    if not m:
+        if "not-found" in html or "Page Not Found" in html:
+            raise RuntimeError("perfil não encontrado")
+        raise RuntimeError("não consegui ler o perfil (Instagram pode ter mudado a página)")
+    uid = m.group(1)
+    _IG_UID_CACHE[handle.lower()] = uid
+    meta = _ig_meta_from_html(html)
     hh = {
         "x-ig-app-id": IG_APP_ID,
         "x-requested-with": "XMLHttpRequest",
@@ -463,7 +492,7 @@ def _ig_feed(handle: str, sessionid: str, limit: int):
         max_id = data.get("next_max_id") or ""
         if not max_id:
             break
-    return vids[:limit]
+    return vids[:limit], meta
 
 
 def _ig_stories(handle: str, sessionid: str):
@@ -514,8 +543,10 @@ def perfil():
         if not handle:
             return jsonify(error="perfil inválido"), 400
         try:
-            vids = _ig_feed(handle, sid, limit)  # curl_cffi + /feed/user/
-            return jsonify(ok=True, videos=vids, total=len(vids),
+            vids, meta = _ig_feed(handle, sid, limit)  # curl_cffi + /feed/user/
+            if not (meta.get("nome")):
+                meta["nome"] = handle
+            return jsonify(ok=True, videos=vids, total=len(vids), perfil=meta,
                            com_views=sum(1 for v in vids if isinstance(v.get("views"), int)), fonte="ig-feed")
         except Exception as e:
             return jsonify(error=_erro_proxy(str(e)) or f"instagram: {e}"), 502
@@ -549,10 +580,15 @@ def perfil():
                 "thumb": e.get("thumbnail") or (e.get("thumbnails") or [{}])[-1].get("url"),
             })
         com_views = [v for v in vids if isinstance(v.get("views"), int)]
+        meta = {
+            "nome": data.get("uploader") or data.get("channel") or data.get("title"),
+            "bio": data.get("description"),
+            "link": data.get("channel_url") or data.get("uploader_url") or data.get("webpage_url"),
+        }
         # Devolve na ORDEM RECENTE (do feed). O The Track ordena por views quando
         # quer a aba "virais" — assim a mesma resposta serve pro feed e pros virais.
         saida = vids[:limit]
-        return jsonify(ok=True, videos=saida, total=len(vids), com_views=len(com_views))
+        return jsonify(ok=True, videos=saida, total=len(vids), perfil=meta, com_views=len(com_views))
     except Exception as e:
         return jsonify(error=f"falha no perfil: {e}"), 500
     finally:

@@ -13,6 +13,7 @@ export interface VideoViral {
   id: string; url: string; titulo: string; views: number | null; likes: number | null
   comentarios: number | null; duracao: number | null; thumb: string | null
 }
+export interface PerfilMeta { nome?: string | null; bio?: string | null; link?: string | null }
 export interface PerfilConteudo {
   id: string
   url: string
@@ -22,6 +23,10 @@ export interface PerfilConteudo {
   ultimaBusca: string | null
   freqDias: number | null   // re-puxa os virais a cada N dias (null = só salvo, sem agendamento)
   virais: VideoViral[]
+  nome?: string | null      // nome de exibição (ex.: "Rafaela Chagas")
+  bio?: string | null
+  link?: string | null      // link externo da bio
+  grupoId?: string          // perfis da MESMA pessoa compartilham o grupoId
 }
 
 function plataformaDe(url: string): PerfilConteudo['plataforma'] {
@@ -112,7 +117,7 @@ export async function salvarCookieInstagram(cookie: string): Promise<{ success: 
 
 // Puxa os vídeos virais de um perfil pelo transcritor da VPS (yt-dlp). Se for
 // Instagram e não vier cookie, usa o cookie guardado no servidor.
-export async function buscarViraisPerfil(url: string, igCookie = '', limit = 24): Promise<{ success: boolean; videos: VideoViral[]; error?: string }> {
+export async function buscarViraisPerfil(url: string, igCookie = '', limit = 24): Promise<{ success: boolean; videos: VideoViral[]; perfil?: PerfilMeta; error?: string }> {
   if (!/^https?:\/\//i.test(url)) return { success: false, videos: [], error: 'Cole a URL do perfil (com https://).' }
   if (!igCookie && /instagram\.com/i.test(url)) igCookie = await cookieInstagram()
   if (/instagram\.com/i.test(url) && !igCookie) return { success: false, videos: [], error: 'Instagram ainda não conectado — configure o cookie da conta dedicada (uma vez) no topo da aba.' }
@@ -126,7 +131,7 @@ export async function buscarViraisPerfil(url: string, igCookie = '', limit = 24)
     const j = await r.json().catch(() => null)
     if (!j) return { success: false, videos: [], error: 'Resposta inválida do serviço.' }
     if (j.error) return { success: false, videos: [], error: j.error }
-    return { success: true, videos: j.videos || [] }
+    return { success: true, videos: j.videos || [], perfil: j.perfil || undefined }
   } catch (e: any) {
     return { success: false, videos: [], error: e?.name === 'AbortError' ? 'O perfil demorou demais (timeout).' : 'Não consegui falar com o serviço na VPS.' }
   }
@@ -167,8 +172,35 @@ export async function listarPerfisConteudo(): Promise<{ success: boolean; data: 
   return { success: true, data: await lerPerfis(orgId) }
 }
 
-// Adiciona um perfil pra rastrear (já puxa os virais e cacheia).
-export async function salvarPerfilConteudo(url: string, igCookie = '', freqDias: number | null = null): Promise<{ success: boolean; data?: PerfilConteudo[]; error?: string }> {
+// --- Correlação: descobre se dois perfis são a MESMA pessoa ---
+function slug(s?: string | null): string {
+  // NFD + remover tudo que não é a-z0-9 já elimina acentos (marcas combinantes)
+  return (s || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+}
+// Pontua (0..100) o quanto `novo` parece ser a mesma pessoa que `p`.
+function scoreCorrelacao(novo: { handle: string; nome?: string | null; bio?: string | null; link?: string | null; plataforma: string }, p: PerfilConteudo): number {
+  if (p.plataforma === novo.plataforma) return 0 // mesma plataforma = perfis distintos
+  let sc = 0
+  const h1 = slug(novo.handle), h2 = slug(p.handle)
+  // 1) link cruzado na bio/link (o sinal mais forte: o @ de um aparece na bio do outro)
+  const txtNovo = `${slug(novo.bio)} ${slug(novo.link)}`
+  const txtP = `${slug(p.bio)} ${slug(p.link)}`
+  if (h2 && h2.length >= 4 && txtNovo.includes(h2)) sc += 60
+  if (h1 && h1.length >= 4 && txtP.includes(h1)) sc += 60
+  // 2) mesmo nome de exibição
+  const n1 = slug(novo.nome), n2 = slug(p.nome)
+  if (n1 && n2 && n1.length >= 4 && n1 === n2) sc += 45
+  // 3) um @ contém o outro (byrafaelachagas ⊃ rafaelachagas)
+  if (h1 && h2 && h1.length >= 4 && h2.length >= 4 && (h1.includes(h2) || h2.includes(h1))) sc += 30
+  return Math.min(100, sc)
+}
+
+export interface SugestaoGrupo { comId: string; comHandle: string; comNome?: string | null; score: number }
+
+// Adiciona um perfil pra rastrear (já puxa os virais e cacheia). Correlaciona
+// automaticamente com perfis já rastreados da mesma pessoa (TikTok/Insta/YT):
+// sinal forte (>=60) junta sozinho; sinal médio (>=30) devolve uma `sugestao`.
+export async function salvarPerfilConteudo(url: string, igCookie = '', freqDias: number | null = null): Promise<{ success: boolean; data?: PerfilConteudo[]; novoId?: string; sugestao?: SugestaoGrupo; error?: string }> {
   try {
     const orgId = await resolveOrgId()
     if (!orgId) throw new Error('Organização não encontrada')
@@ -182,13 +214,57 @@ export async function salvarPerfilConteudo(url: string, igCookie = '', freqDias:
     const novo: PerfilConteudo = {
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       url, plataforma: plataformaDe(url), handle: handleDe(url), addedAt: agora, ultimaBusca: agora, freqDias, virais: r.videos.slice(0, 24),
+      nome: r.perfil?.nome ?? null, bio: r.perfil?.bio ?? null, link: r.perfil?.link ?? null,
+    }
+    // Correlação: acha o melhor candidato entre os já rastreados.
+    let melhor: { p: PerfilConteudo; score: number } | null = null
+    for (const p of perfis) {
+      const s = scoreCorrelacao(novo, p)
+      if (s > 0 && (!melhor || s > melhor.score)) melhor = { p, score: s }
+    }
+    let sugestao: SugestaoGrupo | undefined
+    if (melhor && melhor.score >= 60) {
+      // sinal forte → junta automaticamente
+      const gid = melhor.p.grupoId || melhor.p.id
+      melhor.p.grupoId = gid
+      novo.grupoId = gid
+    } else if (melhor && melhor.score >= 30) {
+      sugestao = { comId: melhor.p.id, comHandle: melhor.p.handle, comNome: melhor.p.nome, score: melhor.score }
     }
     perfis.unshift(novo)
     await gravarPerfis(orgId, perfis)
-    return { success: true, data: perfis }
+    return { success: true, data: perfis, novoId: novo.id, sugestao }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
+}
+
+// Junta dois perfis no mesmo grupo (mesma pessoa).
+export async function agruparPerfis(id: string, comId: string): Promise<{ success: boolean; data: PerfilConteudo[] }> {
+  const orgId = await resolveOrgId()
+  if (!orgId) return { success: false, data: [] }
+  const perfis = await lerPerfis(orgId)
+  const a = perfis.find((p) => p.id === id), b = perfis.find((p) => p.id === comId)
+  if (a && b) {
+    const gid = b.grupoId || a.grupoId || b.id
+    // reetiqueta todos que já estavam em qualquer um dos grupos
+    const antigos = new Set([a.grupoId, b.grupoId, a.id, b.id].filter(Boolean) as string[])
+    for (const p of perfis) if (p.grupoId && antigos.has(p.grupoId)) p.grupoId = gid
+    a.grupoId = gid; b.grupoId = gid
+    await gravarPerfis(orgId, perfis)
+  }
+  return { success: true, data: perfis }
+}
+
+// Tira um perfil do grupo (volta a ser um card sozinho).
+export async function desagruparPerfil(id: string): Promise<{ success: boolean; data: PerfilConteudo[] }> {
+  const orgId = await resolveOrgId()
+  if (!orgId) return { success: false, data: [] }
+  const perfis = await lerPerfis(orgId)
+  const p = perfis.find((x) => x.id === id)
+  if (p) { delete p.grupoId; await gravarPerfis(orgId, perfis) }
+  await gravarPerfis(orgId, perfis)
+  return { success: true, data: perfis }
 }
 
 export async function removerPerfilConteudo(id: string): Promise<{ success: boolean; data: PerfilConteudo[] }> {
@@ -210,6 +286,7 @@ export async function atualizarViraisPerfil(id: string, igCookie = ''): Promise<
     const r = await buscarViraisPerfil(p.url, igCookie)
     if (!r.success) return { success: false, error: r.error }
     p.virais = r.videos.slice(0, 24)
+    if (r.perfil) { p.nome = r.perfil.nome ?? p.nome; p.bio = r.perfil.bio ?? p.bio; p.link = r.perfil.link ?? p.link }
     p.ultimaBusca = new Date().toISOString()
     await gravarPerfis(orgId, perfis)
     return { success: true, perfil: p }
