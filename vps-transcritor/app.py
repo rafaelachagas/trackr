@@ -590,6 +590,10 @@ def ig_login():
         from instagrapi.exceptions import TwoFactorRequired, ChallengeRequired, BadPassword
         cl = Client()
         cl.delay_range = [1, 3]
+        # CRÍTICO: logar PELO PROXY, pra a sessão nascer no IP residencial BR
+        # (senão nasce no IP do datacenter e o Instagram flaga na hora).
+        if PROXY_URL:
+            cl.set_proxy(PROXY_URL)
         try:
             cl.login(u, p, verification_code=code)
         except TwoFactorRequired:
