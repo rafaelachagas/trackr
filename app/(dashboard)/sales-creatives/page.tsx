@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
 import { formatarMoeda, extrairCriativo } from '@/lib/utils'
-import { ArrowDown, Trophy, ShoppingCart, TrendingUp, Undo2 } from 'lucide-react'
+import { ArrowDown, Trophy, ShoppingCart, TrendingUp, Undo2, Download, ChevronDown } from 'lucide-react'
 import type { CriativoBreak } from '@/app/api/dashboard/vendas-breakdown/route'
 import SeletorPeriodoVturb, { rangeDoPreset, type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
 import ModalPreviewCriativo from '@/components/dashboard/ModalPreviewCriativo'
@@ -66,6 +66,62 @@ export default function VendasCriativosPage() {
   }, [linhas, sortKey])
   const temTiming = useMemo(() => linhas.some((c) => c.reembTiming > 0), [linhas])
 
+  const [menuExport, setMenuExport] = useState(false)
+
+  // Monta as linhas do export a partir do que está na tela (período + ordenação).
+  function dadosExport() {
+    return ordenadas.map((c, i) => ({
+      '#': i + 1,
+      Criativo: c.criativo,
+      Codigo: c.codigo ?? '',
+      Fase: c.fase ?? '',
+      Front: c.front,
+      Upsell: c.upsell,
+      'Taxa Upsell %': +taxaUpsell(c).toFixed(1),
+      Reembolsos: c.reembolsoCount,
+      'Taxa Reembolso %': +taxaReemb(c).toFixed(1),
+      'Valor Reembolso': +(c.reembolsoValor || 0).toFixed(2),
+      'Mediana ate Reemb (h)': c.medHorasReemb != null ? Math.round(c.medHorasReemb) : '',
+      'Reemb 24h %': c.reembTiming > 0 ? +pct24(c).toFixed(1) : '',
+      'Reemb 7d %': c.reembTiming > 0 ? +((c.reemb7d / c.reembTiming) * 100).toFixed(1) : '',
+    }))
+  }
+  const nomeArquivo = `vendas-criativos-${range.ini}_${range.fim}`
+  function baixar(blob: Blob, ext: string) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${nomeArquivo}.${ext}`
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href); setMenuExport(false)
+  }
+  function exportarCSV() {
+    const rows = dadosExport(); if (!rows.length) return
+    const cols = Object.keys(rows[0])
+    const esc = (x: any) => `"${String(x).replace(/"/g, '""')}"`
+    const csv = [cols.join(';'), ...rows.map((r) => cols.map((c) => esc((r as any)[c])).join(';'))].join('\n')
+    baixar(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }), 'csv')
+  }
+  async function exportarXLSX() {
+    const rows = dadosExport(); if (!rows.length) return
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Criativos')
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    baixar(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'xlsx')
+  }
+  function exportarMD() {
+    const rows = dadosExport(); if (!rows.length) return
+    const cols = Object.keys(rows[0])
+    const linha = (vals: any[]) => `| ${vals.join(' | ')} |`
+    const t = [
+      `# Vendas × Criativos — ${range.ini} a ${range.fim}`,
+      '',
+      `Front: ${totais.front} · Upsell: ${totais.upsell} · Reembolsos: ${totais.reemb} (${fmtPct(taxaReembMedia)})`,
+      '',
+      linha(cols),
+      linha(cols.map(() => '---')),
+      ...rows.map((r) => linha(cols.map((c) => (r as any)[c]))),
+    ].join('\n')
+    baixar(new Blob([t], { type: 'text/markdown;charset=utf-8' }), 'md')
+  }
+
   const priv = (n: React.ReactNode) => (isPrivate ? '••' : n)
   const fmtPct = (n: number) => `${n.toFixed(1).replace('.', ',')}%`
   const taxaUpsellMedia = totais.front > 0 ? (totais.upsell / totais.front) * 100 : 0
@@ -78,7 +134,22 @@ export default function VendasCriativosPage() {
           <Trophy className="w-5 h-5 text-primary" />
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Vendas × Criativos</h1>
         </div>
-        <SeletorPeriodoVturb range={range} onChange={setRange} />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button onClick={() => setMenuExport((v) => !v)} onBlur={() => setTimeout(() => setMenuExport(false), 150)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border border-border text-foreground/90 hover:bg-accent/60 transition">
+              <Download className="w-4 h-4" /> Exportar <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+            {menuExport && (
+              <div className="absolute right-0 mt-1 z-20 w-48 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+                <button onMouseDown={exportarXLSX} className="w-full text-left px-4 py-2.5 text-sm hover:bg-accent/60 flex items-center gap-2"><span className="text-emerald-400 font-bold text-xs">XLS</span> Excel (.xlsx)</button>
+                <button onMouseDown={exportarCSV} className="w-full text-left px-4 py-2.5 text-sm hover:bg-accent/60 flex items-center gap-2 border-t border-border"><span className="text-blue-400 font-bold text-xs">CSV</span> CSV (.csv)</button>
+                <button onMouseDown={exportarMD} className="w-full text-left px-4 py-2.5 text-sm hover:bg-accent/60 flex items-center gap-2 border-t border-border"><span className="text-violet-400 font-bold text-xs">MD</span> Markdown (Claude)</button>
+              </div>
+            )}
+          </div>
+          <SeletorPeriodoVturb range={range} onChange={setRange} />
+        </div>
       </div>
 
       {/* Totais do período */}
