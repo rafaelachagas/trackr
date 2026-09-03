@@ -31,6 +31,7 @@ import {
   Bell,
   FileText,
   Clapperboard,
+  ListTodo,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
@@ -67,6 +68,7 @@ const ferramentas = [
   { href: '/tools/page-analyzer', label: 'Analisador de Páginas', icon: Search, beta: true },
   { href: '/tools/alerts', label: 'Central de Alertas', icon: Bell, beta: true },
   { href: '/tools/simulator', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
+  { href: '/tools/tasks', label: 'Afazeres', icon: ListTodo, beta: true },
 ]
 
 export default function Sidebar() {

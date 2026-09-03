@@ -8,7 +8,7 @@ import {
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
   Wrench, Binoculars, Search, Video, MonitorPlay, Brain, FolderSearch, Wand2, Bell,
-  Filter as FilterIcon, FileText, Clapperboard,
+  Filter as FilterIcon, FileText, Clapperboard, ListTodo,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -40,6 +40,7 @@ const ferramentas = [
   { href: '/tools/copy-generator', label: 'Gerador de Copy', icon: Wand2 },
   { href: '/tools/alerts', label: 'Central de Alertas', icon: Bell },
   { href: '/tools/simulator', label: 'Simulador de Funil', icon: TrendingUp },
+  { href: '/tools/tasks', label: 'Afazeres', icon: ListTodo },
 ]
 
 export default function MobileNav() {
