@@ -98,7 +98,8 @@ export async function GET() {
     })
   }
 
-  resultado.sort((a, b) => b.receita_total - a.receita_total)
+  // Do mais escalado (maior investimento) ao menos escalado.
+  resultado.sort((a, b) => b.gasto_total - a.gasto_total)
 
   return NextResponse.json({ criativos: resultado })
 }

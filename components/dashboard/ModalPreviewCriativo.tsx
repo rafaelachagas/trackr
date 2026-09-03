@@ -11,7 +11,7 @@ import type { PreviewCriativo } from '@/app/api/criativos/preview/route'
 import type { HistoricoDetalhe } from '@/app/api/criativos/historico-detalhe/route'
 import { useDashboard } from '@/context/DashboardContext'
 
-const fmtMoeda = (v: number) => v >= 1000 ? `R$ ${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil` : `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const fmtMoeda = (v: number) => v >= 1_000_000 ? `R$ ${(v / 1_000_000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi` : v >= 1000 ? `R$ ${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil` : `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtMes = (m: string) => { const [a, mm] = m.split('-'); return `${['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][+mm]}/${a.slice(2)}` }
 
 const roasCor = (r: number | null) => r == null ? 'text-muted-foreground' : r >= 2 ? 'text-emerald-400' : r >= 1 ? 'text-yellow-400' : 'text-rose-400'

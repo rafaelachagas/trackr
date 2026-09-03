@@ -6,6 +6,7 @@ import { useDashboard } from '@/context/DashboardContext'
 import ModalPreviewCriativo from '@/components/dashboard/ModalPreviewCriativo'
 
 function fmt(v: number) {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`
   if (v >= 1000) return `R$ ${(v / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })} mil`
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
 }
