@@ -8,6 +8,21 @@
 import React, { useEffect, useState } from 'react'
 import { X, ExternalLink, ImageOff, Loader2 } from 'lucide-react'
 import type { PreviewCriativo } from '@/app/api/criativos/preview/route'
+import type { HistoricoDetalhe } from '@/app/api/criativos/historico-detalhe/route'
+import { useDashboard } from '@/context/DashboardContext'
+
+const fmtMoeda = (v: number) => v >= 1000 ? `R$ ${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil` : `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const fmtMes = (m: string) => { const [a, mm] = m.split('-'); return `${['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][+mm]}/${a.slice(2)}` }
+
+const roasCor = (r: number | null) => r == null ? 'text-muted-foreground' : r >= 2 ? 'text-emerald-400' : r >= 1 ? 'text-yellow-400' : 'text-rose-400'
+function MiniStat({ label, valor, cor }: { label: string; valor: string; cor: string }) {
+  return (
+    <div className="rounded-lg bg-muted/30 border border-border px-2 py-1.5 text-center">
+      <div className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={`text-sm font-bold tabular-nums leading-tight ${cor}`}>{valor}</div>
+    </div>
+  )
+}
 
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Ativo', PAUSED: 'Pausado', ARCHIVED: 'Arquivado', DELETED: 'Removido',
@@ -19,14 +34,16 @@ const STATUS_COR: Record<string, string> = {
 }
 
 export default function ModalPreviewCriativo({ codigo, onFechar }: { codigo: string | null; onFechar: () => void }) {
+  const { isPrivate } = useDashboard()
   const [dados, setDados] = useState<PreviewCriativo | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [imgErr, setImgErr] = useState(false)
+  const [hist, setHist] = useState<HistoricoDetalhe | null>(null)
 
   useEffect(() => {
     if (!codigo) return
-    setCarregando(true); setErro(null); setDados(null); setImgErr(false)
+    setCarregando(true); setErro(null); setDados(null); setImgErr(false); setHist(null)
     fetch(`/api/criativos/preview?codigo=${encodeURIComponent(codigo)}`, { cache: 'no-store' })
       .then(async (r) => {
         const j = await r.json()
@@ -35,6 +52,9 @@ export default function ModalPreviewCriativo({ codigo, onFechar }: { codigo: str
       })
       .catch((e) => setErro(e.message))
       .finally(() => setCarregando(false))
+    // histórico financeiro (não bloqueia o preview)
+    fetch(`/api/criativos/historico-detalhe?codigo=${encodeURIComponent(codigo)}`, { cache: 'no-store' })
+      .then((r) => r.ok ? r.json() : null).then((j) => setHist(j)).catch(() => {})
   }, [codigo])
 
   if (!codigo) return null
@@ -43,7 +63,7 @@ export default function ModalPreviewCriativo({ codigo, onFechar }: { codigo: str
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={onFechar}>
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-card border border-border shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5">
           <h3 className="text-sm font-bold text-foreground uppercase tracking-widest">{codigo}</h3>
           <button onClick={onFechar} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition"><X className="w-4 h-4" /></button>
@@ -92,6 +112,45 @@ export default function ModalPreviewCriativo({ codigo, onFechar }: { codigo: str
                 </a>
               )}
             </>
+          )}
+
+          {/* Histórico financeiro — gasto × receita, acumulado e por mês (todo o período) */}
+          {hist && hist.total.vendas + hist.meses.length > 0 && (
+            <div className="mt-5 pt-5 border-t border-border">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Histórico do criativo · todo o período</p>
+              <div className="grid grid-cols-4 gap-2 mb-4">
+                <MiniStat label="Gasto" valor={isPrivate ? '••' : fmtMoeda(hist.total.gasto)} cor="text-rose-400" />
+                <MiniStat label="Receita" valor={isPrivate ? '••' : fmtMoeda(hist.total.receita)} cor="text-emerald-400" />
+                <MiniStat label="ROAS" valor={isPrivate ? '•' : (hist.total.roas == null ? '—' : `${hist.total.roas.toFixed(2)}x`)} cor={roasCor(hist.total.roas)} />
+                <MiniStat label="Vendas" valor={isPrivate ? '••' : String(hist.total.vendas)} cor="text-foreground" />
+              </div>
+              {hist.meses.length > 0 && (
+                <div className="max-h-52 overflow-y-auto rounded-lg border border-border">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40 text-muted-foreground sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-1.5 font-semibold">Mês</th>
+                        <th className="text-right px-3 py-1.5 font-semibold">Gasto</th>
+                        <th className="text-right px-3 py-1.5 font-semibold">Receita</th>
+                        <th className="text-right px-3 py-1.5 font-semibold">ROAS</th>
+                        <th className="text-right px-3 py-1.5 font-semibold">Vendas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {hist.meses.slice().reverse().map((m) => (
+                        <tr key={m.mes}>
+                          <td className="px-3 py-1.5 font-medium">{fmtMes(m.mes)}</td>
+                          <td className={`px-3 py-1.5 text-right text-rose-400 ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••' : fmtMoeda(m.gasto)}</td>
+                          <td className={`px-3 py-1.5 text-right text-emerald-400 ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••' : fmtMoeda(m.receita)}</td>
+                          <td className={`px-3 py-1.5 text-right font-bold ${roasCor(m.roas)} ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '•' : (m.roas == null ? '—' : `${m.roas.toFixed(2)}x`)}</td>
+                          <td className={`px-3 py-1.5 text-right text-muted-foreground ${isPrivate ? 'blur-sm select-none' : ''}`}>{isPrivate ? '••' : m.vendas}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
