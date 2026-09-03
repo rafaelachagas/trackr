@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { HistoricoCriativo } from '@/app/api/criativos-historico/route'
 import { useDashboard } from '@/context/DashboardContext'
+import ModalPreviewCriativo from '@/components/dashboard/ModalPreviewCriativo'
 
 function fmt(v: number) {
   if (v >= 1000) return `R$ ${(v / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })} mil`
@@ -13,6 +14,7 @@ export default function HistoricoCriativos() {
   const { isPrivate } = useDashboard()
   const [dados, setDados] = useState<HistoricoCriativo[]>([])
   const [loading, setLoading] = useState(true)
+  const [modalCriativo, setModalCriativo] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/criativos-historico')
@@ -49,10 +51,12 @@ export default function HistoricoCriativos() {
           <tbody className="divide-y divide-border">
             {dados.map(row => {
               const roasColor = row.roas === null ? 'text-muted-foreground' : row.roas >= 2 ? 'text-emerald-400' : row.roas >= 1 ? 'text-yellow-400' : 'text-rose-400'
+              const nome = row.nome_completo || row.criativo
               return (
-                <tr key={row.criativo} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground max-w-[300px] truncate" title={row.criativo}>
-                    {row.criativo}
+                <tr key={row.criativo} onClick={() => setModalCriativo(row.criativo)} className="hover:bg-muted/30 transition-colors cursor-pointer">
+                  <td className="px-4 py-3 font-medium text-foreground max-w-[420px]" title={nome}>
+                    <span className="hover:underline hover:text-primary transition break-words">{nome}</span>
+                    {row.nome_completo && <span className="ml-2 text-[10px] font-mono text-muted-foreground/60 uppercase">{row.criativo}</span>}
                   </td>
                   <td className={`px-4 py-3 text-right text-rose-400 font-semibold ${isPrivate ? 'blur-sm select-none' : ''}`}>
                     {isPrivate ? 'R$ ••••' : fmt(row.gasto_total)}
@@ -72,6 +76,7 @@ export default function HistoricoCriativos() {
           </tbody>
         </table>
       </div>
+      <ModalPreviewCriativo codigo={modalCriativo} onFechar={() => setModalCriativo(null)} />
     </div>
   )
 }

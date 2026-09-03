@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { extrairCriativoCompleto } from '@/lib/utils'
 
 export interface HistoricoCriativo {
-  criativo: string
+  criativo: string          // código (ad12) — chave do gasto Meta
+  nome_completo: string | null // nome descritivo (parte 3 do sck), representativo
   gasto_total: number
   receita_total: number
   roas: number | null
@@ -42,10 +44,10 @@ export async function GET() {
         .not('criativo', 'is', null)
         .range(from, to)
     ),
-    fetchAll<{ criativo: string; valor: number; valor_liquido: number | null }>((from, to) =>
+    fetchAll<{ criativo: string; sck: string | null; valor: number; valor_liquido: number | null }>((from, to) =>
       supabaseAdmin
         .from('vendas')
-        .select('criativo, valor, valor_liquido')
+        .select('criativo, sck, valor, valor_liquido')
         .eq('status', 'approved')
         .not('transaction_id', 'like', 'manual_%')
         .not('criativo', 'is', null)
@@ -60,9 +62,24 @@ export async function GET() {
 
   const receitaMap = new Map<string, number>()
   const vendasMap = new Map<string, number>()
+  // por código, conta cada nome completo (parte 3 do sck) pra eleger o mais
+  // representativo (o que mais vendeu) como rótulo da linha.
+  const nomeContagem = new Map<string, Map<string, number>>()
   for (const v of vendas ?? []) {
     receitaMap.set(v.criativo, (receitaMap.get(v.criativo) ?? 0) + Number(v.valor_liquido ?? v.valor))
     vendasMap.set(v.criativo, (vendasMap.get(v.criativo) ?? 0) + 1)
+    const nome = extrairCriativoCompleto(v.sck)
+    if (nome) {
+      const m = nomeContagem.get(v.criativo) ?? new Map<string, number>()
+      m.set(nome, (m.get(nome) ?? 0) + 1)
+      nomeContagem.set(v.criativo, m)
+    }
+  }
+  const nomeDe = (codigo: string): string | null => {
+    const m = nomeContagem.get(codigo); if (!m) return null
+    let melhor: string | null = null, max = -1
+    for (const [nome, n] of m) if (n > max) { max = n; melhor = nome }
+    return melhor
   }
 
   const criativos = new Set([...gastoMap.keys(), ...receitaMap.keys()])
@@ -73,6 +90,7 @@ export async function GET() {
     const receita = receitaMap.get(criativo) ?? 0
     resultado.push({
       criativo,
+      nome_completo: nomeDe(criativo),
       gasto_total: gasto,
       receita_total: receita,
       roas: gasto > 0 ? receita / gasto : null,
