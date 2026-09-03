@@ -109,12 +109,17 @@ export default function VendasCriativosPage() {
               <tbody>
                 {ordenadas.map((c, i) => {
                   const shareFront = totais.front > 0 ? (c.front / totais.front) * 100 : 0
-                  const codigo = extrairCriativo(c.criativo)
+                  const codigo = c.codigo || extrairCriativo(c.criativo)
                   return (
                     <tr key={c.criativo} onClick={() => codigo && setModalCriativo(codigo)} className={`border-t border-border hover:bg-accent/30 ${codigo ? 'cursor-pointer' : ''}`}>
-                      <td className="px-5 py-3 font-semibold text-foreground">
-                        <span className="text-muted-foreground mr-2 tabular-nums">{i + 1}.</span>
-                        <span className={codigo ? 'hover:underline hover:text-primary transition' : ''}>{c.criativo}</span>
+                      <td className="px-5 py-3 font-semibold text-foreground max-w-[420px]">
+                        <div className="flex items-start gap-2">
+                          <span className="text-muted-foreground tabular-nums shrink-0">{i + 1}.</span>
+                          <div className="min-w-0">
+                            <span className={`${codigo ? 'hover:underline hover:text-primary transition' : ''} break-words`}>{c.criativo}</span>
+                            {c.fase && <FaseBadge fase={c.fase} />}
+                          </div>
+                        </div>
                       </td>
                       <Cell n={priv(c.front)} pct={fmtPct(shareFront)} />
                       <Cell n={priv(c.upsell)} pct={c.front > 0 ? fmtPct(taxaUpsell(c)) : '—'} cor="text-cyan-400" />
@@ -132,6 +137,19 @@ export default function VendasCriativosPage() {
       <ModalPreviewCriativo codigo={modalCriativo} onFechar={() => setModalCriativo(null)} />
     </div>
   )
+}
+
+// Badge da fase (FASE01–FASE04). O nome humano (escala/pré-escala) já aparece no
+// próprio nome do criativo; aqui é só a flag colorida pra bater o olho.
+const FASE_COR: Record<string, string> = {
+  FASE01: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+  FASE02: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  FASE03: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  FASE04: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+}
+function FaseBadge({ fase }: { fase: string }) {
+  const cor = FASE_COR[fase.toUpperCase()] || 'bg-white/5 text-muted-foreground border-border'
+  return <span className={`ml-2 inline-block align-middle text-[9px] font-bold px-1.5 py-0.5 rounded border ${cor}`}>{fase.toUpperCase()}</span>
 }
 
 function ResumoCard({ icon, label, valor, sub, cor }: { icon: React.ReactNode; label: string; valor: React.ReactNode; sub: string; cor: string }) {

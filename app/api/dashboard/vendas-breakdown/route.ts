@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { toZonedTime } from 'date-fns-tz'
 import { subDays, format } from 'date-fns'
-import { spRangeISO } from '@/lib/utils'
+import { spRangeISO, extrairCriativoCompleto } from '@/lib/utils'
 import { classificarTipo } from '@/lib/classificar'
 
 const TIMEZONE = 'America/Sao_Paulo'
@@ -14,7 +14,7 @@ const TIMEZONE = 'America/Sao_Paulo'
 //  - porCriativo: front, upsell, reembolsos por criativo
 export interface ProdutoBreak { produto: string; count: number; receita: number }
 export interface PagamentoBreak { metodo: string; front: number; upsell: number; total: number }
-export interface CriativoBreak { criativo: string; front: number; upsell: number; reembolsoCount: number; reembolsoValor: number }
+export interface CriativoBreak { criativo: string; codigo: string | null; fase: string | null; front: number; upsell: number; reembolsoCount: number; reembolsoValor: number }
 export interface VendasBreakdown {
   porProduto: ProdutoBreak[]
   tipo: { front: number; upsell: number; outro: number; conversaoUpsellPct: number }
@@ -23,8 +23,8 @@ export interface VendasBreakdown {
   porCriativo: CriativoBreak[]
 }
 
-type Aprovada = { produto: string | null; tipo: string | null; criativo: string | null; valor: number; valor_liquido: number | null; metodo_pagamento?: string | null }
-type Reemb = { criativo: string | null; valor: number; valor_liquido: number | null }
+type Aprovada = { produto: string | null; tipo: string | null; criativo: string | null; sck: string | null; fase: string | null; valor: number; valor_liquido: number | null; metodo_pagamento?: string | null }
+type Reemb = { criativo: string | null; sck: string | null; fase: string | null; valor: number; valor_liquido: number | null }
 
 async function fetchAll<T>(build: (from: number, to: number) => any): Promise<T[]> {
   const todas: T[] = []
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       aprovadas = await fetchAll<Aprovada>((from, to) =>
         supabaseAdmin
           .from('vendas')
-          .select('produto, tipo, criativo, valor, valor_liquido, metodo_pagamento')
+          .select('produto, tipo, criativo, sck, fase, valor, valor_liquido, metodo_pagamento')
           .eq('status', 'approved')
           .not('transaction_id', 'like', 'manual_%')
           .gte('data', desde).lte('data', ate)
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       aprovadas = await fetchAll<Aprovada>((from, to) =>
         supabaseAdmin
           .from('vendas')
-          .select('produto, tipo, criativo, valor, valor_liquido')
+          .select('produto, tipo, criativo, sck, fase, valor, valor_liquido')
           .eq('status', 'approved')
           .not('transaction_id', 'like', 'manual_%')
           .gte('data', desde).lte('data', ate)
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     const reembolsos = await fetchAll<Reemb>((from, to) =>
       supabaseAdmin
         .from('vendas')
-        .select('criativo, valor, valor_liquido')
+        .select('criativo, sck, fase, valor, valor_liquido')
         .in('status', ['refunded', 'chargeback'])
         .not('transaction_id', 'like', 'manual_%')
         .gte('data', desde).lte('data', ate)
@@ -127,19 +127,26 @@ export async function GET(request: NextRequest) {
         pg.total++
         pagMap.set(metodo, pg)
 
-        if (v.criativo) {
-          const c = criMap.get(v.criativo) ?? { criativo: v.criativo, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
+        // agrupa pelo NOME COMPLETO do criativo (parte 3 do sck); cai no código
+        // reduzido só se não houver sck descritivo (ex.: import manual antigo).
+        const nome = extrairCriativoCompleto(v.sck) || v.criativo
+        if (nome) {
+          const c = criMap.get(nome) ?? { criativo: nome, codigo: v.criativo, fase: v.fase, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
+          if (!c.fase && v.fase) c.fase = v.fase
+          if (!c.codigo && v.criativo) c.codigo = v.criativo
           if (tipo === 'upsell') c.upsell++; else c.front++
-          criMap.set(v.criativo, c)
+          criMap.set(nome, c)
         }
       }
     }
 
     for (const r of reembolsos) {
-      if (!r.criativo) continue
-      const c = criMap.get(r.criativo) ?? { criativo: r.criativo, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
+      const nome = extrairCriativoCompleto(r.sck) || r.criativo
+      if (!nome) continue
+      const c = criMap.get(nome) ?? { criativo: nome, codigo: r.criativo, fase: r.fase, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
+      if (!c.fase && r.fase) c.fase = r.fase
       c.reembolsoCount++; c.reembolsoValor += liqR(r)
-      criMap.set(r.criativo, c)
+      criMap.set(nome, c)
     }
 
     const out: VendasBreakdown = {

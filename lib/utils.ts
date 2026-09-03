@@ -41,6 +41,18 @@ export function extrairCriativo(texto: string | null | undefined): string | null
   return match ? match[1].toLowerCase() : null
 }
 
+// Nome COMPLETO do criativo (a parte descritiva do sck), ex.:
+// "ad74-dia3-da-serie-te-mostrando-rendas-extras-reais-na-internet-pre-escala".
+// O sck vem como `campanha|conjunto|criativo-completo`; pegamos a 3ª parte. Em
+// imports manuais o próprio campo já é o slug — então cai no texto todo.
+export function extrairCriativoCompleto(sck: string | null | undefined): string | null {
+  if (!sck) return null
+  const partes = sck.split('|')
+  const alvo = (partes.length >= 3 ? partes[2] : sck).trim()
+  // só conta como criativo se começar com adNN (evita agrupar bio/orgânico)
+  return /^ad\d+/i.test(alvo) ? alvo.toLowerCase() : null
+}
+
 export function extrairFase(sck: string | null | undefined): string | null {
   if (!sck) return null
   const match = sck.split('|')[0].match(/(fase\d+)/i)
