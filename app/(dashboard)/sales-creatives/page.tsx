@@ -8,11 +8,12 @@ import type { CriativoBreak } from '@/app/api/dashboard/vendas-breakdown/route'
 import SeletorPeriodoVturb, { rangeDoPreset, type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
 import ModalPreviewCriativo from '@/components/dashboard/ModalPreviewCriativo'
 
-type SortKey = 'front' | 'upsell' | 'reembolsoCount'
+type SortKey = 'front' | 'upsell' | 'reembolsoCount' | 'reembRapido'
 const SORTS: { key: SortKey; label: string }[] = [
   { key: 'front', label: 'Mais Front' },
   { key: 'upsell', label: 'Mais Upsell' },
   { key: 'reembolsoCount', label: 'Maior Taxa de Reembolso' },
+  { key: 'reembRapido', label: 'Reembolsa Mais Rápido' },
 ]
 
 // Taxas proporcionais às vendas do PRÓPRIO criativo (não ao total).
@@ -21,6 +22,10 @@ const taxaReemb = (c: CriativoBreak) => {
   const v = c.front + c.upsell
   return v > 0 ? (c.reembolsoCount / v) * 100 : 0
 }
+// % dos reembolsos (com timing conhecido) que aconteceram em ≤24h
+const pct24 = (c: CriativoBreak) => (c.reembTiming > 0 ? (c.reemb24 / c.reembTiming) * 100 : 0)
+// mediana em horas → texto amigável ("18h" / "3,2d")
+const fmtMediana = (h: number | null) => h == null ? '—' : h < 48 ? `${Math.round(h)}h` : `${(h / 24).toFixed(1).replace('.', ',')}d`
 
 export default function VendasCriativosPage() {
   const { lastUpdate, isPrivate } = useDashboard()
@@ -52,8 +57,14 @@ export default function VendasCriativosPage() {
     if (sortKey === 'reembolsoCount') {
       return [...linhas].sort((a, b) => taxaReemb(b) - taxaReemb(a) || b.reembolsoCount - a.reembolsoCount)
     }
-    return [...linhas].sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0))
+    if (sortKey === 'reembRapido') {
+      // menor mediana de horas = reembolsa mais rápido; sem timing vai pro fim
+      const med = (c: CriativoBreak) => (c.reembTiming > 0 && c.medHorasReemb != null ? c.medHorasReemb : Infinity)
+      return [...linhas].sort((a, b) => med(a) - med(b) || pct24(b) - pct24(a))
+    }
+    return [...linhas].sort((a, b) => ((b as any)[sortKey] ?? 0) - ((a as any)[sortKey] ?? 0))
   }, [linhas, sortKey])
+  const temTiming = useMemo(() => linhas.some((c) => c.reembTiming > 0), [linhas])
 
   const priv = (n: React.ReactNode) => (isPrivate ? '••' : n)
   const fmtPct = (n: number) => `${n.toFixed(1).replace('.', ',')}%`
@@ -86,6 +97,9 @@ export default function VendasCriativosPage() {
               {s.label}
             </button>
           ))}
+          {sortKey === 'reembRapido' && !temTiming && (
+            <span className="text-[10px] text-muted-foreground/70 ml-2 basis-full sm:basis-auto">A velocidade de reembolso é medida a partir de agora (a Hotmart não expõe a data dos reembolsos antigos) — vai preenchendo conforme chegam novos reembolsos.</span>
+          )}
         </div>
 
         {loading ? (
@@ -104,6 +118,7 @@ export default function VendasCriativosPage() {
                   <Th active={sortKey === 'upsell'} onClick={() => setSortKey('upsell')}>Upsell · taxa</Th>
                   <Th active={sortKey === 'reembolsoCount'} onClick={() => setSortKey('reembolsoCount')}>Reembolso · taxa</Th>
                   <th className="text-right px-5 py-3">Valor Reemb.</th>
+                  <Th active={sortKey === 'reembRapido'} onClick={() => setSortKey('reembRapido')}>Velocidade Reemb.</Th>
                 </tr>
               </thead>
               <tbody>
@@ -125,6 +140,14 @@ export default function VendasCriativosPage() {
                       <Cell n={priv(c.upsell)} pct={c.front > 0 ? fmtPct(taxaUpsell(c)) : '—'} cor="text-cyan-400" />
                       <Cell n={priv(c.reembolsoCount)} pct={fmtPct(taxaReemb(c))} cor={c.reembolsoCount > 0 ? 'text-rose-400' : undefined} />
                       <td className="text-right px-5 py-3 tabular-nums text-muted-foreground">{c.reembolsoValor > 0 ? priv(formatarMoeda(c.reembolsoValor)) : '—'}</td>
+                      <td className="text-right px-5 py-3">
+                        {c.reembTiming > 0 ? (
+                          <>
+                            <div className="tabular-nums font-bold leading-tight text-amber-300" title={`${c.reembTiming} reembolsos com data conhecida`}>{fmtMediana(c.medHorasReemb)}</div>
+                            <div className="text-[10px] text-muted-foreground tabular-nums leading-tight">24h {fmtPct(pct24(c))} · 7d {fmtPct(c.reemb7d / c.reembTiming * 100)}</div>
+                          </>
+                        ) : <span className="text-[11px] text-muted-foreground/50">sem dados ainda</span>}
+                      </td>
                     </tr>
                   )
                 })}

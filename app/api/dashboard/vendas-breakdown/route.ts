@@ -14,7 +14,14 @@ const TIMEZONE = 'America/Sao_Paulo'
 //  - porCriativo: front, upsell, reembolsos por criativo
 export interface ProdutoBreak { produto: string; count: number; receita: number }
 export interface PagamentoBreak { metodo: string; front: number; upsell: number; total: number }
-export interface CriativoBreak { criativo: string; codigo: string | null; fase: string | null; front: number; upsell: number; reembolsoCount: number; reembolsoValor: number }
+export interface CriativoBreak {
+  criativo: string; codigo: string | null; fase: string | null
+  front: number; upsell: number; reembolsoCount: number; reembolsoValor: number
+  // Timing do reembolso (só preenche em reembolsos com data_reembolso capturada —
+  // daqui pra frente): quantos aconteceram em ≤24h / ≤48h / ≤7d, quantos têm
+  // timing conhecido, e a mediana de horas até o reembolso.
+  reemb24: number; reemb48: number; reemb7d: number; reembTiming: number; medHorasReemb: number | null
+}
 export interface VendasBreakdown {
   porProduto: ProdutoBreak[]
   tipo: { front: number; upsell: number; outro: number; conversaoUpsellPct: number }
@@ -24,7 +31,7 @@ export interface VendasBreakdown {
 }
 
 type Aprovada = { produto: string | null; tipo: string | null; criativo: string | null; sck: string | null; fase: string | null; valor: number; valor_liquido: number | null; metodo_pagamento?: string | null }
-type Reemb = { criativo: string | null; sck: string | null; fase: string | null; valor: number; valor_liquido: number | null }
+type Reemb = { criativo: string | null; sck: string | null; fase: string | null; valor: number; valor_liquido: number | null; data?: string | null; data_reembolso?: string | null }
 
 async function fetchAll<T>(build: (from: number, to: number) => any): Promise<T[]> {
   const todas: T[] = []
@@ -74,15 +81,29 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const reembolsos = await fetchAll<Reemb>((from, to) =>
-      supabaseAdmin
-        .from('vendas')
-        .select('criativo, sck, fase, valor, valor_liquido')
-        .in('status', ['refunded', 'chargeback'])
-        .not('transaction_id', 'like', 'manual_%')
-        .gte('data', desde).lte('data', ate)
-        .range(from, to)
-    )
+    // Tenta com data_reembolso (timing); se a coluna não existe ainda, refaz sem.
+    let reembolsos: Reemb[]
+    try {
+      reembolsos = await fetchAll<Reemb>((from, to) =>
+        supabaseAdmin
+          .from('vendas')
+          .select('criativo, sck, fase, valor, valor_liquido, data, data_reembolso')
+          .in('status', ['refunded', 'chargeback'])
+          .not('transaction_id', 'like', 'manual_%')
+          .gte('data', desde).lte('data', ate)
+          .range(from, to)
+      )
+    } catch {
+      reembolsos = await fetchAll<Reemb>((from, to) =>
+        supabaseAdmin
+          .from('vendas')
+          .select('criativo, sck, fase, valor, valor_liquido')
+          .in('status', ['refunded', 'chargeback'])
+          .not('transaction_id', 'like', 'manual_%')
+          .gte('data', desde).lte('data', ate)
+          .range(from, to)
+      )
+    }
 
     const { data: mapeamentos } = await supabaseAdmin
       .from('produtos_mapeamento').select('nome_produto, tipo').eq('ativo', true)
@@ -108,6 +129,10 @@ export async function GET(request: NextRequest) {
     const pagMap = new Map<string, PagamentoBreak>()
     // Por criativo
     const criMap = new Map<string, CriativoBreak>()
+    const novoCri = (nome: string, codigo: string | null, fase: string | null): CriativoBreak => ({
+      criativo: nome, codigo, fase, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0,
+      reemb24: 0, reemb48: 0, reemb7d: 0, reembTiming: 0, medHorasReemb: null,
+    })
     let front = 0, upsell = 0, outro = 0
 
     for (const v of aprovadas) {
@@ -131,7 +156,7 @@ export async function GET(request: NextRequest) {
         // reduzido só se não houver sck descritivo (ex.: import manual antigo).
         const nome = extrairCriativoCompleto(v.sck) || v.criativo
         if (nome) {
-          const c = criMap.get(nome) ?? { criativo: nome, codigo: v.criativo, fase: v.fase, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
+          const c = criMap.get(nome) ?? novoCri(nome, v.criativo, v.fase)
           if (!c.fase && v.fase) c.fase = v.fase
           if (!c.codigo && v.criativo) c.codigo = v.criativo
           if (tipo === 'upsell') c.upsell++; else c.front++
@@ -140,13 +165,32 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // horas até o reembolso, por criativo (só das que têm data_reembolso)
+    const horasReemb = new Map<string, number[]>()
     for (const r of reembolsos) {
       const nome = extrairCriativoCompleto(r.sck) || r.criativo
       if (!nome) continue
-      const c = criMap.get(nome) ?? { criativo: nome, codigo: r.criativo, fase: r.fase, front: 0, upsell: 0, reembolsoCount: 0, reembolsoValor: 0 }
+      const c = criMap.get(nome) ?? novoCri(nome, r.criativo, r.fase)
       if (!c.fase && r.fase) c.fase = r.fase
       c.reembolsoCount++; c.reembolsoValor += liqR(r)
+      if (r.data && r.data_reembolso) {
+        const h = (new Date(r.data_reembolso).getTime() - new Date(r.data).getTime()) / 3_600_000
+        if (h >= 0 && h < 24 * 400) { // ignora lixo (negativo ou > ~1 ano)
+          c.reembTiming++
+          if (h <= 24) c.reemb24++
+          if (h <= 48) c.reemb48++
+          if (h <= 24 * 7) c.reemb7d++
+          const arr = horasReemb.get(nome) ?? []; arr.push(h); horasReemb.set(nome, arr)
+        }
+      }
       criMap.set(nome, c)
+    }
+    // mediana de horas até reembolsar
+    for (const [nome, arr] of horasReemb) {
+      const c = criMap.get(nome); if (!c) continue
+      arr.sort((a, b) => a - b)
+      const m = arr.length % 2 ? arr[(arr.length - 1) / 2] : (arr[arr.length / 2 - 1] + arr[arr.length / 2]) / 2
+      c.medHorasReemb = m
     }
 
     const out: VendasBreakdown = {

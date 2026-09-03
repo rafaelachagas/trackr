@@ -223,6 +223,11 @@ export async function POST(request: NextRequest) {
       campanha: extrairCampanha(sck),
       metodo_pagamento: normalizarPagamento(purchase.payment?.type),
       vsl: null as string | null, // será preenchido via VTurb
+      // Data do reembolso — só em reembolso/chargeback. O webhook chega quando o
+      // reembolso acontece, então "agora" ≈ o momento do reembolso (precisão de
+      // minutos, ótimo pras faixas de 24h/48h/7d). A Hotmart não expõe essa data
+      // no histórico, então só dá pra capturar daqui pra frente.
+      ...((status === 'refunded' || status === 'chargeback') ? { data_reembolso: new Date().toISOString() } : {}),
     }
 
     // 8. Upsert (atualiza se a transação já existe). Se a coluna
@@ -234,11 +239,13 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
-    if (erroInsert && /metodo_pagamento/i.test(erroInsert.message ?? '')) {
-      const { metodo_pagamento, ...semMetodo } = novaVenda
+    // Colunas que podem não existir ainda (SQL não rodado): tira e regrava, nunca
+    // deixa de salvar a venda por causa de uma coluna nova.
+    if (erroInsert && /metodo_pagamento|data_reembolso/i.test(erroInsert.message ?? '')) {
+      const { metodo_pagamento, data_reembolso, ...semExtras } = novaVenda as any
       ;({ data: vendaSalva, error: erroInsert } = await supabaseAdmin
         .from('vendas')
-        .upsert(semMetodo, { onConflict: 'transaction_id' })
+        .upsert(semExtras, { onConflict: 'transaction_id' })
         .select()
         .single())
     }
