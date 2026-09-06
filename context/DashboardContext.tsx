@@ -48,6 +48,8 @@ interface DashboardContextType {
   product: string;
   setProduct: (product: string) => void;
   productsList: string[];
+  fonteTrafego: string;                 // rótulo da UI: 'Qualquer' | 'Meta Ads' | 'Orgânico'
+  setFonteTrafego: (f: string) => void;
   dateRange: {
     start: Date | null;
     end: Date | null;
@@ -72,6 +74,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [period, setPeriod] = useState<FilterPeriod>("Hoje");
   const [product, setProduct] = useState("Qualquer");
   const [productsList, setProductsList] = useState<string[]>(["Qualquer"]);
+  const [fonteTrafego, setFonteTrafego] = useState("Qualquer");
   const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>(() => {
     const hojeSP = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd");
     return spRange(hojeSP, hojeSP);
@@ -167,7 +170,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       const startDateStr = dateRange.start ? dateRange.start.toISOString() : '';
       const endDateStr = dateRange.end ? dateRange.end.toISOString() : '';
       
-      const result = await getDashboardData(product, startDateStr, endDateStr);
+      const fonteParam: 'Qualquer' | 'pago' | 'organico' =
+        fonteTrafego === 'Orgânico' ? 'organico' : (fonteTrafego === 'Meta Ads' || fonteTrafego === 'Google Ads') ? 'pago' : 'Qualquer';
+      const result = await getDashboardData(product, startDateStr, endDateStr, fonteParam);
 
       if (!result.success) throw new Error(result.error);
 
@@ -247,7 +252,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetchProductsList();
     refreshData();
-  }, [period, product, dateRange]);
+  }, [period, product, dateRange, fonteTrafego]);
 
   // Auto-sync on mount and every 5 minutes.
   // Via REF pra sempre usar o dateRange ATUAL — sem isso, o intervalo (montado com
@@ -269,6 +274,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         product,
         setProduct,
         productsList,
+        fonteTrafego,
+        setFonteTrafego,
         dateRange,
         setDateRange,
         metrics,

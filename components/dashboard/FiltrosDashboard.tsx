@@ -82,7 +82,7 @@ function FilterDropdown({ label, value, options, onChange, showInfo }: {
 
 export default function FiltrosDashboard() {
   const { period, setPeriod, product, setProduct, dateRange, setDateRange,
-    sincronizarTudo, lastUpdate, isRefreshing, productsList } = useDashboard()
+    sincronizarTudo, lastUpdate, isRefreshing, productsList, fonteTrafego, setFonteTrafego } = useDashboard()
 
   const [periodOpen, setPeriodOpen] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
@@ -90,8 +90,6 @@ export default function FiltrosDashboard() {
   const [selecting, setSelecting] = useState<'start' | 'end'>('start')
   const [hoverDate, setHoverDate] = useState<Date | null>(null)
 
-  const [adAccount] = useState('Qualquer')
-  const [trafficSource, setTrafficSource] = useState('Qualquer')
   const [platform, setPlatformFilter] = useState('Qualquer')
 
   const periodRef = useRef<HTMLDivElement>(null)
@@ -266,9 +264,9 @@ export default function FiltrosDashboard() {
           </div>
         </div>
 
-        <FilterDropdown label="Conta de Anúncio" value={adAccount} options={['Qualquer']} onChange={() => {}} />
-        <FilterDropdown label="Fonte de Tráfego" value={trafficSource} options={['Qualquer', 'Meta Ads', 'Google Ads', 'Orgânico']} onChange={setTrafficSource} />
-        <FilterDropdown label="Plataforma" value={platform} options={['Qualquer', 'Hotmart', 'Kiwify', 'Eduzz', 'Monetizze']} onChange={setPlatformFilter} />
+        <FilterDropdown label="Conta de Anúncio" value="Qualquer" options={['Qualquer']} onChange={() => {}} />
+        <FilterDropdown label="Fonte de Tráfego" value={fonteTrafego} options={['Qualquer', 'Meta Ads', 'Orgânico']} onChange={setFonteTrafego} />
+        <FilterDropdown label="Plataforma" value={platform} options={['Qualquer', 'Hotmart']} onChange={setPlatformFilter} />
         <FilterDropdown label="Produto" value={product} options={productsList} onChange={setProduct} />
       </div>
     </div>

@@ -6,8 +6,13 @@ import { format } from 'date-fns'
 import { classificarTipo } from '@/lib/classificar'
 
 
-export async function getDashboardData(product: string, startDate: string, endDate: string) {
+// fonte: 'Qualquer' | 'pago' (Meta/tráfego pago, venda com criativo) | 'organico'
+// (venda sem criativo, sem gasto de anúncio).
+export async function getDashboardData(product: string, startDate: string, endDate: string, fonte: 'Qualquer' | 'pago' | 'organico' = 'Qualquer') {
   try {
+    // Filtro de fonte aplicado nas queries de venda/reembolso (por criativo) e no
+    // gasto (orgânico não tem gasto de anúncio).
+    const filtrarFonte = (q: any) => fonte === 'pago' ? q.not('criativo', 'is', null) : fonte === 'organico' ? q.is('criativo', null) : q
     // Faturamento vem das vendas REAIS da Hotmart (aprovadas). Os lançamentos
     // manuais (transaction_id 'manual_%') continuam no banco, mas ficam de fora
     // daqui para não contar a mesma venda duas vezes.
@@ -23,6 +28,7 @@ export async function getDashboardData(product: string, startDate: string, endDa
           .not('transaction_id', 'like', 'manual_%')
           .range(offset, offset + 999)
         if (product !== 'Qualquer') q = q.eq('produto', product)
+        q = filtrarFonte(q)
         if (startDate) q = q.gte('data', startDate)
         if (endDate) q = q.lte('data', endDate)
         const { data, error } = await q
@@ -46,6 +52,8 @@ export async function getDashboardData(product: string, startDate: string, endDa
     // cortados — a sync reinsere os dias recentes com id maior, então eles caíam
     // fora das primeiras 1000 linhas e sumiam do gráfico e do total de gasto.
     async function fetchGastos() {
+      // Orgânico não tem gasto de anúncio.
+      if (fonte === 'organico') return []
       const todas: { valor_gasto: number; data: string; impressions: number | null }[] = []
       for (let offset = 0; ; offset += 1000) {
         let q = supabaseAdmin.from('gastos').select('valor_gasto, data, impressions').not('ad_id', 'is', null).range(offset, offset + 999)
@@ -72,6 +80,7 @@ export async function getDashboardData(product: string, startDate: string, endDa
           .not('transaction_id', 'like', 'manual_%')
           .range(offset, offset + 999)
         if (product !== 'Qualquer') q = q.eq('produto', product)
+        q = filtrarFonte(q)
         if (startDate) q = q.gte('data', startDate)
         if (endDate) q = q.lte('data', endDate)
         const { data, error } = await q
