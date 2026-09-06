@@ -95,3 +95,42 @@ export async function removerAfazer(id: string): Promise<{ success: boolean; dat
   await gravar(orgId, itens)
   return { success: true, data: itens }
 }
+
+// ---- Link público (somente leitura) pra compartilhar o andamento ----
+// Guarda os dois lados no `configuracoes`: afazeres_share_<org> = token (pra a
+// página saber o token atual) e afazeres_pub_<token> = orgId (pra a página
+// pública resolver de volta sem login).
+async function tokenAtual(orgId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin.from('configuracoes').select('valor').eq('chave', `afazeres_share_${orgId}`).maybeSingle()
+  return data?.valor || null
+}
+
+export async function statusLinkPublico(): Promise<{ token: string | null }> {
+  const orgId = await resolveOrgId()
+  if (!orgId) return { token: null }
+  return { token: await tokenAtual(orgId) }
+}
+
+export async function gerarLinkPublico(): Promise<{ success: boolean; token?: string; error?: string }> {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    let token = await tokenAtual(orgId)
+    if (!token) {
+      token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10)
+      const now = new Date().toISOString()
+      await supabaseAdmin.from('configuracoes').upsert({ chave: `afazeres_share_${orgId}`, valor: token, org_id: orgId, updated_at: now }, { onConflict: 'chave' })
+      await supabaseAdmin.from('configuracoes').upsert({ chave: `afazeres_pub_${token}`, valor: orgId, org_id: orgId, updated_at: now }, { onConflict: 'chave' })
+    }
+    return { success: true, token }
+  } catch (e: any) { return { success: false, error: e.message } }
+}
+
+export async function revogarLinkPublico(): Promise<{ success: boolean }> {
+  const orgId = await resolveOrgId()
+  if (!orgId) return { success: false }
+  const token = await tokenAtual(orgId)
+  if (token) await supabaseAdmin.from('configuracoes').delete().eq('chave', `afazeres_pub_${token}`)
+  await supabaseAdmin.from('configuracoes').delete().eq('chave', `afazeres_share_${orgId}`)
+  return { success: true }
+}

@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ListTodo, Plus, Loader2, X, Pencil, Trash2, Check } from 'lucide-react'
-import { listarAfazeres, adicionarAfazer, atualizarAfazer, alternarAfazer, removerAfazer, type Afazer, type SecaoAfazer, type PrioridadeAfazer } from '@/app/actions/afazeres'
+import { ListTodo, Plus, Loader2, X, Pencil, Trash2, Check, Share2, Copy, Link2, ExternalLink } from 'lucide-react'
+import { listarAfazeres, adicionarAfazer, atualizarAfazer, alternarAfazer, removerAfazer, gerarLinkPublico, statusLinkPublico, revogarLinkPublico, type Afazer, type SecaoAfazer, type PrioridadeAfazer } from '@/app/actions/afazeres'
 
 const SECOES: { key: SecaoAfazer; num: string; titulo: string; intro: string; prioPadrao: PrioridadeAfazer }[] = [
   { key: 'urgente', num: 'I', titulo: 'Urgente — esta semana', intro: 'O que trava outras coisas se não sair. Se o dia render pouco, é aqui que ele deve render.', prioPadrao: 'alta' },
@@ -26,8 +26,28 @@ export default function AfazeresPage() {
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<FormState | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const [share, setShare] = useState(false)
+  const [token, setToken] = useState<string | null>(null)
+  const [tokenLoading, setTokenLoading] = useState(false)
+  const [copiado, setCopiado] = useState(false)
 
-  useEffect(() => { (async () => { const r = await listarAfazeres(); if (r.success) setItens(r.data); setLoading(false) })() }, [])
+  useEffect(() => { (async () => {
+    const [r, s] = await Promise.all([listarAfazeres(), statusLinkPublico()])
+    if (r.success) setItens(r.data)
+    setToken(s.token)
+    setLoading(false)
+  })() }, [])
+
+  const linkPublico = token ? `${typeof window !== 'undefined' ? window.location.origin : ''}/p/afazeres/${token}` : ''
+  async function ativarLink() {
+    setTokenLoading(true); const r = await gerarLinkPublico(); setTokenLoading(false)
+    if (r.success && r.token) setToken(r.token)
+  }
+  async function revogar() {
+    if (!confirm('Revogar o link público? Quem tiver o link deixa de ver.')) return
+    setTokenLoading(true); await revogarLinkPublico(); setTokenLoading(false); setToken(null)
+  }
+  function copiarLink() { navigator.clipboard.writeText(linkPublico); setCopiado(true); setTimeout(() => setCopiado(false), 1500) }
 
   const total = itens.length
   const feitos = useMemo(() => itens.filter((i) => i.feito).length, [itens])
@@ -63,9 +83,14 @@ export default function AfazeresPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Lista viva dos afazeres em aberto — organizada por frente e prioridade. Fica salva pra toda a conta.</p>
         </div>
-        <button onClick={() => setForm({ ...FORM_VAZIO })} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-bold bg-primary text-white hover:opacity-90 transition">
-          <Plus className="w-4 h-4" /> Adicionar
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShare(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-border text-foreground/90 hover:bg-white/5 transition">
+            <Share2 className="w-4 h-4" /> Compartilhar
+          </button>
+          <button onClick={() => setForm({ ...FORM_VAZIO })} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-bold bg-primary text-white hover:opacity-90 transition">
+            <Plus className="w-4 h-4" /> Adicionar
+          </button>
+        </div>
       </div>
 
       {/* tracker de progresso */}
@@ -164,6 +189,37 @@ export default function AfazeresPage() {
                 {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {form.id ? 'Salvar' : 'Adicionar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {share && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setShare(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground inline-flex items-center gap-2"><Share2 className="w-4 h-4 text-primary" /> Link público</h3>
+              <button onClick={() => setShare(false)} className="p-1 text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground">Gera um link <b>somente leitura</b> pra qualquer pessoa acompanhar o andamento — sem login, sem editar. Você continua sendo o único a marcar/alterar aqui no painel.</p>
+            {token ? (
+              <>
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-black/30 px-3 py-2">
+                  <Link2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-foreground/90 truncate flex-1">{linkPublico}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={copiarLink} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90">
+                    {copiado ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copiado ? 'Copiado' : 'Copiar link'}
+                  </button>
+                  <a href={linkPublico} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border border-border text-foreground/90 hover:bg-white/5"><ExternalLink className="w-4 h-4" /> Abrir</a>
+                </div>
+                <button onClick={revogar} disabled={tokenLoading} className="w-full text-xs text-muted-foreground hover:text-rose-300 pt-1">Revogar link</button>
+              </>
+            ) : (
+              <button onClick={ativarLink} disabled={tokenLoading} className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50">
+                {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />} Gerar link público
+              </button>
+            )}
           </div>
         </div>
       )}
