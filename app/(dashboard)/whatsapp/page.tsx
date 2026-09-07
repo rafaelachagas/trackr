@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { MessageCircle, Plus, Trash2, RefreshCw, Check, X, Pencil, Users, User } from 'lucide-react'
 import { BLOCOS, CAMPOS_BLOCO, camposDe, WppConfig, WppCommand, WppGroup, WppNumber } from '@/lib/whatsapp'
 import { getWhatsappConfig, saveWhatsappConfig, listWhatsappGroups, GrupoWpp } from '@/app/actions/whatsapp'
+import ConexaoWhatsapp from '@/components/whatsapp/ConexaoWhatsapp'
 
 const LABEL_BLOCO: Record<string, string> = Object.fromEntries(BLOCOS.map((b) => [b.key, b.label]))
 let idSeed = 0
@@ -112,6 +113,9 @@ export default function WhatsappPage() {
           </button>
         </div>
       </div>
+
+      {/* CONEXÃO (status + QR pra reconectar) */}
+      <ConexaoWhatsapp />
 
       {/* COMANDOS */}
       <div className="rounded-2xl p-5" style={cardStyle}>
