@@ -3,6 +3,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveOrgId } from '@/lib/resolve-org'
 import { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } from '@/lib/transcritor'
+import { RASTREADOR_URL, RASTREADOR_APIKEY } from '@/lib/rastreador'
 
 // Rastreador de Conteúdos — perfis salvos (espionagem contínua), no mesmo estilo
 // das Bibliotecas do Rastreador de Anúncios. Guardado em `configuracoes` como
@@ -100,6 +101,56 @@ export async function conectarInstagramLogin(username: string, password: string,
     return { success: true }
   } catch (e: any) {
     return { success: false, error: e?.name === 'AbortError' ? 'O login demorou demais.' : e.message }
+  }
+}
+
+// Conectar Instagram por NAVEGADOR (Playwright na VPS): o usuário digita @+senha
+// numa tela que imita o login do Instagram; o servidor loga de verdade e extrai
+// o sessionid. Se o Instagram pedir código (2FA/checkpoint), devolve needsCode +
+// token, e a confirmação vem em confirmarCodigoInstagram.
+export async function conectarInstagramNavegador(username: string, password: string): Promise<{ success: boolean; needsCode?: boolean; token?: string; tipo?: string; error?: string }> {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    if (!username.trim() || !password) return { success: false, error: 'Usuário e senha são obrigatórios.' }
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 90000)
+    const r = await fetch(`${RASTREADOR_URL}/ig_login`, {
+      method: 'POST', signal: ctrl.signal, cache: 'no-store',
+      headers: { 'content-type': 'application/json', 'x-api-key': RASTREADOR_APIKEY },
+      body: JSON.stringify({ username: username.trim(), password }),
+    }).finally(() => clearTimeout(t))
+    const j = await r.json().catch(() => null)
+    if (!j) return { success: false, error: 'Resposta inválida do servidor.' }
+    if (j.needsCode) return { success: false, needsCode: true, token: j.token, tipo: j.tipo }
+    if (!j.ok || !j.sessionid) return { success: false, error: j.error || 'Falha no login.' }
+    await supabaseAdmin.from('configuracoes').upsert(
+      { chave: CHAVE_IG, valor: String(j.sessionid).trim(), org_id: orgId, updated_at: new Date().toISOString() },
+      { onConflict: 'chave' })
+    return { success: true }
+  } catch (e: any) {
+    return { success: false, error: e?.name === 'AbortError' ? 'O login demorou demais.' : e.message }
+  }
+}
+
+export async function confirmarCodigoInstagram(token: string, code: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const orgId = await resolveOrgId()
+    if (!orgId) throw new Error('Organização não encontrada')
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 90000)
+    const r = await fetch(`${RASTREADOR_URL}/ig_login_codigo`, {
+      method: 'POST', signal: ctrl.signal, cache: 'no-store',
+      headers: { 'content-type': 'application/json', 'x-api-key': RASTREADOR_APIKEY },
+      body: JSON.stringify({ token, code }),
+    }).finally(() => clearTimeout(t))
+    const j = await r.json().catch(() => null)
+    if (!j) return { success: false, error: 'Resposta inválida.' }
+    if (!j.ok || !j.sessionid) return { success: false, error: j.error || 'Código não confirmou.' }
+    await supabaseAdmin.from('configuracoes').upsert(
+      { chave: CHAVE_IG, valor: String(j.sessionid).trim(), org_id: orgId, updated_at: new Date().toISOString() },
+      { onConflict: 'chave' })
+    return { success: true }
+  } catch (e: any) {
+    return { success: false, error: e?.name === 'AbortError' ? 'Demorou demais.' : e.message }
   }
 }
 

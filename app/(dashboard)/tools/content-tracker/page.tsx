@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Clapperboard, Search, Play, Pause, FileText, Eye, Heart, X, Copy, Check, Trash2, RefreshCw, ArrowLeft, Bookmark, Link2, CalendarClock, Info, Clock, AtSign, Lock, Download, Volume2, VolumeX, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
 import { listarPerfisConteudo, salvarPerfilConteudo, removerPerfilConteudo, atualizarViraisPerfil, buscarViraisPerfil, carregarPaginaConteudo, statusInstagram, salvarCookieInstagram, conectarInstagramLogin, verStoriesPerfil, linkBaixarStory, agruparPerfis, desagruparPerfil, type PerfilConteudo, type VideoViral, type StoryItem } from '@/app/actions/conteudo'
 import SeletorPeriodoVturb, { type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
+import ModalLoginInstagram from '@/components/conteudo/ModalLoginInstagram'
 
 const FREQ_NUM: Record<string, number> = { '1 dia': 1, '3 dias': 3, '5 dias': 5, '7 dias': 7, '14 dias': 14 }
 const FREQ = ['1 dia', '3 dias', '5 dias', '7 dias', '14 dias']
@@ -46,6 +47,7 @@ export default function ContentTrackerPage() {
   // Instagram: cookie configurado UMA VEZ no servidor (não é por busca).
   const [igConfigurado, setIgConfigurado] = useState<boolean | null>(null)
   const [igSetup, setIgSetup] = useState(false)
+  const [modalLogin, setModalLogin] = useState(false)
   const [igModo, setIgModo] = useState<'login' | 'cookie'>('login')
   const [igUser, setIgUser] = useState('')
   const [igPass, setIgPass] = useState('')
@@ -260,6 +262,13 @@ export default function ContentTrackerPage() {
               </div>
               {igSetup && (
                 <div className="mt-3 rounded-xl border border-white/10 bg-background/50 p-3">
+                  <button onClick={() => setModalLogin(true)}
+                    className="w-full mb-3 px-4 py-2.5 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 inline-flex items-center justify-center gap-2">
+                    <AtSign className="w-4 h-4" /> Conectar Instagram
+                  </button>
+                  <p className="text-[10px] text-center text-muted-foreground/50 mb-3">login pela nossa tela — o servidor loga e conecta sozinho</p>
+                  <details>
+                    <summary className="text-[10px] text-muted-foreground/70 cursor-pointer mb-2">opções avançadas (código/cookie manual)</summary>
                   <div className="flex items-center gap-1.5 mb-2 text-[11px]">
                     <button onClick={() => setIgModo('login')} className={`px-2 py-1 rounded ${igModo === 'login' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'}`}>Login (@ e senha)</button>
                     <button onClick={() => setIgModo('cookie')} className={`px-2 py-1 rounded ${igModo === 'cookie' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'}`}>Cookie (avançado)</button>
@@ -296,6 +305,7 @@ export default function ContentTrackerPage() {
                       </div>
                     </>
                   )}
+                  </details>
                 </div>
               )}
             </div>
@@ -406,6 +416,7 @@ export default function ContentTrackerPage() {
       )}
 
       {trans && <ModalTrans trans={trans} onClose={() => setTrans(null)} copiado={copiado} onCopy={() => { navigator.clipboard.writeText(trans.texto || ''); setCopiado(true); setTimeout(() => setCopiado(false), 1500) }} />}
+      {modalLogin && <ModalLoginInstagram onClose={() => setModalLogin(false)} onConectado={() => { setIgConfigurado(true); setIgSetup(false); setModalLogin(false) }} />}
     </div>
   )
 }

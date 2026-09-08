@@ -10,5 +10,8 @@ services:
       # Troque por um segredo forte. O The Track manda ele no header x-api-key.
       - SCRAPER_APIKEY=${SCRAPER_APIKEY}
       - HEADLESS=true
+      # Proxy residencial (opcional) — usado no login do Instagram pra não logar
+      # de IP de datacenter (que o Instagram bloqueia). Defina no .env desta pasta.
+      - PROXY_URL=${PROXY_URL:-}
     # Chromium precisa de um pouco de shm; sem isso pode travar em páginas pesadas.
     shm_size: "1gb"

@@ -391,4 +391,97 @@ app.post('/scrape', async (req, res) => {
   }
 })
 
+// ——— Login do Instagram via navegador de verdade (extrai o sessionid) ———
+// O usuário digita @+senha numa tela do The Track; aqui a gente loga como um
+// humano e devolve o sessionid. Se o Instagram pedir código (2FA/checkpoint),
+// guarda o contexto vivo e pede o código numa 2ª chamada.
+function proxyOpt() {
+  const p = process.env.PROXY_URL
+  if (!p) return undefined
+  try {
+    const u = new URL(p)
+    return { server: `${u.protocol}//${u.host}`, username: decodeURIComponent(u.username || ''), password: decodeURIComponent(u.password || '') }
+  } catch { return undefined }
+}
+const UA_LOGIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+const loginPend = new Map() // token -> { ctx, page, at }
+setInterval(() => { const now = Date.now(); for (const [k, v] of loginPend) { if (now - v.at > 300000) { v.ctx.close().catch(() => {}); loginPend.delete(k) } } }, 60000)
+
+async function ctxLogin() {
+  const b = await getBrowser()
+  return b.newContext({ userAgent: UA_LOGIN, viewport: { width: 1280, height: 800 }, locale: 'pt-BR', proxy: proxyOpt() })
+}
+async function fecharPopups(page) {
+  for (const txt of ['Permitir todos os cookies', 'Allow all cookies', 'Agora não', 'Not now', 'Não agora', 'Agora não']) {
+    try { const b = page.getByRole('button', { name: txt, exact: false }); if (await b.count()) { await b.first().click({ timeout: 2500 }); await page.waitForTimeout(400) } } catch (_) {}
+  }
+}
+async function pegarSid(ctx) {
+  const cks = await ctx.cookies('https://www.instagram.com')
+  const c = cks.find((x) => x.name === 'sessionid')
+  return c ? c.value : null
+}
+function localizarCodigo(page) {
+  return page.locator('input[name="verificationCode"], input[name="security_code"], input[autocomplete="one-time-code"], input[aria-label*="ódigo"], input[aria-label*="code"]').first()
+}
+
+app.post('/ig_login', async (req, res) => {
+  if (APIKEY && req.headers['x-api-key'] !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
+  const { username, password } = req.body || {}
+  if (!username || !password) return res.status(400).json({ error: 'usuário e senha obrigatórios' })
+  let ctx
+  try {
+    ctx = await ctxLogin()
+    const page = await ctx.newPage()
+    await page.goto('https://www.instagram.com/accounts/login/', { waitUntil: 'domcontentloaded', timeout: 45000 })
+    await fecharPopups(page)
+    await page.fill('input[name="username"]', String(username), { timeout: 15000 })
+    await page.fill('input[name="password"]', String(password), { timeout: 15000 })
+    await page.click('button[type="submit"]').catch(() => {})
+    await page.waitForLoadState('networkidle', { timeout: 25000 }).catch(() => {})
+    await page.waitForTimeout(3500)
+    await fecharPopups(page)
+    let sid = await pegarSid(ctx)
+    if (sid) { await ctx.close(); return res.json({ ok: true, sessionid: sid }) }
+    // pediu código?
+    const temCodigo = (await localizarCodigo(page).count()) > 0 || /\/challenge\//i.test(page.url()) || /two_factor/i.test(page.url())
+    if (temCodigo) {
+      const token = Math.random().toString(36).slice(2, 12)
+      loginPend.set(token, { ctx, page, at: Date.now() })
+      const tipo = /\/challenge\//i.test(page.url()) ? 'checkpoint' : '2fa'
+      return res.json({ needsCode: true, token, tipo })
+    }
+    // erro de senha / genérico
+    const alerta = await page.locator('#slfErrorAlert, [role="alert"]').first().textContent().catch(() => null)
+    await ctx.close()
+    if (alerta && /senha|password|incorret|couldn|não foi possível|find your account|não encontr/i.test(alerta)) return res.json({ error: 'Usuário ou senha incorretos (ou conta não encontrada).' })
+    return res.json({ error: 'O Instagram pediu uma verificação incomum. Espere alguns minutos e tente de novo.' })
+  } catch (err) {
+    if (ctx) ctx.close().catch(() => {})
+    return res.status(500).json({ error: String((err && err.message) || err) })
+  }
+})
+
+app.post('/ig_login_codigo', async (req, res) => {
+  if (APIKEY && req.headers['x-api-key'] !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
+  const { token, code } = req.body || {}
+  const pend = token && loginPend.get(token)
+  if (!pend) return res.status(400).json({ error: 'sessão de login expirada — conecte de novo' })
+  const { ctx, page } = pend
+  try {
+    await localizarCodigo(page).fill(String(code || ''), { timeout: 15000 })
+    await page.getByRole('button', { name: /confirmar|continuar|continue|enviar|submit|próximo|next/i }).first().click({ timeout: 8000 }).catch(() => page.keyboard.press('Enter'))
+    await page.waitForLoadState('networkidle', { timeout: 25000 }).catch(() => {})
+    await page.waitForTimeout(3000)
+    await fecharPopups(page)
+    const sid = await pegarSid(ctx)
+    loginPend.delete(token); await ctx.close()
+    if (sid) return res.json({ ok: true, sessionid: sid })
+    return res.json({ error: 'O código não confirmou. Verifique e tente de novo.' })
+  } catch (err) {
+    loginPend.delete(token); ctx.close().catch(() => {})
+    return res.status(500).json({ error: String((err && err.message) || err) })
+  }
+})
+
 app.listen(PORT, () => console.log(`[rastreador-scraper] ouvindo na porta ${PORT}`))
