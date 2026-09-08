@@ -26,9 +26,15 @@ const NOVO_DIAS = 3
 // Avatar da biblioteca: foto escolhida ou iniciais do nome.
 // Quando isPrivate estiver ativo, a foto/iniciais ficam borradas pra não
 // revelar quem está sendo rastreado durante um compartilhamento de tela.
-function Avatar({ nome, foto, size = 44, isPrivate = false }: { nome: string; foto?: string | null; size?: number; isPrivate?: boolean }) {
+function Avatar({ nome, foto, pageId, size = 44, isPrivate = false }: { nome: string; foto?: string | null; pageId?: string | null; size?: number; isPrivate?: boolean }) {
+  const [erro, setErro] = useState(false)
   const style = { width: size, height: size, backgroundColor: '#1a2022', border: '1px solid rgba(255,255,255,0.06)' }
-  if (foto) return <img src={foto} alt="" referrerPolicy="no-referrer" className={`rounded-full object-cover shrink-0 ${isPrivate ? 'blur-md select-none' : ''}`} style={{ ...style, objectFit: 'cover' }} />
+  // Foto manual (link estável que o usuário colou) tem prioridade. Links do
+  // fbcdn/scontent expiram — pra esses (ou quando não há foto), usa o endpoint
+  // do Graph por page_id, que SEMPRE redireciona pra foto atual (não expira).
+  const fotoEstavel = foto && !/fbcdn|scontent/i.test(foto) ? foto : null
+  const src = fotoEstavel || (pageId ? `https://graph.facebook.com/${pageId}/picture?width=${size * 2}&height=${size * 2}` : null)
+  if (src && !erro) return <img src={src} alt="" referrerPolicy="no-referrer" onError={() => setErro(true)} className={`rounded-full object-cover shrink-0 ${isPrivate ? 'blur-md select-none' : ''}`} style={{ ...style, objectFit: 'cover' }} />
   return (
     <div className={`rounded-full flex items-center justify-center shrink-0 font-black text-primary ${isPrivate ? 'blur-md select-none' : ''}`} style={{ ...style, fontSize: size * 0.32 }}>
       {(nome || '?').replace(/^Página\s+/, '').slice(0, 2).toUpperCase()}
@@ -359,7 +365,7 @@ function ModalEditarBib({ bib, imagens, onFechar, onSalvo, isPrivate = false }: 
         <div className="p-5 overflow-y-auto space-y-4">
           {/* Preview */}
           <div className="flex items-center gap-3">
-            <Avatar nome={nomePreview} foto={foto} size={52} isPrivate={isPrivate} />
+            <Avatar nome={nomePreview} foto={foto} pageId={bib.page_id} size={52} isPrivate={isPrivate} />
             <div className="min-w-0">
               <p className="text-sm font-bold truncate">{isPrivate ? NOME_OCULTO : nomePreview}</p>
               <p className="text-[10px] text-muted-foreground/70 font-mono">ID {bib.page_id}</p>
@@ -476,7 +482,7 @@ function ListaBibliotecas({ bibliotecas, onAbrir, onPuxar, onRemover, onEditar, 
       {bibliotecas.map((b) => (
         <div key={b.id} className={`rounded-2xl p-4 ${cardClass} flex flex-col gap-3`}>
           <button onClick={() => onAbrir(b)} className="text-left flex items-center gap-3 group">
-            <Avatar nome={nomeBiblioteca(b)} foto={b.foto_url} size={44} isPrivate={isPrivate} />
+            <Avatar nome={nomeBiblioteca(b)} foto={b.foto_url} pageId={b.page_id} size={44} isPrivate={isPrivate} />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition">{isPrivate ? NOME_OCULTO : nomeBiblioteca(b)}</p>
               <p className="text-[10px] text-muted-foreground/70 font-mono truncate">ID {b.page_id}</p>

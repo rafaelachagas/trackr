@@ -473,13 +473,24 @@ def _ig_feed(handle: str, sessionid: str, limit: int, cursor: str = ""):
             if not vids and not cursor:
                 raise RuntimeError(f"feed {r.status_code}: {r.text[:120]}")
             break
-        data = r.json() or {}
+        # 200 mas HTML (parede de login) = sessão deslogada/expirada.
+        ct = (r.headers.get("content-type") or "")
+        if "application/json" not in ct and r.text.lstrip()[:1] in ("<",):
+            raise RuntimeError("sessão do Instagram expirada/deslogada — reconecte a conta")
+        try:
+            data = r.json() or {}
+        except Exception:
+            raise RuntimeError("sessão do Instagram expirada/deslogada — reconecte a conta")
         if not meta:  # primeira página: captura nome/bio/uid
             u = data.get("user") or {}
             uid = str(u.get("pk") or u.get("id") or "")
             if uid:
                 _IG_UID_CACHE[handle.lower()] = uid
             meta = _ig_user_meta(u)
+            # Só confia no nome se o username do feed bater com o handle pedido —
+            # senão pode ser o nome da CONTA LOGADA (viewer), não o do alvo.
+            if (u.get("username") or "").lower() != handle.lower():
+                meta["nome"] = None
             if not meta.get("nome"):
                 meta["nome"] = handle
         novos = data.get("items") or []

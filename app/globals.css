@@ -110,3 +110,20 @@ button, a, [role="button"] {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Neutraliza o tom esverdeado do autofill do Chrome nos inputs escuros
+   (ex.: campo do link no Rastreador de Anúncios). O box-shadow inset é o
+   único jeito de sobrepor o fundo que o autofill pinta; a transition longa
+   evita o flash amarelo/verde ao focar. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #1a2022 inset !important;
+  box-shadow: 0 0 0 1000px #1a2022 inset !important;
+  -webkit-text-fill-color: #e2e8f0 !important;
+  caret-color: #e2e8f0;
+  transition: background-color 9999s ease-in-out 0s;
+}
