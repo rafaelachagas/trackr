@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
+import { faseToken, flagsToken } from '@/lib/meta-chave'
 
 const TIMEZONE = 'America/Sao_Paulo'
 // Mesma regra do /api/performance-v2: conta reclamada/refunded/chargeback (o
@@ -9,15 +10,8 @@ const TIMEZONE = 'America/Sao_Paulo'
 // do ROAS de escala). Só cancelled/expired ficam fora.
 const STATUS_RECEITA = ['approved', 'reclamada', 'refunded', 'chargeback']
 
-// Mesma normalização do /api/performance-v2 (código | fase | flags bmsub/bmus/v2).
-const faseToken = (t: string | null): string | null => {
-  const m = (t || '').toLowerCase().match(/fase\s*0?([123])/)
-  return m ? `FASE0${m[1]}` : null
-}
-const flagsToken = (t: string | null): string => {
-  const s = (t || '').toLowerCase()
-  return `${s.includes('bmsub') ? 'S' : '-'}${s.includes('bmus') ? 'U' : '-'}${/(^|[^a-z0-9])v2([^0-9]|$)/.test(s) ? '2' : '-'}`
-}
+// faseToken/flagsToken vêm de @/lib/meta-chave (mesma normalização da v2, com o
+// marcador de retest) — tem que ser a MESMA função pra chave do modal casar.
 
 /**
  * PROVA REAL DA RECEITA: lista as vendas que compõem o faturamento de uma

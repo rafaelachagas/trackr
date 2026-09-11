@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extrairCriativo, calcularRoas } from '@/lib/utils'
+import { faseToken, flagsToken } from '@/lib/meta-chave'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 
@@ -42,18 +43,9 @@ export interface AdMetric {
 // dois lados (gasto Meta × venda real) por código do anúncio + fase + marcadores
 // (bmsub/bmus/v2), estável mesmo com typo no sck. Assim a lista e os números da
 // Análise batem com a tabela "Performance por Criativo V2".
+// faseToken/flagsToken vêm de @/lib/meta-chave (fonte única — inclui o marcador
+// de retest). Não duplicar aqui.
 // ————————————————————————————————————————————————————————————————
-function faseToken(t: string | null): string | null {
-  const m = (t || '').toLowerCase().match(/fase\s*0?([123])/)
-  return m ? `FASE0${m[1]}` : null
-}
-function flagsToken(t: string | null): string {
-  const s = (t || '').toLowerCase()
-  const bmsub = s.includes('bmsub') ? 'S' : '-'
-  const bmus = s.includes('bmus') ? 'U' : '-'
-  const v2 = /(^|[^a-z0-9])v2([^0-9]|$)/.test(s) ? '2' : '-'
-  return `${bmsub}${bmus}${v2}`
-}
 function chaveDe(codigo: string, faseTok: string | null, flags: string) {
   return `${codigo}|${faseTok ?? '?'}|${flags}`
 }

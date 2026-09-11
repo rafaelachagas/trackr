@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { calcularRoas, extrairCriativo } from '@/lib/utils'
+import { faseToken, flagsToken } from '@/lib/meta-chave'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 import { AcaoOtimizacao } from '@/types'
@@ -42,19 +43,8 @@ const ORDEM_ACAO: Record<string, number> = {
   'Pausar': 3,
 }
 
-// Fase/flags a partir do nome — MESMA normalização usada no agrupamento e no
-// casamento com os anúncios ATIVOS da Meta (código|fase|flags).
-function faseToken(t: string | null): string | null {
-  const m = (t || '').toLowerCase().match(/fase\s*0?([123])/)
-  return m ? `FASE0${m[1]}` : null
-}
-function flagsToken(t: string | null): string {
-  const s = (t || '').toLowerCase()
-  const bmsub = s.includes('bmsub') ? 'S' : '-'
-  const bmus = s.includes('bmus') ? 'U' : '-'
-  const v2 = /(^|[^a-z0-9])v2([^0-9]|$)/.test(s) ? '2' : '-'
-  return `${bmsub}${bmus}${v2}`
-}
+// faseToken/flagsToken vêm de @/lib/meta-chave (fonte única da normalização da
+// chave código|fase|flags — inclui o marcador de retest). Não duplicar aqui.
 
 // Anúncios ATIVOS (effective_status=ACTIVE) de uma conta. effective_status leva
 // em conta campanha/conjunto pausados — é o que REALMENTE está rodando.

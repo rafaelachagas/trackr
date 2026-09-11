@@ -16,13 +16,18 @@ export function faseToken(t: string | null): string | null {
   return m ? `FASE0${m[1]}` : null
 }
 
-// Marcadores curtos e estáveis do nome/sck: bmsub (S), bmus (U), v2 (2).
+// Marcadores curtos e estáveis do nome/sck: bmsub (S), bmus (U), v2 (2), retest (R).
+// O "retest" (campanha nova relançada com o mesmo criativo, nome terminando em
+// -retest) aparece tanto no ad_name (gasto) quanto na 3ª parte do sck (venda),
+// então entra na chave e separa a campanha de retest da original — com a receita
+// casando no lado certo, em vez de fundir as duas numa linha só.
 export function flagsToken(t: string | null): string {
   const s = (t || '').toLowerCase()
   const bmsub = s.includes('bmsub') ? 'S' : '-'
   const bmus = s.includes('bmus') ? 'U' : '-'
   const v2 = /(^|[^a-z0-9])v2([^0-9]|$)/.test(s) ? '2' : '-'
-  return `${bmsub}${bmus}${v2}`
+  const retest = s.includes('retest') ? 'R' : '-'
+  return `${bmsub}${bmus}${v2}${retest}`
 }
 
 // Chave a partir do GASTO (Meta): fase vem do campaign_name, flags do ad_name.
