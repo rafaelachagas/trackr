@@ -18,13 +18,14 @@ services:
     volumes:
       # Cache do modelo baixado (não re-baixa a cada restart).
       - whisper-cache:/root/.cache/huggingface
-    # Teto de memória e de CPU. Sem isto, um ffmpeg decodificando um 4K HEVC
-    # cresce até comer os ~3,8 GB da VPS e derruba TODOS os containers junto
-    # (Whisper, scraper, Evolution, Postgres) — a máquina trava e só volta com
-    # reboot. Com o teto, o pior caso é o job falhar; o resto continua de pé.
+    # A VPS tem 1 NÚCLEO e ~3,8 GB divididos com os outros containers
+    # (scraper, Evolution, Postgres, Redis). Teto de memória pra que um
+    # criativo grande faça o job falhar em vez de derrubar a máquina toda.
+    # Não dá pra limitar CPU aqui: com 1 núcleo, o Docker só aceita até 1.00 e
+    # reservar fração deixaria o Whisper mais lento sem ganho — quem resolve a
+    # disputa é o `nice` no ffmpeg (veja app.py).
     mem_limit: 2500m
     memswap_limit: 2500m
-    cpus: 3.0
     restart: unless-stopped
 
 volumes:

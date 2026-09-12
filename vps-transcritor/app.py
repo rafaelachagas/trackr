@@ -1162,11 +1162,11 @@ def _camuflar(body):
 
         # ---------------- VÍDEO ----------------
         tem_audio = _tem_audio(entrada)
-        # `nice` pra não disputar CPU com o Whisper, e threads limitadas na
-        # DECODIFICAÇÃO: cada thread de decode HEVC segura seus próprios
-        # quadros, então "-threads 0" num 4K multiplica a memória por núcleo.
-        # É o que derrubava a VPS inteira com criativo grande.
-        cmd = ["nice", "-n", "10", "ffmpeg", "-threads", "2", "-i", entrada]
+        # A VPS tem UM núcleo. Sem `nice`, o ffmpeg monopoliza esse núcleo
+        # durante todo o encode e a máquina inteira para de responder — nem o
+        # /health passa, e parece que travou. Com prioridade baixa, o vídeo
+        # demora um pouco mais e todo o resto continua atendendo.
+        cmd = ["nice", "-n", "10", "ffmpeg", "-threads", "1", "-i", entrada]
         idx = 1
         if precisa_ov:
             cmd += ["-i", ov]
@@ -1212,7 +1212,7 @@ def _camuflar(body):
                 cmd += ["-map", "[a1]", "-shortest"]
         cmd += ["-map_metadata", "-1",
                 "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
-                "-pix_fmt", "yuv420p", "-threads", "3"]
+                "-pix_fmt", "yuv420p", "-threads", "1"]
         fps = _fps(entrada)
         if fps:
             # CFR: sem isso, um fonte VFR sai com timestamps que vários players
