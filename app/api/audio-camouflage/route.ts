@@ -9,7 +9,7 @@ import { BUCKET } from './sign-upload/route'
 // o nome de saída (o mesmo do arquivo original — sem sufixo).
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-export const maxDuration = 120
+export const maxDuration = 300  // vídeos grandes: a VPS baixa + ffmpeg + sobe
 
 type Params = {
   pitch_steps: number

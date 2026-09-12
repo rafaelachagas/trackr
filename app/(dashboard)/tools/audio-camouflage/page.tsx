@@ -48,7 +48,7 @@ export default function AudioCamouflagePage() {
   function escolher(f: File | null) {
     setErro(null); setDownload(null)
     if (!f) return
-    if (!/\.mp4$/i.test(f.name) && f.type !== 'video/mp4') { setErro('Envie um arquivo .mp4.'); return }
+    if (!/\.(mp4|mov)$/i.test(f.name) && !/^video\/(mp4|quicktime)$/.test(f.type)) { setErro('Envie um arquivo .mp4 ou .mov.'); return }
     setFile(f)
   }
 
@@ -68,7 +68,8 @@ export default function AudioCamouflagePage() {
       }).then((r) => r.json())
       if (sign.error) throw new Error(sign.error)
 
-      const up = await supabase.storage.from('camuflagem').uploadToSignedUrl(sign.path, sign.token, file, { contentType: 'video/mp4' })
+      const ct = file.type || (/\.mov$/i.test(file.name) ? 'video/quicktime' : 'video/mp4')
+      const up = await supabase.storage.from('camuflagem').uploadToSignedUrl(sign.path, sign.token, file, { contentType: ct })
       if (up.error) throw new Error('falha ao enviar o vídeo: ' + up.error.message)
 
       setFase('Processando áudio no servidor...')
@@ -96,7 +97,7 @@ export default function AudioCamouflagePage() {
         <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
           <AudioLines className="w-6 h-6 text-primary" /> Camuflagem de Áudio
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Suba um <b>.mp4</b>, ajuste os efeitos e baixe o vídeo com o áudio reprocessado — a imagem fica intacta.</p>
+        <p className="text-sm text-muted-foreground mt-1">Suba um <b>.mp4</b> ou <b>.mov</b>, ajuste os efeitos e baixe o vídeo com o áudio reprocessado — a imagem fica intacta.</p>
       </div>
 
       {/* Drop zone */}
@@ -108,7 +109,7 @@ export default function AudioCamouflagePage() {
           onClick={() => inputRef.current?.click()}
           className={`cursor-pointer rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${arrastando ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
         >
-          <input ref={inputRef} type="file" accept="video/mp4,.mp4" className="hidden"
+          <input ref={inputRef} type="file" accept="video/mp4,video/quicktime,.mp4,.mov" className="hidden"
             onChange={(e) => escolher(e.target.files?.[0] || null)} />
           {file ? (
             <div className="flex items-center justify-center gap-2 text-foreground">
@@ -119,7 +120,7 @@ export default function AudioCamouflagePage() {
           ) : (
             <div className="text-muted-foreground">
               <UploadCloud className="w-7 h-7 mx-auto mb-1.5 text-primary/70" />
-              <p className="text-sm font-medium text-foreground/90">Arraste o .mp4 aqui ou clique pra escolher</p>
+              <p className="text-sm font-medium text-foreground/90">Arraste o .mp4 ou .mov aqui ou clique pra escolher</p>
             </div>
           )}
         </div>
