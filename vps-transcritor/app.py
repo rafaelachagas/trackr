@@ -946,6 +946,40 @@ def _white_audio_entrada(dur):
             "anoisesrc=c=brown:a=0.30,highpass=f=180,lowpass=f=3400,tremolo=f=5:d=0.7"]
 
 
+# Níveis da máscara de voz: (volume do murmúrio, filtro extra na voz).
+# Medido com o Whisper small em PT-BR num criativo real: leve deixou 0,8% de
+# erro de transcrição, médio 1,5% e pesado 8,1% — ou seja, a copy continua
+# legível nos três. O que isto entrega de fato é assinatura sonora diferente,
+# não proteção contra transcrição. Está aqui porque foi pedido sabendo disso.
+MASCARA_NIVEIS = {
+    "leve":   (0.10, "anull"),
+    "medio":  (0.26, "equalizer=f=2400:width_type=o:width=1.4:g=-6"),
+    "pesado": (0.45, "equalizer=f=2400:width_type=o:width=1.4:g=-9,"
+                     "equalizer=f=3200:width_type=o:width=1:g=-6,tremolo=f=7:d=0.25"),
+}
+
+
+def _mascara_voz(entrada, saida, nivel, f):
+    """Murmúrio de multidão sintetizado da PRÓPRIA locução: cópias dela
+    invertidas, deslocadas e com tempo alterado, somadas e filtradas pra banda
+    da voz. Soa como gente falando ao fundo (o ouvido humano descarta isso bem)
+    e é o tipo de ruído que mais atrapalha reconhecedor automático.
+    `f` (0,1–1,0) é o ajuste fino dentro do nível: ±30% no volume do murmúrio."""
+    vol, voz = MASCARA_NIVEIS.get(nivel) or MASCARA_NIVEIS["leve"]
+    vol = vol * (0.7 + 0.6 * f)
+    return (
+        "[%s]asplit=4[mv][mb1][mb2][mb3];"
+        "[mb1]areverse,adelay=0|120[mr1];"
+        "[mb2]areverse,atempo=0.93,adelay=380|500[mr2];"
+        "[mb3]atempo=1.07,areverse,adelay=820|640[mr3];"
+        "[mr1][mr2][mr3]amix=inputs=3:duration=first:normalize=1,"
+        "highpass=f=250,lowpass=f=3600,volume=%.3f[mbab];"
+        "[mv]%s[mvf];"
+        "[mvf][mbab]amix=inputs=2:duration=first:normalize=0[%s]"
+        % (entrada, vol, voz, saida)
+    )
+
+
 # Jobs em memória: id -> {"status": "rodando|pronto|erro", "erro": str}. O
 # processo é único (gunicorn com 1 worker), então dict simples basta.
 CAMUFLAGEM_JOBS = {}
@@ -987,6 +1021,8 @@ def _camuflar(body):
     contexto = _bool(body.get("safe_context"))
     audio_shield = _bool(body.get("audio_shield"))
     white_audio = _bool(body.get("white_audio"))
+    voice_mask = _bool(body.get("voice_mask"))
+    voice_mask_level = str(body.get("voice_mask_level") or "leve")
 
     if not CAMUFLAGEM_LOCK.acquire(timeout=180):
         return ({"error": "processador ocupado — tente de novo em instantes"}, 503)
@@ -1107,6 +1143,7 @@ def _camuflar(body):
             idx += 1
 
         achain = []
+        alab = "a0"   # rótulo da faixa principal no fim da cadeia de áudio
         if tem_audio:
             if audio_shield:
                 # Desvio imperceptível: no máximo ~0,08 semitom (8 cents, abaixo
@@ -1118,12 +1155,15 @@ def _camuflar(body):
                 achain.append("[0:a]%s[a0]" % af)
             else:
                 achain.append("[0:a]anull[a0]")
+            if voice_mask:
+                achain.append(_mascara_voz("a0", "a0m", voice_mask_level, f))
+                alab = "a0m"
             if wa_idx is not None:
                 achain.append("[%d:a]volume=0.9,aformat=channel_layouts=stereo[a1]" % wa_idx)
 
         cmd += ["-filter_complex", ";".join(chain + achain), "-map", "[%s]" % cur]
         if tem_audio:
-            cmd += ["-map", "[a0]"]
+            cmd += ["-map", "[%s]" % alab]
             if wa_idx is not None:
                 cmd += ["-map", "[a1]", "-shortest"]
         cmd += ["-map_metadata", "-1",

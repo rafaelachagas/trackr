@@ -21,6 +21,8 @@ type Opcoes = {
   safe_context: boolean
   audio_shield: boolean
   white_audio: boolean
+  voice_mask: boolean
+  voice_mask_level: 'leve' | 'medio' | 'pesado'
 }
 
 const IMAGEM = /\.(jpe?g|png|webp|gif)$/i
@@ -66,6 +68,8 @@ export async function POST(req: Request) {
         safe_context: options?.safe_context,
         audio_shield: options?.audio_shield,
         white_audio: options?.white_audio,
+        voice_mask: options?.voice_mask,
+        voice_mask_level: options?.voice_mask_level,
       }),
     })
     const j = await resp.json().catch(() => ({} as any))

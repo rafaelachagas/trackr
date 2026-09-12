@@ -14,9 +14,21 @@ import { supabase } from '@/lib/supabase'
 
 type Chave =
   | 'entry_layer' | 'exit_layer' | 'invisible_shield' | 'pulses'
-  | 'chroma' | 'safe_context' | 'audio_shield' | 'white_audio'
+  | 'chroma' | 'safe_context' | 'audio_shield' | 'white_audio' | 'voice_mask'
 
-type Opcao = { chave: Chave; titulo: string; desc: string; tom?: 'video' | 'audio' | 'white' }
+type Opcao = { chave: Chave; titulo: string; desc: string; tom?: 'video' | 'audio' | 'white' | 'mask' }
+
+// Níveis da máscara de voz. O ganho contra transcrição automática é pequeno:
+// medido com o Whisper (modelo small, PT-BR) num criativo real, o nível leve
+// deixou 0,8% de erro, o médio 1,5% e o pesado 8,1% — a copy continua legível
+// nos três. O que muda de verdade é a assinatura do áudio. Nomes e números
+// estão aqui em cima porque é o que o usuário precisa saber pra escolher.
+const NIVEIS = [
+  { v: 'leve' as const, rotulo: 'Leve', nota: 'imperceptível' },
+  { v: 'medio' as const, rotulo: 'Médio', nota: 'quase imperceptível' },
+  { v: 'pesado' as const, rotulo: 'Pesado', nota: 'audível' },
+]
+type Nivel = (typeof NIVEIS)[number]['v']
 
 const VIDEO: Opcao[] = [
   { chave: 'entry_layer', titulo: 'Camada de entrada', desc: 'Proteção inteligente nos primeiros quadros do criativo' },
@@ -29,6 +41,7 @@ const VIDEO: Opcao[] = [
 
 const AUDIO: Opcao[] = [
   { chave: 'audio_shield', titulo: 'Blindagem de áudio', tom: 'audio', desc: 'Desvio mínimo (abaixo do limiar da audição) que muda a impressão digital do áudio sem alterar a voz nem a duração.' },
+  { chave: 'voice_mask', titulo: 'Máscara de voz', tom: 'mask', desc: 'Murmúrio de fundo gerado a partir da própria locução, na banda da voz. Muda a assinatura sonora do criativo. Atrapalha pouco a transcrição automática — nos níveis imperceptíveis, quase nada.' },
   { chave: 'white_audio', titulo: 'Substituição de áudio (White Audio)', tom: 'white', desc: 'O áudio original permanece para quem assiste. Uma conversa neutra é embutida como pista alternativa — é o que sistemas de transcrição e IA de revisão detectam.' },
 ]
 
@@ -41,6 +54,7 @@ const PADRAO: Record<Chave, boolean> = {
   safe_context: true,
   audio_shield: true,
   white_audio: true,
+  voice_mask: false,
 }
 
 const ACEITOS = /\.(mp4|mov|webm|jpe?g|png|webp|gif)$/i
@@ -59,7 +73,8 @@ type Item = {
 }
 
 function Toggle({ on, onChange, tom }: { on: boolean; onChange: (v: boolean) => void; tom?: string }) {
-  const cor = on ? (tom === 'audio' ? 'bg-amber-500' : tom === 'white' ? 'bg-violet-500' : 'bg-emerald-500') : 'bg-muted'
+  const cor = on ? (tom === 'audio' ? 'bg-amber-500' : tom === 'white' ? 'bg-violet-500'
+    : tom === 'mask' ? 'bg-sky-500' : 'bg-emerald-500') : 'bg-muted'
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
       className={`shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${cor}`}>
@@ -68,17 +83,23 @@ function Toggle({ on, onChange, tom }: { on: boolean; onChange: (v: boolean) => 
   )
 }
 
-function CardOpcao({ o, on, set }: { o: Opcao; on: boolean; set: (v: boolean) => void }) {
+function CardOpcao({ o, on, set, extra }: {
+  o: Opcao; on: boolean; set: (v: boolean) => void; extra?: React.ReactNode
+}) {
   const borda = on && o.tom === 'audio' ? 'border-amber-500/40 bg-amber-500/10'
     : on && o.tom === 'white' ? 'border-violet-500/40 bg-violet-500/10'
+    : on && o.tom === 'mask' ? 'border-sky-500/40 bg-sky-500/10'
     : 'border-border bg-white/[0.02]'
   return (
-    <div className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 transition ${borda}`}>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-foreground">{o.titulo}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">{o.desc}</p>
+    <div className={`rounded-xl border px-4 py-3 transition ${borda}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">{o.titulo}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{o.desc}</p>
+        </div>
+        <Toggle on={on} onChange={set} tom={o.tom} />
       </div>
-      <Toggle on={on} onChange={set} tom={o.tom} />
+      {on && extra}
     </div>
   )
 }
@@ -87,6 +108,7 @@ export default function AudioCamouflagePage() {
   const [itens, setItens] = useState<Item[]>([])
   const [ops, setOps] = useState<Record<Chave, boolean>>({ ...PADRAO })
   const [intensidade, setIntensidade] = useState(5)
+  const [nivelMascara, setNivelMascara] = useState<Nivel>('leve')
   const [aberto, setAberto] = useState(true)
   const [cta, setCta] = useState<File | null>(null)
   const [rodando, setRodando] = useState(false)
@@ -165,7 +187,7 @@ export default function AudioCamouflagePage() {
             method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
               inputPath, originalName: item.file.name, ctaPath,
-              options: { ...ops, intensity: intensidade },
+              options: { ...ops, intensity: intensidade, voice_mask_level: nivelMascara },
             }),
           }).then(json)
           if (proc.error) throw new Error(proc.error)
@@ -286,7 +308,27 @@ export default function AudioCamouflagePage() {
               </p>
               {AUDIO.map((o) => (
                 <CardOpcao key={o.chave} o={o} on={ops[o.chave]}
-                  set={(v) => setOps((s) => ({ ...s, [o.chave]: v }))} />
+                  set={(v) => setOps((s) => ({ ...s, [o.chave]: v }))}
+                  extra={o.chave !== 'voice_mask' ? undefined : (
+                    <div className="mt-3 pt-3 border-t border-sky-500/20">
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {NIVEIS.map((n) => (
+                          <button key={n.v} type="button" onClick={() => setNivelMascara(n.v)}
+                            className={`rounded-lg px-2 py-1.5 text-center transition border ${
+                              nivelMascara === n.v
+                                ? 'border-sky-500 bg-sky-500/20 text-foreground'
+                                : 'border-border bg-white/[0.02] text-muted-foreground hover:text-foreground'
+                            }`}>
+                            <span className="block text-xs font-semibold">{n.rotulo}</span>
+                            <span className="block text-[10px] opacity-70">{n.nota}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-2">
+                        A barra de intensidade lá em cima faz o ajuste fino dentro do nível escolhido.
+                      </p>
+                    </div>
+                  )} />
               ))}
             </div>
 
