@@ -763,9 +763,11 @@ def _storage_subir(bucket, path, src, content_type="video/mp4"):
 
 
 def _storage_apagar(bucket, path):
+    # Supabase apaga por LISTA de prefixes (DELETE no bucket, não no path).
     try:
-        requests.delete(f"{SUPABASE_URL}/storage/v1/object/{bucket}/{urllib.parse.quote(path)}",
-                        headers={"Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}, timeout=30)
+        requests.delete(f"{SUPABASE_URL}/storage/v1/object/{bucket}",
+                        headers={"Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "content-type": "application/json"},
+                        json={"prefixes": [path]}, timeout=30)
     except Exception:
         pass
 
