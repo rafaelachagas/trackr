@@ -685,5 +685,156 @@ def ig_login():
         return jsonify(error=f"{name}: {msg[:250]}"), 200
 
 
+# ============================================================
+# CAMUFLAGEM DE ÁUDIO — reprocessa o áudio de um MP4 mantendo o vídeo intacto.
+# ------------------------------------------------------------
+# Fluxo (o Vercel corta corpo > 4,5MB e o navegador bloqueia HTTP a partir de
+# página HTTPS, então o arquivo NÃO passa pelo Next nem chega aqui por upload):
+#   1. o navegador sobe o MP4 direto pro Supabase Storage (HTTPS, signed URL);
+#   2. o The Track (server-side) chama esta rota passando só os PATHS + params;
+#   3. aqui a gente BAIXA do Storage, roda o ffmpeg e SOBE o resultado de volta;
+#   4. o navegador baixa o resultado do Storage (HTTPS).
+# Só o áudio é recodificado; o vídeo é copiado sem reencode (-c:v copy).
+# ============================================================
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+CAMUFLAGEM_LOCK = threading.Lock()
+
+
+def _ffmpeg_disponivel() -> bool:
+    try:
+        return subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=10).returncode == 0
+    except Exception:
+        return False
+
+
+# Requisito de ambiente: avisa no startup se o ffmpeg sumir do PATH.
+if not _ffmpeg_disponivel():
+    print("[camuflagem] AVISO: ffmpeg não encontrado no PATH — a camuflagem de áudio não vai funcionar.", flush=True)
+
+
+def _clamp(v, lo, hi, default):
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, v))
+
+
+# Monta a cadeia de filtros de áudio do ffmpeg a partir dos parâmetros. Cada
+# efeito é opcional — só entra quando difere do neutro.
+def _filtro_audio(pitch_steps, time_stretch, eq_gain_db, reverb_wet):
+    filtros = []
+    if abs(time_stretch - 1.0) > 1e-3:
+        filtros.append(f"atempo={time_stretch:.3f}")
+    if abs(pitch_steps) > 1e-3:
+        ratio = 1 + (pitch_steps * 100) / 1200
+        novo_rate = int(round(44100 * ratio))   # valor numérico (não expressão) p/ robustez
+        filtros.append(f"asetrate={novo_rate},aresample=44100")
+    if eq_gain_db != 0:
+        filtros.append(f"equalizer=f=2000:width_type=o:width=2:g={eq_gain_db}")
+    if reverb_wet > 0:
+        delay = max(1, int(reverb_wet * 80))
+        filtros.append(f"aecho=0.8:{reverb_wet:.2f}:{delay}:{reverb_wet:.2f}")
+    return ",".join(filtros) if filtros else "anull"
+
+
+def _storage_baixar(bucket, path, dest):
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{urllib.parse.quote(path)}"
+    with requests.get(url, headers={"Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}, stream=True, timeout=300) as r:
+        if r.status_code != 200:
+            raise RuntimeError(f"storage GET {r.status_code}: {r.text[:200]}")
+        with open(dest, "wb") as fh:
+            for chunk in r.iter_content(1024 * 256):
+                if chunk:
+                    fh.write(chunk)
+
+
+def _storage_subir(bucket, path, src, content_type="video/mp4"):
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{urllib.parse.quote(path)}"
+    with open(src, "rb") as fh:
+        r = requests.post(url, headers={
+            "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+            "content-type": content_type,
+            "x-upsert": "true",
+        }, data=fh, timeout=300)
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"storage PUT {r.status_code}: {r.text[:200]}")
+
+
+def _storage_apagar(bucket, path):
+    try:
+        requests.delete(f"{SUPABASE_URL}/storage/v1/object/{bucket}/{urllib.parse.quote(path)}",
+                        headers={"Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}, timeout=30)
+    except Exception:
+        pass
+
+
+@app.route("/audio_camouflage", methods=["POST"])
+def audio_camouflage():
+    # Auth: só o The Track (server-side) chama esta rota — mesma chave do serviço.
+    key = request.args.get("key") or (request.get_json(silent=True) or {}).get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="storage não configurado no servidor"), 500
+
+    body = request.get_json(silent=True) or {}
+    bucket = body.get("bucket") or "camuflagem"
+    inp = body.get("input_path")
+    outp = body.get("output_path")
+    if not inp or not outp:
+        return jsonify(error="input_path/output_path ausentes"), 400
+
+    # Clamp server-side — nunca confia no range que veio do cliente.
+    pitch = _clamp(body.get("pitch_steps"), -6, 6, 0.0)
+    tempo = _clamp(body.get("time_stretch"), 0.85, 1.15, 1.0)
+    ruido = _clamp(body.get("noise_volume"), 0.0, 0.30, 0.0)
+    eq = int(round(_clamp(body.get("eq_gain_db"), -12, 12, 0)))
+    reverb = _clamp(body.get("reverb_wet"), 0.0, 0.40, 0.0)
+
+    # CPU: uma por vez (o box também roda Whisper). Espera a vez até 3 min.
+    if not CAMUFLAGEM_LOCK.acquire(timeout=180):
+        return jsonify(error="processador ocupado — tente de novo em instantes"), 503
+
+    tmp = tempfile.mkdtemp(prefix="camuf_")
+    entrada = os.path.join(tmp, "in.mp4")
+    saida = os.path.join(tmp, "out.mp4")
+    try:
+        _storage_baixar(bucket, inp, entrada)
+        filtro = _filtro_audio(pitch, tempo, eq, reverb)
+        if ruido > 0:
+            cmd = [
+                "ffmpeg", "-i", entrada,
+                "-f", "lavfi", "-i", "anoisesrc=c=white:amplitude=0.03",
+                "-filter_complex",
+                f"[0:a]{filtro}[main];[1:a]volume={ruido:.2f}[noise];[main][noise]amix=inputs=2:duration=first[out]",
+                "-map", "0:v", "-map", "[out]",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                saida, "-y",
+            ]
+        else:
+            cmd = [
+                "ffmpeg", "-i", entrada,
+                "-map", "0:v", "-map", "0:a",
+                "-c:v", "copy", "-af", filtro,
+                "-c:a", "aac", "-b:a", "192k",
+                saida, "-y",
+            ]
+        r = subprocess.run(cmd, capture_output=True, timeout=600)
+        if r.returncode != 0 or not os.path.exists(saida):
+            return jsonify(error="ffmpeg: " + r.stderr[-400:].decode(errors="ignore")), 500
+        _storage_subir(bucket, outp, saida)
+        _storage_apagar(bucket, inp)   # não guarda o original enviado
+        return jsonify(ok=True)
+    except subprocess.TimeoutExpired:
+        return jsonify(error="processamento excedeu o tempo limite"), 504
+    except Exception as e:
+        return jsonify(error=f"falha: {e}"), 500
+    finally:
+        CAMUFLAGEM_LOCK.release()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8082")))

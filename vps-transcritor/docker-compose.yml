@@ -11,6 +11,10 @@ services:
       # Proxy residencial (opcional): defina PROXY_URL no arquivo .env desta pasta
       # (http://user:pass@host:port). Sem ele, funciona direto.
       - PROXY_URL=${PROXY_URL:-}
+      # Supabase Storage — usado pela camuflagem de áudio (baixa o MP4 enviado,
+      # sobe o resultado). Mesma service key do The Track. Defina no .env.
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
     volumes:
       # Cache do modelo baixado (não re-baixa a cada restart).
       - whisper-cache:/root/.cache/huggingface

@@ -8,7 +8,7 @@ import {
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
   Wrench, Binoculars, Search, Video, MonitorPlay, Brain, FolderSearch, Wand2, Bell,
-  Filter as FilterIcon, FileText, Clapperboard, ListTodo, Tags,
+  Filter as FilterIcon, FileText, Clapperboard, ListTodo, Tags, AudioLines,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -41,6 +41,7 @@ const ferramentas = [
   { href: '/tools/alerts', label: 'Central de Alertas', icon: Bell },
   { href: '/tools/simulator', label: 'Simulador de Funil', icon: TrendingUp },
   { href: '/tools/ad-naming', label: 'Gerador de Nomenclatura', icon: Tags },
+  { href: '/tools/audio-camouflage', label: 'Camuflagem de Áudio', icon: AudioLines },
   { href: '/tools/tasks', label: 'Afazeres', icon: ListTodo },
 ]
 
