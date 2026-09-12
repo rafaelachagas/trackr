@@ -838,5 +838,251 @@ def audio_camouflage():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+
+# ============================================================
+# CAMUFLAGEM COMPLETA — vídeo + imagem, com camadas de proteção.
+# ------------------------------------------------------------
+# Mesmo fluxo de storage do /audio_camouflage (o arquivo nunca passa pelo Next).
+# Além do áudio, aqui mexemos no vídeo: ruído imperceptível, micro-pulsos de
+# brilho, variação de matiz/saturação e sobreposições (camada de entrada, de
+# saída e contexto visual). Tudo escalado pela "intensidade" (1–10).
+# ============================================================
+ASSETS_DIR = os.environ.get("CAMUFLAGEM_ASSETS", "/app/assets")
+
+
+def _bool(v, default=False):
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return default
+    return str(v).lower() in ("1", "true", "sim", "yes", "on")
+
+
+def _ffprobe(path):
+    """(largura, altura, duração) — com defaults sãos se o probe falhar."""
+    try:
+        r = subprocess.run([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-show_entries", "format=duration",
+            "-of", "default=nw=1:nk=1", path,
+        ], capture_output=True, timeout=60)
+        vals = [x for x in r.stdout.decode(errors="ignore").split() if x]
+        w, h = int(float(vals[0])), int(float(vals[1]))
+        d = float(vals[2]) if len(vals) > 2 else 0.0
+        return (w - w % 2, h - h % 2, d)
+    except Exception:
+        return (720, 1280, 0.0)
+
+
+def _tem_audio(path):
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0",
+                            "-show_entries", "stream=index", "-of", "csv=p=0", path],
+                           capture_output=True, timeout=60)
+        return bool(r.stdout.strip())
+    except Exception:
+        return False
+
+
+def _overlay_padrao(dest, w, h):
+    """Sem imagem de CTA enviada: gera um quadro neutro (gradiente da marca)."""
+    tentativas = (
+        ["ffmpeg", "-f", "lavfi", "-i", "gradients=s=%dx%d:c0=0x0B1220:c1=0x2E90FA:n=2" % (w, h),
+         "-frames:v", "1", dest, "-y"],
+        ["ffmpeg", "-f", "lavfi", "-i", "color=c=0x0B1220:s=%dx%d" % (w, h),
+         "-frames:v", "1", dest, "-y"],
+    )
+    for cmd in tentativas:
+        try:
+            if subprocess.run(cmd, capture_output=True, timeout=60).returncode == 0 and os.path.exists(dest):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _white_audio_entrada(dur):
+    """Pista alternativa neutra: usa o asset da VPS se existir; senão sintetiza
+    um murmúrio filtrado na faixa da voz — é o que transcritor/IA vai ouvir."""
+    for nome in ("white_audio.m4a", "white_audio.mp3", "white_audio.wav"):
+        cam = os.path.join(ASSETS_DIR, nome)
+        if os.path.exists(cam):
+            return ["-stream_loop", "-1", "-t", "%.2f" % max(dur, 1), "-i", cam]
+    return ["-f", "lavfi", "-t", "%.2f" % max(dur, 1), "-i",
+            "anoisesrc=c=brown:a=0.30,highpass=f=180,lowpass=f=3400,tremolo=f=5:d=0.7"]
+
+
+@app.route("/camouflage", methods=["POST"])
+def camouflage():
+    key = request.args.get("key") or (request.get_json(silent=True) or {}).get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="storage não configurado no servidor"), 500
+
+    body = request.get_json(silent=True) or {}
+    bucket = body.get("bucket") or "camuflagem"
+    inp = body.get("input_path")
+    outp = body.get("output_path")
+    if not inp or not outp:
+        return jsonify(error="input_path/output_path ausentes"), 400
+
+    kind = "image" if str(body.get("kind") or "video") == "image" else "video"
+    cta_path = body.get("cta_path") or None
+    inten = _clamp(body.get("intensity"), 1, 10, 5)
+    f = inten / 10.0   # 0,1 – 1,0
+
+    entrada_on = _bool(body.get("entry_layer"))
+    saida_on = _bool(body.get("exit_layer"))
+    blindagem = _bool(body.get("invisible_shield"))
+    pulsos = _bool(body.get("pulses"))
+    cromatica = _bool(body.get("chroma"))
+    contexto = _bool(body.get("safe_context"))
+    audio_shield = _bool(body.get("audio_shield"))
+    white_audio = _bool(body.get("white_audio"))
+
+    if not CAMUFLAGEM_LOCK.acquire(timeout=180):
+        return jsonify(error="processador ocupado — tente de novo em instantes"), 503
+
+    tmp = tempfile.mkdtemp(prefix="camuf_")
+    ext = os.path.splitext(inp)[1].lower() or (".jpg" if kind == "image" else ".mp4")
+    entrada = os.path.join(tmp, "in" + ext)
+    saida = os.path.join(tmp, "out" + (ext if kind == "image" else ".mp4"))
+    try:
+        _storage_baixar(bucket, inp, entrada)
+        w, h, dur = _ffprobe(entrada)
+
+        # Sobreposição (CTA do usuário ou quadro padrão) — só baixa se for usar.
+        precisa_ov = entrada_on or saida_on or contexto
+        ov = os.path.join(tmp, "ov.png")
+        if precisa_ov:
+            if cta_path:
+                try:
+                    _storage_baixar(bucket, cta_path, ov)
+                except Exception:
+                    _overlay_padrao(ov, w, h)
+            else:
+                _overlay_padrao(ov, w, h)
+            if not os.path.exists(ov):
+                precisa_ov = entrada_on = saida_on = contexto = False
+
+        # --- filtros base de vídeo (valem pra imagem também) ---
+        base = []
+        if cromatica:
+            base.append("hue=h=%.2f:s=%.3f" % (1.5 + 6.0 * f, 1.0 + 0.06 * f))
+        if blindagem:
+            base.append("noise=alls=%d:allf=t+u" % int(round(2 + 10 * f)))
+        if pulsos and kind == "video":
+            base.append("eq=brightness='%.4f*sin(2*PI*t/2.6)':eval=frame" % (0.006 + 0.022 * f))
+        vchain = ",".join(base) if base else "null"
+
+        # --- cadeia de sobreposições ---
+        chain = ["[0:v]%s,format=yuv420p[v0]" % vchain]
+        cur = "v0"
+        if precisa_ov:
+            dur_camada = 0.5 + 0.5 * f
+            alvos = []
+            if entrada_on:
+                alvos.append(("full", "between(t,0,%.2f)" % dur_camada if kind == "video" else None))
+            if saida_on and kind == "video" and dur > dur_camada:
+                alvos.append(("full", "between(t,%.2f,%.2f)" % (max(0.0, dur - dur_camada), dur + 1)))
+            if contexto:
+                alvos.append(("full", "between(t,0,%.2f)" % (0.35 + 0.25 * f) if kind == "video" else None))
+                alvos.append(("mark", None))
+
+            chain.append("[1:v]scale=%d:%d:force_original_aspect_ratio=increase,"
+                         "crop=%d:%d,setsar=1,format=rgba[ovbase]" % (w, h, w, h))
+            n = len(alvos)
+            rotulos = ["ovc%d" % i for i in range(n)]
+            if n == 1:
+                chain.append("[ovbase]null[%s]" % rotulos[0])
+            else:
+                chain.append("[ovbase]split=%d%s" % (n, "".join("[%s]" % r for r in rotulos)))
+
+            for i, (tipo, enable) in enumerate(alvos):
+                src = rotulos[i]
+                if tipo == "full":
+                    chain.append("[%s]colorchannelmixer=aa=0.92[ovp%d]" % (src, i))
+                    pos = "0:0"
+                else:
+                    chain.append("[%s]scale=%d:-1,format=rgba,colorchannelmixer=aa=%.3f[ovp%d]"
+                                 % (src, max(64, w // 5), 0.06 + 0.07 * f, i))
+                    pos = "W-w-%d:H-h-%d" % (max(8, w // 40), max(8, h // 40))
+                en = ":enable='%s'" % enable if enable else ""
+                chain.append("[%s][ovp%d]overlay=%s%s[v%d]" % (cur, i, pos, en, i + 1))
+                cur = "v%d" % (i + 1)
+
+        # ---------------- IMAGEM ----------------
+        if kind == "image":
+            gif = ext == ".gif"
+            cmd = ["ffmpeg", "-i", entrada]
+            if precisa_ov:
+                cmd += ["-i", ov]
+            cmd += ["-filter_complex", ";".join(chain), "-map", "[%s]" % cur, "-map_metadata", "-1"]
+            cmd += ["-loop", "0"] if gif else ["-frames:v", "1"]
+            cmd += [saida, "-y"]
+            r = subprocess.run(cmd, capture_output=True, timeout=900)
+            if r.returncode != 0 or not os.path.exists(saida):
+                return jsonify(error="ffmpeg: " + r.stderr[-400:].decode(errors="ignore")), 500
+            tipos = {".gif": "image/gif", ".png": "image/png", ".webp": "image/webp"}
+            _storage_subir(bucket, outp, saida, content_type=tipos.get(ext, "image/jpeg"))
+            _storage_apagar(bucket, inp)
+            if cta_path:
+                _storage_apagar(bucket, cta_path)
+            return jsonify(ok=True)
+
+        # ---------------- VÍDEO ----------------
+        tem_audio = _tem_audio(entrada)
+        cmd = ["ffmpeg", "-i", entrada]
+        idx = 1
+        if precisa_ov:
+            cmd += ["-i", ov]
+            idx += 1
+        wa_idx = None
+        if white_audio and tem_audio:
+            cmd += _white_audio_entrada(dur or 30)
+            wa_idx = idx
+            idx += 1
+
+        achain = []
+        if tem_audio:
+            if audio_shield:
+                af = _filtro_audio(0.4 + 2.2 * f, 1.0 - 0.035 * f, -int(round(2 + 6 * f)), 0.0)
+                achain.append("[0:a]%s[a0]" % af)
+            else:
+                achain.append("[0:a]anull[a0]")
+            if wa_idx is not None:
+                achain.append("[%d:a]volume=0.9,aformat=channel_layouts=stereo[a1]" % wa_idx)
+
+        cmd += ["-filter_complex", ";".join(chain + achain), "-map", "[%s]" % cur]
+        if tem_audio:
+            cmd += ["-map", "[a0]"]
+            if wa_idx is not None:
+                cmd += ["-map", "[a1]", "-shortest"]
+        cmd += ["-map_metadata", "-1",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
+        if tem_audio:
+            cmd += ["-c:a", "aac", "-b:a", "192k", "-disposition:a:0", "default"]
+            if wa_idx is not None:
+                cmd += ["-metadata:s:a:1", "title=alt", "-disposition:a:1", "0"]
+        cmd += ["-movflags", "+faststart", saida, "-y"]
+
+        r = subprocess.run(cmd, capture_output=True, timeout=1800)
+        if r.returncode != 0 or not os.path.exists(saida):
+            return jsonify(error="ffmpeg: " + r.stderr[-400:].decode(errors="ignore")), 500
+        _storage_subir(bucket, outp, saida)
+        _storage_apagar(bucket, inp)
+        if cta_path:
+            _storage_apagar(bucket, cta_path)
+        return jsonify(ok=True)
+    except subprocess.TimeoutExpired:
+        return jsonify(error="processamento excedeu o tempo limite"), 504
+    except Exception as e:
+        return jsonify(error="falha: %s" % e), 500
+    finally:
+        CAMUFLAGEM_LOCK.release()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8082")))
