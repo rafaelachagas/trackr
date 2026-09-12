@@ -116,6 +116,8 @@ export default function AudioCamouflagePage() {
   const [fundo, setFundo] = useState<File | null>(null)
   const [volDinheiro, setVolDinheiro] = useState(6)
   const [palavrasEfeito, setPalavrasEfeito] = useState('')
+  // Décimos de segundo: negativo antecipa, positivo atrasa.
+  const [ajusteEfeito, setAjusteEfeito] = useState(0)
   const [somEfeito, setSomEfeito] = useState<File | null>(null)
   // Capa "white" gerada por IA: vira a imagem de sobreposição (mesmo papel do
   // CTA enviado à mão). Um arquivo enviado manualmente tem prioridade.
@@ -240,6 +242,7 @@ export default function AudioCamouflagePage() {
                 ...ops, intensity: intensidade, voice_mask_level: nivelMascara,
                 money_sfx_volume: volDinheiro,
                 money_sfx_words: palavrasEfeito,
+                money_sfx_offset: ajusteEfeito,
               },
             }),
           }).then(json)
@@ -433,6 +436,19 @@ export default function AudioCamouflagePage() {
                       <input type="range" min={1} max={10} step={1} value={volDinheiro}
                         onChange={(e) => setVolDinheiro(Number(e.target.value))}
                         className="w-full accent-lime-500" />
+                      <div className="flex items-center justify-between mt-3 mb-1.5">
+                        <span className="text-[11px] text-muted-foreground">Ajuste de sincronia</span>
+                        <span className="text-[11px] font-bold text-foreground tabular-nums">
+                          {ajusteEfeito === 0 ? 'no tempo' : `${ajusteEfeito > 0 ? '+' : ''}${(ajusteEfeito / 10).toFixed(1)}s`}
+                        </span>
+                      </div>
+                      <input type="range" min={-10} max={20} step={1} value={ajusteEfeito}
+                        onChange={(e) => setAjusteEfeito(Number(e.target.value))}
+                        className="w-full accent-lime-500" />
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Negativo adianta o som, positivo atrasa.
+                      </p>
+
                       <textarea value={palavrasEfeito} onChange={(e) => setPalavrasEfeito(e.target.value)} rows={2}
                         placeholder="Palavras que disparam o som, separadas por vírgula. Vazio = dinheiro, renda, reais, salário, lucro, ganhar, mil, pix e números."
                         className="mt-3 w-full rounded-lg border border-border bg-black/20 px-3 py-2 text-xs

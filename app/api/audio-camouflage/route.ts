@@ -26,6 +26,7 @@ type Opcoes = {
   money_sfx: boolean
   money_sfx_volume: number
   money_sfx_words: string
+  money_sfx_offset: number
 }
 
 const IMAGEM = /\.(jpe?g|png|webp|gif)$/i
@@ -87,6 +88,7 @@ export async function POST(req: Request) {
           money_sfx: options?.money_sfx,
           money_sfx_volume: options?.money_sfx_volume,
           money_sfx_words: options?.money_sfx_words,
+          money_sfx_offset: options?.money_sfx_offset,
         }),
         })
     } catch {

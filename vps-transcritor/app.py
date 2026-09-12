@@ -1046,7 +1046,7 @@ def _som_dinheiro(dest, enviado=None):
         return False
 
 
-def _momentos_dinheiro(entrada, tmp, rx=None, limite=40):
+def _momentos_dinheiro(entrada, tmp, rx=None, ajuste=0.0, limite=40):
     """Segundos em que a locução fala de dinheiro/valores, via Whisper com
     tempo palavra a palavra. Marcações a menos de 1,2s uma da outra viram uma
     só — senão 'mil reais' dispararia o som duas vezes coladas."""
@@ -1059,7 +1059,12 @@ def _momentos_dinheiro(entrada, tmp, rx=None, limite=40):
     if not TRANSCRIBE_LOCK.acquire(timeout=600):
         return []
     try:
-        segs, _ = model.transcribe(wav, language="pt", vad_filter=True,
+        # SEM vad_filter aqui, de propósito. Ele corta os silêncios pra ganhar
+        # tempo e depois remapeia os tempos pro áudio original — o segmento
+        # volta certo, mas a palavra dentro dele sai adiantada, e o erro
+        # acumula em vídeo com pausas. Pro efeito, o que importa é o instante
+        # exato da palavra, então vale pagar o tempo a mais.
+        segs, _ = model.transcribe(wav, language="pt", vad_filter=False,
                                    word_timestamps=True)
         marcas = []
         for seg in segs:
@@ -1067,7 +1072,7 @@ def _momentos_dinheiro(entrada, tmp, rx=None, limite=40):
                 # sem acento: o Whisper devolve "salário", a lista é "salario"
                 palavra = _sem_acento(w.word)
                 if (rx or RE_DINHEIRO).search(palavra):
-                    t = max(0.0, float(w.start))
+                    t = max(0.0, float(w.start) + ajuste)
                     if not marcas or t - marcas[-1] > 1.2:
                         marcas.append(t)
                     if len(marcas) >= limite:
@@ -1170,6 +1175,8 @@ def _camuflar(body):
     money_sfx = _bool(body.get("money_sfx"))
     money_vol = _clamp(body.get("money_sfx_volume"), 1, 10, 6) / 10.0
     money_words = str(body.get("money_sfx_words") or "")
+    # Ajuste fino em décimos de segundo (-10 = 1s antes, +20 = 2s depois).
+    money_ajuste = _clamp(body.get("money_sfx_offset"), -10, 20, 0) / 10.0
     sfx_path = body.get("sfx_path") or None
 
     if not CAMUFLAGEM_LOCK.acquire(timeout=180):
@@ -1333,7 +1340,8 @@ def _camuflar(body):
             # cópia por marcação, atrasada pro instante certo e somada por cima.
             if money_sfx:
                 t0m = time.time()
-                marcas = _momentos_dinheiro(entrada, tmp, _regex_palavras(money_words))
+                marcas = _momentos_dinheiro(entrada, tmp, _regex_palavras(money_words),
+                                            money_ajuste)
                 sfx = os.path.join(tmp, "cha.wav")
                 if marcas and _som_dinheiro(sfx, sfx_env):
                     cmd_a += ["-i", sfx]
