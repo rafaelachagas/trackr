@@ -993,9 +993,36 @@ RE_DINHEIRO = re.compile(
     re.I)
 
 
-def _som_dinheiro(dest):
+def _sem_acento(t):
+    t = unicodedata.normalize("NFD", t or "")
+    return "".join(c for c in t if not unicodedata.combining(c))
+
+
+def _regex_palavras(lista):
+    """Regex a partir da lista do usuário. Cada item pode ser uma expressão de
+    várias palavras ("renda extra"); como o Whisper devolve palavra por
+    palavra, a marcação é feita pela PRIMEIRA palavra do item — é ela que dá o
+    instante certo. Sem lista, vale a lista padrão de dinheiro."""
+    termos = []
+    for item in re.split(r"[,;" + chr(10) + r"]", lista or ""):
+        item = _sem_acento(item).strip().lower()
+        if not item:
+            continue
+        primeira = item.split()[0]
+        if len(primeira) >= 2:
+            termos.append(re.escape(primeira))
+    if not termos:
+        return RE_DINHEIRO
+    return re.compile(r"\b(" + "|".join(sorted(set(termos))) + r")", re.I)
+
+
+def _som_dinheiro(dest, enviado=None):
     """Som de caixa registradora. Usa o asset da VPS se existir; senão
     sintetiza duas notas curtas de sino, que é o "cha-ching" reconhecível."""
+    # 1º o som que o usuário enviou, 2º um asset fixo na VPS, 3º o sintetizado.
+    if enviado and os.path.exists(enviado):
+        shutil.copy(enviado, dest)
+        return True
     for nome in ("money.wav", "money.mp3", "money.m4a"):
         cam = os.path.join(ASSETS_DIR, nome)
         if os.path.exists(cam):
@@ -1019,7 +1046,7 @@ def _som_dinheiro(dest):
         return False
 
 
-def _momentos_dinheiro(entrada, tmp, limite=40):
+def _momentos_dinheiro(entrada, tmp, rx=None, limite=40):
     """Segundos em que a locução fala de dinheiro/valores, via Whisper com
     tempo palavra a palavra. Marcações a menos de 1,2s uma da outra viram uma
     só — senão 'mil reais' dispararia o som duas vezes coladas."""
@@ -1038,9 +1065,8 @@ def _momentos_dinheiro(entrada, tmp, limite=40):
         for seg in segs:
             for w in (seg.words or []):
                 # sem acento: o Whisper devolve "salário", a lista é "salario"
-                palavra = unicodedata.normalize("NFD", w.word or "")
-                palavra = "".join(c for c in palavra if not unicodedata.combining(c))
-                if RE_DINHEIRO.search(palavra):
+                palavra = _sem_acento(w.word)
+                if (rx or RE_DINHEIRO).search(palavra):
                     t = max(0.0, float(w.start))
                     if not marcas or t - marcas[-1] > 1.2:
                         marcas.append(t)
@@ -1143,6 +1169,8 @@ def _camuflar(body):
     bg_path = body.get("bg_path") or None
     money_sfx = _bool(body.get("money_sfx"))
     money_vol = _clamp(body.get("money_sfx_volume"), 1, 10, 6) / 10.0
+    money_words = str(body.get("money_sfx_words") or "")
+    sfx_path = body.get("sfx_path") or None
 
     if not CAMUFLAGEM_LOCK.acquire(timeout=180):
         return ({"error": "processador ocupado — tente de novo em instantes"}, 503)
@@ -1189,6 +1217,15 @@ def _camuflar(body):
                 _storage_baixar(bucket, bg_path, bg)
             except Exception:
                 bg = None
+
+        # Som do efeito enviado pelo usuário (opcional).
+        sfx_env = None
+        if money_sfx and sfx_path and kind == "video":
+            sfx_env = os.path.join(tmp, "sfx" + (os.path.splitext(sfx_path)[1].lower() or ".mp3"))
+            try:
+                _storage_baixar(bucket, sfx_path, sfx_env)
+            except Exception:
+                sfx_env = None
 
         # --- filtros base de vídeo (valem pra imagem também) ---
         base = []
@@ -1296,9 +1333,9 @@ def _camuflar(body):
             # cópia por marcação, atrasada pro instante certo e somada por cima.
             if money_sfx:
                 t0m = time.time()
-                marcas = _momentos_dinheiro(entrada, tmp)
+                marcas = _momentos_dinheiro(entrada, tmp, _regex_palavras(money_words))
                 sfx = os.path.join(tmp, "cha.wav")
-                if marcas and _som_dinheiro(sfx):
+                if marcas and _som_dinheiro(sfx, sfx_env):
                     cmd_a += ["-i", sfx]
                     si = idx_a
                     idx_a += 1
@@ -1409,6 +1446,8 @@ def _camuflar(body):
             _storage_apagar(bucket, cta_path)
         if bg_path:
             _storage_apagar(bucket, bg_path)
+        if sfx_path:
+            _storage_apagar(bucket, sfx_path)
         return ({"ok": True, "tempos": tempos}, 200)
     except subprocess.TimeoutExpired:
         return ({"error": "processamento excedeu o tempo limite"}, 504)

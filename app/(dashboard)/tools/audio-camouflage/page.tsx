@@ -115,6 +115,8 @@ export default function AudioCamouflagePage() {
   const [nivelMascara, setNivelMascara] = useState<Nivel>('leve')
   const [fundo, setFundo] = useState<File | null>(null)
   const [volDinheiro, setVolDinheiro] = useState(6)
+  const [palavrasEfeito, setPalavrasEfeito] = useState('')
+  const [somEfeito, setSomEfeito] = useState<File | null>(null)
   // Capa "white" gerada por IA: vira a imagem de sobreposição (mesmo papel do
   // CTA enviado à mão). Um arquivo enviado manualmente tem prioridade.
   const [capa, setCapa] = useState<{ path: string; url: string } | null>(null)
@@ -133,6 +135,7 @@ export default function AudioCamouflagePage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const ctaRef = useRef<HTMLInputElement>(null)
   const fundoRef = useRef<HTMLInputElement>(null)
+  const somRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!preview) return
@@ -190,7 +193,7 @@ export default function AudioCamouflagePage() {
     }
   }
 
-  async function subir(f: File, kind: 'in' | 'cta' | 'bg') {
+  async function subir(f: File, kind: 'in' | 'cta' | 'bg' | 'sfx') {
     const sign = await fetch('/api/audio-camouflage/sign-upload', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: f.name, kind }),
@@ -218,6 +221,10 @@ export default function AudioCamouflagePage() {
       if (fundo && ops.voice_mask) {
         bgPath = await subir(fundo, 'bg')
       }
+      let sfxPath: string | null = null
+      if (somEfeito && ops.money_sfx) {
+        sfxPath = await subir(somEfeito, 'sfx')
+      }
 
       for (const item of fila) {
         try {
@@ -228,10 +235,11 @@ export default function AudioCamouflagePage() {
           const proc = await fetch('/api/audio-camouflage', {
             method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
-              inputPath, originalName: item.file.name, ctaPath, bgPath,
+              inputPath, originalName: item.file.name, ctaPath, bgPath, sfxPath,
               options: {
                 ...ops, intensity: intensidade, voice_mask_level: nivelMascara,
                 money_sfx_volume: volDinheiro,
+                money_sfx_words: palavrasEfeito,
               },
             }),
           }).then(json)
@@ -425,7 +433,35 @@ export default function AudioCamouflagePage() {
                       <input type="range" min={1} max={10} step={1} value={volDinheiro}
                         onChange={(e) => setVolDinheiro(Number(e.target.value))}
                         className="w-full accent-lime-500" />
-                      <p className="text-[11px] text-muted-foreground mt-1.5">
+                      <textarea value={palavrasEfeito} onChange={(e) => setPalavrasEfeito(e.target.value)} rows={2}
+                        placeholder="Palavras que disparam o som, separadas por vírgula. Vazio = dinheiro, renda, reais, salário, lucro, ganhar, mil, pix e números."
+                        className="mt-3 w-full rounded-lg border border-border bg-black/20 px-3 py-2 text-xs
+                                   text-foreground placeholder:text-muted-foreground/60 resize-none
+                                   focus:outline-none focus:border-lime-500/60" />
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-muted-foreground min-w-0 truncate">
+                          {somEfeito
+                            ? <>Som: <span className="text-foreground font-medium">{somEfeito.name}</span></>
+                            : 'Som: caixa registradora padrão'}
+                        </p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {somEfeito && (
+                            <button type="button" onClick={() => setSomEfeito(null)}
+                              className="text-[11px] text-muted-foreground hover:text-foreground">remover</button>
+                          )}
+                          <button type="button" onClick={() => somRef.current?.click()}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1
+                                       text-[11px] font-medium hover:bg-white/5">
+                            <UploadCloud className="w-3 h-3" /> {somEfeito ? 'Trocar' : 'Usar meu som'}
+                          </button>
+                        </div>
+                      </div>
+                      <input ref={somRef} type="file" accept="audio/*" className="hidden"
+                        onChange={(e) => setSomEfeito(e.target.files?.[0] || null)} />
+
+                      <p className="text-[11px] text-muted-foreground mt-2">
+                        Expressão de várias palavras vale: o som entra na primeira delas.
                         A transcrição roda na sua VPS e leva cerca de um minuto a mais por vídeo.
                       </p>
                     </div>

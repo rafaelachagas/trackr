@@ -25,17 +25,19 @@ type Opcoes = {
   voice_mask_level: 'leve' | 'medio' | 'pesado'
   money_sfx: boolean
   money_sfx_volume: number
+  money_sfx_words: string
 }
 
 const IMAGEM = /\.(jpe?g|png|webp|gif)$/i
 
 export async function POST(req: Request) {
   try {
-    const { inputPath, originalName, ctaPath, bgPath, options } = (await req.json()) as {
+    const { inputPath, originalName, ctaPath, bgPath, sfxPath, options } = (await req.json()) as {
       inputPath: string
       originalName?: string
       ctaPath?: string | null
       bgPath?: string | null
+      sfxPath?: string | null
       options: Opcoes
     }
     if (!inputPath) return NextResponse.json({ error: 'inputPath ausente' }, { status: 400 })
@@ -68,6 +70,7 @@ export async function POST(req: Request) {
           output_path: outputPath,
           cta_path: ctaPath || null,
           bg_path: bgPath || null,
+          sfx_path: sfxPath || null,
           kind: ehImagem ? 'image' : 'video',
           async: true,
           intensity: options?.intensity,
@@ -83,6 +86,7 @@ export async function POST(req: Request) {
           voice_mask_level: options?.voice_mask_level,
           money_sfx: options?.money_sfx,
           money_sfx_volume: options?.money_sfx_volume,
+          money_sfx_words: options?.money_sfx_words,
         }),
         })
     } catch {
