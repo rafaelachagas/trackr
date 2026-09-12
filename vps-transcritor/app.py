@@ -877,6 +877,23 @@ def _ffprobe(path):
         return (720, 1280, 0.0)
 
 
+def _fps(path):
+    """Taxa de quadros MÉDIA do vídeo. Arquivo de celular/gravação de tela
+    costuma ser VFR (taxa variável): players de navegador lidam bem, muitos
+    players de desktop tocam acelerado. Forçar CFR na saída resolve."""
+    try:
+        r = subprocess.run([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=avg_frame_rate", "-of", "default=nw=1:nk=1", path,
+        ], capture_output=True, timeout=60)
+        txt = r.stdout.decode(errors="ignore").strip()
+        num, _, den = txt.partition("/")
+        val = float(num) / float(den or 1)
+        return val if 1 < val <= 120 else 0.0
+    except Exception:
+        return 0.0
+
+
 def _tem_audio(path):
     try:
         r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0",
@@ -1112,6 +1129,11 @@ def _camuflar(body):
         cmd += ["-map_metadata", "-1",
                 "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-pix_fmt", "yuv420p", "-threads", "0"]
+        fps = _fps(entrada)
+        if fps:
+            # CFR: sem isso, um fonte VFR sai com timestamps que vários players
+            # de desktop interpretam como vídeo acelerado.
+            cmd += ["-fps_mode", "cfr", "-r", "%.4f" % fps, "-video_track_timescale", "90000"]
         if tem_audio:
             cmd += ["-c:a", "aac", "-b:a", "192k", "-disposition:a:0", "default"]
             if wa_idx is not None:
