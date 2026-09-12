@@ -50,30 +50,43 @@ export async function POST(req: Request) {
     const stem = nome.replace(/\.[^./\\]+$/, '') || 'criativo'
     const downloadName = `${stem}${ext}`
 
-    const resp = await fetch(`${TRANSCRITOR_URL}/camouflage?key=${encodeURIComponent(TRANSCRITOR_APIKEY)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        bucket: BUCKET,
-        input_path: inputPath,
-        output_path: outputPath,
-        cta_path: ctaPath || null,
-        bg_path: bgPath || null,
-        kind: ehImagem ? 'image' : 'video',
-        async: true,
-        intensity: options?.intensity,
-        entry_layer: options?.entry_layer,
-        exit_layer: options?.exit_layer,
-        invisible_shield: options?.invisible_shield,
-        pulses: options?.pulses,
-        chroma: options?.chroma,
-        safe_context: options?.safe_context,
-        audio_shield: options?.audio_shield,
-        white_audio: options?.white_audio,
-        voice_mask: options?.voice_mask,
-        voice_mask_level: options?.voice_mask_level,
-      }),
-    })
+    // A VPS só registra o job e responde na hora (o ffmpeg roda depois, em
+    // segundo plano). Se ela não responder em 20s, está fora do ar — sem o
+    // corte, a espera ia até os 60s da função e o painel mostrava um
+    // "demorou demais" genérico, que não diz a ninguém o que fazer.
+    let resp: Response
+    try {
+      resp = await fetch(`${TRANSCRITOR_URL}/camouflage?key=${encodeURIComponent(TRANSCRITOR_APIKEY)}`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(20_000),
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          bucket: BUCKET,
+          input_path: inputPath,
+          output_path: outputPath,
+          cta_path: ctaPath || null,
+          bg_path: bgPath || null,
+          kind: ehImagem ? 'image' : 'video',
+          async: true,
+          intensity: options?.intensity,
+          entry_layer: options?.entry_layer,
+          exit_layer: options?.exit_layer,
+          invisible_shield: options?.invisible_shield,
+          pulses: options?.pulses,
+          chroma: options?.chroma,
+          safe_context: options?.safe_context,
+          audio_shield: options?.audio_shield,
+          white_audio: options?.white_audio,
+          voice_mask: options?.voice_mask,
+          voice_mask_level: options?.voice_mask_level,
+        }),
+        })
+    } catch {
+      return NextResponse.json(
+        { error: 'o processador de vídeo não respondeu — a VPS pode estar fora do ar' },
+        { status: 503 },
+      )
+    }
     const j = await resp.json().catch(() => ({} as any))
     if (!resp.ok || j?.error || !j?.job_id) {
       return NextResponse.json({ error: j?.error || 'falha ao iniciar o processamento' }, { status: 502 })

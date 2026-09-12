@@ -18,6 +18,13 @@ services:
     volumes:
       # Cache do modelo baixado (não re-baixa a cada restart).
       - whisper-cache:/root/.cache/huggingface
+    # Teto de memória e de CPU. Sem isto, um ffmpeg decodificando um 4K HEVC
+    # cresce até comer os ~3,8 GB da VPS e derruba TODOS os containers junto
+    # (Whisper, scraper, Evolution, Postgres) — a máquina trava e só volta com
+    # reboot. Com o teto, o pior caso é o job falhar; o resto continua de pé.
+    mem_limit: 2500m
+    memswap_limit: 2500m
+    cpus: 3.0
     restart: unless-stopped
 
 volumes:
