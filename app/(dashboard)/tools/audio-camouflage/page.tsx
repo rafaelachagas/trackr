@@ -450,7 +450,7 @@ export default function AudioCamouflagePage() {
                       </p>
 
                       <textarea value={palavrasEfeito} onChange={(e) => setPalavrasEfeito(e.target.value)} rows={2}
-                        placeholder="Palavras que disparam o som, separadas por vírgula. Vazio = dinheiro, renda, reais, salário, lucro, ganhar, mil, pix e números."
+                        placeholder="Palavras que disparam o som, separadas por vírgula. Vazio = dinheiro, renda, reais, salário, lucro, ganhar, mil, pix e valores."
                         className="mt-3 w-full rounded-lg border border-border bg-black/20 px-3 py-2 text-xs
                                    text-foreground placeholder:text-muted-foreground/60 resize-none
                                    focus:outline-none focus:border-lime-500/60" />
@@ -477,7 +477,9 @@ export default function AudioCamouflagePage() {
                         onChange={(e) => setSomEfeito(e.target.files?.[0] || null)} />
 
                       <p className="text-[11px] text-muted-foreground mt-2">
-                        Expressão de várias palavras vale: o som entra na primeira delas.
+                        Verbo pega as conjugações (&quot;ganhar&quot; → ganhei, ganhou) e substantivo pega o plural.
+                        Escreva <b>valores</b> ou <b>números</b> na lista pra marcar quantias faladas.
+                        Expressão de várias palavras entra na primeira delas. Sua lista substitui a padrão.
                         A transcrição roda na sua VPS e leva cerca de um minuto a mais por vídeo.
                       </p>
                     </div>

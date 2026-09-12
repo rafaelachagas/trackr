@@ -999,21 +999,40 @@ def _sem_acento(t):
 
 
 def _regex_palavras(lista):
-    """Regex a partir da lista do usuário. Cada item pode ser uma expressão de
-    várias palavras ("renda extra"); como o Whisper devolve palavra por
-    palavra, a marcação é feita pela PRIMEIRA palavra do item — é ela que dá o
-    instante certo. Sem lista, vale a lista padrão de dinheiro."""
-    termos = []
+    """Regex a partir da lista do usuario. Tres coisas que a comparacao literal
+    nao resolvia e o usuario espera:
+
+    - "numeros"/"valores"/"valor" nao sao palavras a procurar: viram a regra de
+      valores numericos (dois digitos ou mais).
+    - verbo casa por radical: quem escreve "ganhar" quer "ganhei", "ganhou",
+      "ganha" — a locucao quase nunca usa o infinitivo.
+    - substantivo casa no singular e no plural ("renda" pega "rendas").
+
+    Expressao de varias palavras casa pela PRIMEIRA, que e quem da o instante.
+    """
+    NUMERICOS = {"numero", "numeros", "valor", "valores", "quantia", "quantias"}
+    partes = []
     for item in re.split(r"[,;" + chr(10) + r"]", lista or ""):
         item = _sem_acento(item).strip().lower()
         if not item:
             continue
-        primeira = item.split()[0]
-        if len(primeira) >= 2:
-            termos.append(re.escape(primeira))
-    if not termos:
+        p = item.split()[0]
+        if len(p) < 2:
+            continue
+        if p in NUMERICOS:
+            partes.append(r"\d{2,}")
+        elif len(p) > 4 and p[-2:] in ("ar", "er", "ir"):
+            # verbo: radical + qualquer terminacao (ganhar -> ganh + ei/ou/a)
+            partes.append(re.escape(p[:-2]) + r"[a-z]*")
+        else:
+            # plural: casa/casas, mulher/mulheres e profissao/profissoes.
+            # A fronteira no FIM e obrigatoria, senao "mil" dispara em
+            # "militar" e "extra" em "extraordinario".
+            raiz = re.escape(p[:-2]) + "(?:ao|oes)" if p.endswith("ao") else re.escape(p) + "(?:es|s)?"
+            partes.append(raiz + r"\b")
+    if not partes:
         return RE_DINHEIRO
-    return re.compile(r"\b(" + "|".join(sorted(set(termos))) + r")", re.I)
+    return re.compile(r"\b(" + "|".join(sorted(set(partes))) + r")", re.I)
 
 
 def _som_dinheiro(dest, enviado=None):
