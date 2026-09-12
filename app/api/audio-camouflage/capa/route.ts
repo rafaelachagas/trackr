@@ -5,10 +5,11 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getLLMConfig } from '@/lib/llm'
 import { BUCKET } from '../sign-upload/route'
 
-// Gera a capa "white": uma imagem de abertura neutra pro criativo, a partir do
-// nicho. A CENA vem do Gemini (modelo de imagem); o TEXTO — headline e botão —
-// é desenhado aqui com sharp. Modelo de imagem escreve texto torto e com erro
-// de acento; composto localmente sai nítido e igual ao que o usuário digitou.
+// Gera a capa de abertura do criativo. A CENA vem do Gemini, descrita PELO
+// USUÁRIO — o texto dele vai como prompt, sem estilo imposto por aqui. A única
+// coisa que a gente acrescenta é "não escreva nada na imagem", porque o TEXTO
+// (headline e botão) é desenhado depois com sharp: modelo de imagem escreve
+// torto e come acento, e headline é copy, não pode sair errada.
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
     const { nicho, cta, formato, headline } = (await req.json()) as {
       nicho?: string; cta?: string; formato?: Formato; headline?: string
     }
-    if (!nicho?.trim()) return NextResponse.json({ error: 'descreva o nicho/oferta' }, { status: 400 })
+    if (!nicho?.trim()) return NextResponse.json({ error: 'descreva a imagem' }, { status: 400 })
 
     const { geminiKey } = await getLLMConfig()
     if (!geminiKey) {
@@ -56,14 +57,14 @@ export async function POST(req: Request) {
     const fmt: Formato = formato && formato in FORMATOS ? formato : '9:16'
     const { w, h } = FORMATOS[fmt]
 
-    // A cena é deliberadamente comum: é isso que faz a capa passar por
-    // conteúdo orgânico em vez de anúncio.
+    // A descrição do usuário é o prompt. O sufixo é só técnico: o texto entra
+    // depois, composto por cima — se o modelo escrever, sobrepõe e fica sujo.
     const prompt =
-      `Fotografia realista de celular, vertical, luz natural, sem nenhum texto, ` +
-      `letra, logotipo ou marca d'água na imagem. Cena cotidiana e discreta ` +
-      `relacionada a: ${nicho.trim()}. Pessoa comum ou objetos do dia a dia, ` +
-      `ambiente simples e real (casa, mesa, rua), cores naturais, nada de ` +
-      `estúdio, nada de montagem, nada que pareça propaganda.`
+      `${nicho.trim()}
+
+` +
+      `Não escreva nenhum texto, letra, número, legenda, logotipo ou marca ` +
+      `d'água na imagem.`
 
     const r = await fetch(`${GEMINI}/${MODELO}:generateContent?key=${encodeURIComponent(geminiKey)}`, {
       method: 'POST',
@@ -81,9 +82,16 @@ export async function POST(req: Request) {
     const base = Buffer.from(parte.inlineData.data, 'base64')
 
     // --- texto por cima (headline em cima, botão embaixo) ---
-    const hl = linhas((headline || '').trim(), fmt === '16:9' ? 44 : 26, 3)
+    const hl = linhas((headline || '').trim(), fmt === '16:9' ? 40 : 22, 3)
     const botao = (cta || '').trim()
-    const fonte = Math.round(w * (fmt === '16:9' ? 0.055 : 0.082))
+    // A fonte encolhe até a linha mais longa caber em 88% da largura — sem
+    // isso, uma headline de 22 caracteres encosta nas duas bordas. O 0,55 é a
+    // largura média de caractere do Arial Bold em relação ao corpo da fonte.
+    const maiorLinha = hl.reduce((m, l) => Math.max(m, l.length), 0)
+    const fonte = Math.round(Math.min(
+      w * (fmt === '16:9' ? 0.055 : 0.082),
+      maiorLinha ? (w * 0.88) / (maiorLinha * 0.55) : Infinity,
+    ))
     const capH = Math.round(fonte * 1.22)
     const bw = Math.round(w * 0.66)
     const bh = Math.round(w * 0.115)

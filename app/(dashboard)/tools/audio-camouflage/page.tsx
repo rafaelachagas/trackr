@@ -341,15 +341,15 @@ export default function AudioCamouflagePage() {
                   no servidor (modelo de imagem erra acento e entorta letra). */}
               <div className="mt-2.5 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/[0.06] px-4 py-3">
                 <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" /> Gerar capa &quot;white&quot; com IA
+                  <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" /> Gerar capa com IA
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Cria uma imagem de abertura discreta a partir do seu nicho. Vira a sobreposição —
-                  substitui o envio manual acima.
+                  Descreva a imagem que você quer — é isso que a IA vai gerar, sem estilo imposto.
+                  A capa vira a sobreposição e substitui o envio manual acima.
                 </p>
 
-                <textarea value={capaNicho} onChange={(e) => setCapaNicho(e.target.value)} rows={2}
-                  placeholder="Nicho/oferta do lead — ex.: renda extra para mães em casa"
+                <textarea value={capaNicho} onChange={(e) => setCapaNicho(e.target.value)} rows={3}
+                  placeholder="Descreva a imagem — ex.: mulher de 30 anos sentada na cozinha de casa olhando o celular com cara de surpresa, luz da manhã entrando pela janela, foto de celular"
                   className="mt-2.5 w-full rounded-lg border border-border bg-black/20 px-3 py-2 text-xs
                              text-foreground placeholder:text-muted-foreground/60 resize-none
                              focus:outline-none focus:border-fuchsia-500/60" />
