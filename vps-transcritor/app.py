@@ -1186,6 +1186,39 @@ def _camuflar(body):
 
         # ---------------- VÍDEO ----------------
         tem_audio = _tem_audio(entrada)
+
+        # Máscara de voz em passada PRÓPRIA. A `areverse` só produz som depois
+        # de ler o áudio inteiro; se ela rodasse junto com o vídeo, o ffmpeg
+        # empilharia todos os pacotes de vídeo na memória esperando o primeiro
+        # pacote de áudio — e num criativo de 11 Mbps isso mata o processo.
+        # Gerando o áudio sozinho primeiro, a memória fica limitada ao áudio.
+        audio_pronto = None
+        if tem_audio and voice_mask:
+            audio_pronto = os.path.join(tmp, "amask.m4a")
+            ac = []
+            if audio_shield:
+                af = _filtro_audio(0.02 + 0.06 * f, 1.0, 0.0, 0.0)
+                af = af + ",equalizer=f=%d:width_type=o:width=2:g=%.2f" % (
+                    int(1800 + 900 * f), -(0.5 + 1.0 * f))
+                ac.append("[0:a]%s[a0]" % af)
+            else:
+                ac.append("[0:a]anull[a0]")
+            cmd_a = ["nice", "-n", "10", "ffmpeg", "-threads", "1", "-i", entrada]
+            if bg:
+                cmd_a += ["-stream_loop", "-1", "-t", "%.2f" % max(dur or 30, 1), "-i", bg]
+                ac.append(_mascara_voz_arquivo("a0", "1:a", "am", voice_mask_level, f))
+            else:
+                ac.append(_mascara_voz("a0", "am", voice_mask_level, f))
+            cmd_a += ["-filter_complex", ";".join(ac), "-map", "[am]",
+                      "-c:a", "aac", "-b:a", "192k", audio_pronto, "-y"]
+            t0 = time.time()
+            ra = subprocess.run(cmd_a, capture_output=True, timeout=1800)
+            tempos["mascara"] = round(time.time() - t0, 1)
+            if ra.returncode != 0 or not os.path.exists(audio_pronto):
+                print("[camuflagem] mascara falhou (rc=%d) %s"
+                      % (ra.returncode, (ra.stderr or b"").decode(errors="ignore")[-2000:]), flush=True)
+                return ({"error": _erro_ffmpeg(ra)}, 500)
+
         # A VPS tem UM núcleo. Sem `nice`, o ffmpeg monopoliza esse núcleo
         # durante todo o encode e a máquina inteira para de responder — nem o
         # /health passa, e parece que travou. Com prioridade baixa, o vídeo
@@ -1195,10 +1228,10 @@ def _camuflar(body):
         if precisa_ov:
             cmd += ["-i", ov]
             idx += 1
-        bg_idx = None
-        if bg and tem_audio:
-            cmd += ["-stream_loop", "-1", "-t", "%.2f" % max(dur or 30, 1), "-i", bg]
-            bg_idx = idx
+        am_idx = None
+        if audio_pronto:
+            cmd += ["-i", audio_pronto]
+            am_idx = idx
             idx += 1
         wa_idx = None
         if white_audio and tem_audio:
@@ -1208,7 +1241,10 @@ def _camuflar(body):
 
         achain = []
         alab = "a0"   # rótulo da faixa principal no fim da cadeia de áudio
-        if tem_audio:
+        if tem_audio and am_idx is not None:
+            # Já vem mascarada (e blindada) da passada anterior: só copiar.
+            achain.append("[%d:a]anull[a0]" % am_idx)
+        elif tem_audio:
             if audio_shield:
                 # Desvio imperceptível: no máximo ~0,08 semitom (8 cents, abaixo
                 # do que o ouvido percebe) e um ombro de ±1,5dB. O suficiente pra
@@ -1219,15 +1255,10 @@ def _camuflar(body):
                 achain.append("[0:a]%s[a0]" % af)
             else:
                 achain.append("[0:a]anull[a0]")
-            if voice_mask:
-                if bg_idx is not None:
-                    achain.append(_mascara_voz_arquivo(
-                        "a0", "%d:a" % bg_idx, "a0m", voice_mask_level, f))
-                else:
-                    achain.append(_mascara_voz("a0", "a0m", voice_mask_level, f))
-                alab = "a0m"
-            if wa_idx is not None:
-                achain.append("[%d:a]volume=0.9,aformat=channel_layouts=stereo[a1]" % wa_idx)
+        # Vale pros dois caminhos acima — com ou sem máscara, a pista
+        # alternativa entra igual.
+        if tem_audio and wa_idx is not None:
+            achain.append("[%d:a]volume=0.9,aformat=channel_layouts=stereo[a1]" % wa_idx)
 
         cmd += ["-filter_complex", ";".join(chain + achain), "-map", "[%s]" % cur]
         if tem_audio:
