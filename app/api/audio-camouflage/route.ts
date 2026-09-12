@@ -29,10 +29,11 @@ const IMAGEM = /\.(jpe?g|png|webp|gif)$/i
 
 export async function POST(req: Request) {
   try {
-    const { inputPath, originalName, ctaPath, options } = (await req.json()) as {
+    const { inputPath, originalName, ctaPath, bgPath, options } = (await req.json()) as {
       inputPath: string
       originalName?: string
       ctaPath?: string | null
+      bgPath?: string | null
       options: Opcoes
     }
     if (!inputPath) return NextResponse.json({ error: 'inputPath ausente' }, { status: 400 })
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
         input_path: inputPath,
         output_path: outputPath,
         cta_path: ctaPath || null,
+        bg_path: bgPath || null,
         kind: ehImagem ? 'image' : 'video',
         async: true,
         intensity: options?.intensity,

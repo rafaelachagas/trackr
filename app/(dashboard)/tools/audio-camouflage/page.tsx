@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   AudioLines, Loader2, UploadCloud, Download, Film, X, Play, ChevronDown, ChevronUp,
-  SlidersHorizontal, Shield, Volume2, Info, ImageIcon, Trash2,
+  SlidersHorizontal, Shield, Volume2, Info, ImageIcon, Trash2, Sparkles,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -109,6 +109,16 @@ export default function AudioCamouflagePage() {
   const [ops, setOps] = useState<Record<Chave, boolean>>({ ...PADRAO })
   const [intensidade, setIntensidade] = useState(5)
   const [nivelMascara, setNivelMascara] = useState<Nivel>('leve')
+  const [fundo, setFundo] = useState<File | null>(null)
+  // Capa "white" gerada por IA: vira a imagem de sobreposição (mesmo papel do
+  // CTA enviado à mão). Um arquivo enviado manualmente tem prioridade.
+  const [capa, setCapa] = useState<{ path: string; url: string } | null>(null)
+  const [capaNicho, setCapaNicho] = useState('')
+  const [capaCta, setCapaCta] = useState('')
+  const [capaFormato, setCapaFormato] = useState<'9:16' | '1:1' | '16:9'>('9:16')
+  const [capaHeadline, setCapaHeadline] = useState('')
+  const [gerandoCapa, setGerandoCapa] = useState(false)
+  const [erroCapa, setErroCapa] = useState<string | null>(null)
   const [aberto, setAberto] = useState(true)
   const [cta, setCta] = useState<File | null>(null)
   const [rodando, setRodando] = useState(false)
@@ -117,6 +127,7 @@ export default function AudioCamouflagePage() {
   const [preview, setPreview] = useState<Item | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const ctaRef = useRef<HTMLInputElement>(null)
+  const fundoRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!preview) return
@@ -154,7 +165,27 @@ export default function AudioCamouflagePage() {
     }
   }
 
-  async function subir(f: File, kind: 'in' | 'cta') {
+  async function gerarCapa() {
+    setErroCapa(null)
+    if (!capaNicho.trim()) { setErroCapa('Descreva o nicho/oferta.'); return }
+    setGerandoCapa(true)
+    try {
+      const r = await fetch('/api/audio-camouflage/capa', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          nicho: capaNicho, cta: capaCta, formato: capaFormato, headline: capaHeadline,
+        }),
+      }).then(json)
+      if (r.error) throw new Error(r.error)
+      setCapa({ path: r.ctaPath, url: r.dataUrl })
+    } catch (e) {
+      setErroCapa(e instanceof Error ? e.message : String(e))
+    } finally {
+      setGerandoCapa(false)
+    }
+  }
+
+  async function subir(f: File, kind: 'in' | 'cta' | 'bg') {
     const sign = await fetch('/api/audio-camouflage/sign-upload', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: f.name, kind }),
@@ -175,6 +206,12 @@ export default function AudioCamouflagePage() {
       let ctaPath: string | null = null
       if (cta && (ops.entry_layer || ops.exit_layer || ops.safe_context)) {
         ctaPath = await subir(cta, 'cta')
+      } else if (capa) {
+        ctaPath = capa.path
+      }
+      let bgPath: string | null = null
+      if (fundo && ops.voice_mask) {
+        bgPath = await subir(fundo, 'bg')
       }
 
       for (const item of fila) {
@@ -186,7 +223,7 @@ export default function AudioCamouflagePage() {
           const proc = await fetch('/api/audio-camouflage', {
             method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
-              inputPath, originalName: item.file.name, ctaPath,
+              inputPath, originalName: item.file.name, ctaPath, bgPath,
               options: { ...ops, intensity: intensidade, voice_mask_level: nivelMascara },
             }),
           }).then(json)
@@ -299,6 +336,68 @@ export default function AudioCamouflagePage() {
                 <input ref={ctaRef} type="file" accept="image/*" className="hidden"
                   onChange={(e) => setCta(e.target.files?.[0] || null)} />
               </div>
+
+              {/* Capa "white" por IA: a cena vem do Gemini, o texto é desenhado
+                  no servidor (modelo de imagem erra acento e entorta letra). */}
+              <div className="mt-2.5 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/[0.06] px-4 py-3">
+                <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" /> Gerar capa &quot;white&quot; com IA
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Cria uma imagem de abertura discreta a partir do seu nicho. Vira a sobreposição —
+                  substitui o envio manual acima.
+                </p>
+
+                <textarea value={capaNicho} onChange={(e) => setCapaNicho(e.target.value)} rows={2}
+                  placeholder="Nicho/oferta do lead — ex.: renda extra para mães em casa"
+                  className="mt-2.5 w-full rounded-lg border border-border bg-black/20 px-3 py-2 text-xs
+                             text-foreground placeholder:text-muted-foreground/60 resize-none
+                             focus:outline-none focus:border-fuchsia-500/60" />
+
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <input value={capaCta} onChange={(e) => setCapaCta(e.target.value)}
+                    placeholder="Texto do botão"
+                    className="rounded-lg border border-border bg-black/20 px-3 py-2 text-xs text-foreground
+                               placeholder:text-muted-foreground/60 focus:outline-none focus:border-fuchsia-500/60" />
+                  <select value={capaFormato} onChange={(e) => setCapaFormato(e.target.value as typeof capaFormato)}
+                    className="rounded-lg border border-border bg-black/20 px-3 py-2 text-xs text-foreground
+                               focus:outline-none focus:border-fuchsia-500/60">
+                    <option value="9:16">9:16 (Reels/TikTok)</option>
+                    <option value="1:1">1:1 (Feed)</option>
+                    <option value="16:9">16:9 (YouTube)</option>
+                  </select>
+                </div>
+
+                <input value={capaHeadline} onChange={(e) => setCapaHeadline(e.target.value)}
+                  placeholder="Headline (opcional) — ex.: Assista até o final"
+                  className="mt-2 w-full rounded-lg border border-border bg-black/20 px-3 py-2 text-xs text-foreground
+                             placeholder:text-muted-foreground/60 focus:outline-none focus:border-fuchsia-500/60" />
+
+                {erroCapa && <p className="text-xs text-rose-300 mt-2">{erroCapa}</p>}
+
+                <div className="flex items-center gap-3 mt-2.5">
+                  <button type="button" onClick={gerarCapa} disabled={gerandoCapa}
+                    className="flex-1 rounded-lg px-3 py-2 text-xs font-bold inline-flex items-center justify-center gap-1.5
+                               bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-60 text-white transition">
+                    {gerandoCapa
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Gerando...</>
+                      : <><Sparkles className="w-3.5 h-3.5" /> {capa ? 'Gerar outra' : 'Gerar capa'}</>}
+                  </button>
+                  {capa && (
+                    <div className="flex items-center gap-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={capa.url} alt="Capa gerada" className="h-14 w-auto rounded-md border border-border" />
+                      <button type="button" onClick={() => setCapa(null)}
+                        className="text-rose-300/80 hover:text-rose-300"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )}
+                </div>
+                {capa && cta && (
+                  <p className="text-[11px] text-amber-300/90 mt-2">
+                    Você também enviou uma imagem à mão — ela tem prioridade sobre a capa gerada.
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Proteção de áudio */}
@@ -327,6 +426,32 @@ export default function AudioCamouflagePage() {
                       <p className="text-[11px] text-muted-foreground mt-2">
                         A barra de intensidade lá em cima faz o ajuste fino dentro do nível escolhido.
                       </p>
+
+                      {/* Áudio de fundo próprio. Sem arquivo, o murmúrio é
+                          gerado da própria locução — costuma camuflar melhor,
+                          porque ocupa exatamente a mesma banda da voz. */}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-muted-foreground min-w-0 truncate">
+                          {fundo
+                            ? <>Fundo: <span className="text-foreground font-medium">{fundo.name}</span></>
+                            : 'Fundo: murmúrio gerado da própria locução'}
+                        </p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {fundo && (
+                            <button type="button" onClick={() => setFundo(null)}
+                              className="text-[11px] text-muted-foreground hover:text-foreground">
+                              remover
+                            </button>
+                          )}
+                          <button type="button" onClick={() => fundoRef.current?.click()}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1
+                                       text-[11px] font-medium hover:bg-white/5">
+                            <UploadCloud className="w-3 h-3" /> {fundo ? 'Trocar' : 'Usar meu áudio'}
+                          </button>
+                        </div>
+                      </div>
+                      <input ref={fundoRef} type="file" accept="audio/*" className="hidden"
+                        onChange={(e) => setFundo(e.target.files?.[0] || null)} />
                     </div>
                   )} />
               ))}

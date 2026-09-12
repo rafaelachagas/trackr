@@ -959,14 +959,34 @@ MASCARA_NIVEIS = {
 }
 
 
+def _mascara_voz_volume(nivel, f):
+    """Volume do fundo e filtro extra na voz, já com o ajuste fino da barra."""
+    vol, voz = MASCARA_NIVEIS.get(nivel) or MASCARA_NIVEIS["leve"]
+    return vol * (0.7 + 0.6 * f), voz
+
+
+def _mascara_voz_arquivo(entrada, fundo, saida, nivel, f):
+    """Mesma máscara, mas com um áudio de fundo enviado pelo usuário (já em
+    loop, vindo como entrada `fundo` do ffmpeg) no lugar do murmúrio
+    sintetizado. Filtra na banda da voz do mesmo jeito — fora dela o fundo só
+    suja o áudio sem esconder nada."""
+    vol, voz = _mascara_voz_volume(nivel, f)
+    return (
+        "[%s]highpass=f=250,lowpass=f=3600,volume=%.3f,"
+        "aformat=channel_layouts=stereo[mbab];"
+        "[%s]%s[mvf];"
+        "[mvf][mbab]amix=inputs=2:duration=first:normalize=0[%s]"
+        % (fundo, vol, entrada, voz, saida)
+    )
+
+
 def _mascara_voz(entrada, saida, nivel, f):
     """Murmúrio de multidão sintetizado da PRÓPRIA locução: cópias dela
     invertidas, deslocadas e com tempo alterado, somadas e filtradas pra banda
     da voz. Soa como gente falando ao fundo (o ouvido humano descarta isso bem)
     e é o tipo de ruído que mais atrapalha reconhecedor automático.
     `f` (0,1–1,0) é o ajuste fino dentro do nível: ±30% no volume do murmúrio."""
-    vol, voz = MASCARA_NIVEIS.get(nivel) or MASCARA_NIVEIS["leve"]
-    vol = vol * (0.7 + 0.6 * f)
+    vol, voz = _mascara_voz_volume(nivel, f)
     return (
         "[%s]asplit=4[mv][mb1][mb2][mb3];"
         "[mb1]areverse,adelay=0|120[mr1];"
@@ -1023,6 +1043,7 @@ def _camuflar(body):
     white_audio = _bool(body.get("white_audio"))
     voice_mask = _bool(body.get("voice_mask"))
     voice_mask_level = str(body.get("voice_mask_level") or "leve")
+    bg_path = body.get("bg_path") or None
 
     if not CAMUFLAGEM_LOCK.acquire(timeout=180):
         return ({"error": "processador ocupado — tente de novo em instantes"}, 503)
@@ -1059,6 +1080,16 @@ def _camuflar(body):
                 _overlay_padrao(ov, w, h, entrada)
             if not os.path.exists(ov):
                 precisa_ov = entrada_on = saida_on = contexto = False
+
+        # Áudio de fundo da máscara de voz (opcional). Se o download falhar,
+        # a máscara cai no murmúrio sintetizado em vez de quebrar o job.
+        bg = None
+        if voice_mask and bg_path and kind == "video":
+            bg = os.path.join(tmp, "bg" + (os.path.splitext(bg_path)[1].lower() or ".mp3"))
+            try:
+                _storage_baixar(bucket, bg_path, bg)
+            except Exception:
+                bg = None
 
         # --- filtros base de vídeo (valem pra imagem também) ---
         base = []
@@ -1136,6 +1167,11 @@ def _camuflar(body):
         if precisa_ov:
             cmd += ["-i", ov]
             idx += 1
+        bg_idx = None
+        if bg and tem_audio:
+            cmd += ["-stream_loop", "-1", "-t", "%.2f" % max(dur or 30, 1), "-i", bg]
+            bg_idx = idx
+            idx += 1
         wa_idx = None
         if white_audio and tem_audio:
             cmd += _white_audio_entrada(dur or 30)
@@ -1156,7 +1192,11 @@ def _camuflar(body):
             else:
                 achain.append("[0:a]anull[a0]")
             if voice_mask:
-                achain.append(_mascara_voz("a0", "a0m", voice_mask_level, f))
+                if bg_idx is not None:
+                    achain.append(_mascara_voz_arquivo(
+                        "a0", "%d:a" % bg_idx, "a0m", voice_mask_level, f))
+                else:
+                    achain.append(_mascara_voz("a0", "a0m", voice_mask_level, f))
                 alab = "a0m"
             if wa_idx is not None:
                 achain.append("[%d:a]volume=0.9,aformat=channel_layouts=stereo[a1]" % wa_idx)
@@ -1192,6 +1232,8 @@ def _camuflar(body):
         _storage_apagar(bucket, inp)
         if cta_path:
             _storage_apagar(bucket, cta_path)
+        if bg_path:
+            _storage_apagar(bucket, bg_path)
         return ({"ok": True, "tempos": tempos}, 200)
     except subprocess.TimeoutExpired:
         return ({"error": "processamento excedeu o tempo limite"}, 504)
