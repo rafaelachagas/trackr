@@ -1046,6 +1046,10 @@ def _som_dinheiro(dest, enviado=None):
         return False
 
 
+# Últimas marcações calculadas — só pra diagnóstico via /camouflage_marks.
+_ULTIMAS_MARCAS = []
+
+
 def _momentos_dinheiro(entrada, tmp, rx=None, ajuste=0.0, limite=40):
     """Segundos em que a locução fala de dinheiro/valores, via Whisper com
     tempo palavra a palavra. Marcações a menos de 1,2s uma da outra viram uma
@@ -1067,6 +1071,7 @@ def _momentos_dinheiro(entrada, tmp, rx=None, ajuste=0.0, limite=40):
         segs, _ = model.transcribe(wav, language="pt", vad_filter=False,
                                    word_timestamps=True)
         marcas = []
+        detalhe = []
         for seg in segs:
             for w in (seg.words or []):
                 # sem acento: o Whisper devolve "salário", a lista é "salario"
@@ -1075,8 +1080,15 @@ def _momentos_dinheiro(entrada, tmp, rx=None, ajuste=0.0, limite=40):
                     t = max(0.0, float(w.start) + ajuste)
                     if not marcas or t - marcas[-1] > 1.2:
                         marcas.append(t)
+                        detalhe.append({"t": round(t, 2), "palavra": (w.word or "").strip(),
+                                        "bruto": round(float(w.start), 2)})
                     if len(marcas) >= limite:
-                        return marcas
+                        break
+            if len(marcas) >= limite:
+                break
+        _ULTIMAS_MARCAS.clear()
+        _ULTIMAS_MARCAS.extend(detalhe)
+        print("[camuflagem] marcacoes: %s" % detalhe[:15], flush=True)
         return marcas
     except Exception as e:
         print("[camuflagem] transcricao do efeito falhou: %s" % e, flush=True)
@@ -1498,6 +1510,34 @@ def camouflage():
 
     payload, status = _camuflar(body)
     return jsonify(**payload), status
+
+
+@app.route("/camouflage_marks", methods=["POST"])
+def camouflage_marks():
+    """Diagnóstico: devolve palavra + segundo de cada gatilho, sem processar
+    vídeo nenhum. Serve pra conferir a sincronia sem precisar rodar o job
+    inteiro e ouvir o resultado."""
+    key = request.args.get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    body = request.get_json(silent=True) or {}
+    bucket = body.get("bucket") or "camuflagem"
+    inp = body.get("input_path")
+    if not inp:
+        return jsonify(error="input_path ausente"), 400
+    tmp = tempfile.mkdtemp(prefix="marcas_")
+    try:
+        ent = os.path.join(tmp, "in" + (os.path.splitext(inp)[1].lower() or ".mp4"))
+        _storage_baixar(bucket, inp, ent)
+        t0 = time.time()
+        _momentos_dinheiro(ent, tmp, _regex_palavras(str(body.get("money_sfx_words") or "")),
+                           _clamp(body.get("money_sfx_offset"), -10, 20, 0) / 10.0)
+        return jsonify(ok=True, marcas=list(_ULTIMAS_MARCAS),
+                       segundos=round(time.time() - t0, 1))
+    except Exception as e:
+        return jsonify(error="falha: %s" % e), 500
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 @app.route("/camouflage_status", methods=["GET"])
