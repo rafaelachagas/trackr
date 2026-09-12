@@ -730,7 +730,10 @@ def _filtro_audio(pitch_steps, time_stretch, eq_gain_db, reverb_wet):
     if abs(pitch_steps) > 1e-3:
         ratio = 1 + (pitch_steps * 100) / 1200
         novo_rate = int(round(44100 * ratio))   # valor numérico (não expressão) p/ robustez
-        filtros.append(f"asetrate={novo_rate},aresample=44100")
+        # asetrate mexe no tom TOCANDO MAIS RÁPIDO — sozinho ele encurta o
+        # áudio (1,5 semitom = 12% mais curto!). O atempo inverso devolve a
+        # duração original; sem isso o vídeo sai cortado no fim.
+        filtros.append(f"asetrate={novo_rate},aresample=44100,atempo={1 / ratio:.4f}")
     if eq_gain_db != 0:
         filtros.append(f"equalizer=f=2000:width_type=o:width=2:g={eq_gain_db}")
     if reverb_wet > 0:
@@ -884,8 +887,22 @@ def _tem_audio(path):
         return False
 
 
-def _overlay_padrao(dest, w, h):
-    """Sem imagem de CTA enviada: gera um quadro neutro (gradiente da marca)."""
+def _overlay_padrao(dest, w, h, fonte=None):
+    """Sem imagem de CTA enviada, a melhor sobreposição é o PRÓPRIO criativo:
+    um quadro dele, borrado e levemente escurecido. Fica invisível pra quem
+    assiste (nada de tela colorida aparecendo) e ainda assim altera os quadros
+    de entrada/saída. O gradiente só entra se a extração falhar."""
+    if fonte:
+        try:
+            r = subprocess.run([
+                "ffmpeg", "-ss", "0.2", "-i", fonte, "-frames:v", "1",
+                "-vf", "boxblur=12:2,eq=brightness=-0.03:saturation=0.95,scale=%d:%d" % (w, h),
+                dest, "-y",
+            ], capture_output=True, timeout=120)
+            if r.returncode == 0 and os.path.exists(dest):
+                return True
+        except Exception:
+            pass
     tentativas = (
         ["ffmpeg", "-f", "lavfi", "-i", "gradients=s=%dx%d:c0=0x0B1220:c1=0x2E90FA:n=2" % (w, h),
          "-frames:v", "1", dest, "-y"],
@@ -984,9 +1001,9 @@ def _camuflar(body):
                 try:
                     _storage_baixar(bucket, cta_path, ov)
                 except Exception:
-                    _overlay_padrao(ov, w, h)
+                    _overlay_padrao(ov, w, h, entrada)
             else:
-                _overlay_padrao(ov, w, h)
+                _overlay_padrao(ov, w, h, entrada)
             if not os.path.exists(ov):
                 precisa_ov = entrada_on = saida_on = contexto = False
 
@@ -1006,14 +1023,16 @@ def _camuflar(body):
         chain = ["[0:v]%s,format=yuv420p[v0]" % vchain]
         cur = "v0"
         if precisa_ov:
-            dur_camada = 0.5 + 0.5 * f
+            # Poucos quadros: o suficiente pra mudar o início/fim do arquivo,
+            # curto demais pra alguém enxergar como "tela estranha".
+            dur_camada = 0.10 + 0.14 * f
             alvos = []
             if entrada_on:
                 alvos.append(("full", "between(t,0,%.2f)" % dur_camada if kind == "video" else None))
             if saida_on and kind == "video" and dur > dur_camada:
                 alvos.append(("full", "between(t,%.2f,%.2f)" % (max(0.0, dur - dur_camada), dur + 1)))
             if contexto:
-                alvos.append(("full", "between(t,0,%.2f)" % (0.35 + 0.25 * f) if kind == "video" else None))
+                alvos.append(("full", "between(t,0,%.2f)" % (0.10 + 0.10 * f) if kind == "video" else None))
                 alvos.append(("mark", None))
 
             chain.append("[1:v]scale=%d:%d:force_original_aspect_ratio=increase,"
@@ -1073,7 +1092,12 @@ def _camuflar(body):
         achain = []
         if tem_audio:
             if audio_shield:
-                af = _filtro_audio(0.4 + 2.2 * f, 1.0 - 0.035 * f, -int(round(2 + 6 * f)), 0.0)
+                # Desvio imperceptível: no máximo ~0,08 semitom (8 cents, abaixo
+                # do que o ouvido percebe) e um ombro de ±1,5dB. O suficiente pra
+                # mudar a impressão digital do áudio sem mexer na voz.
+                af = _filtro_audio(0.02 + 0.06 * f, 1.0, 0.0, 0.0)
+                af = af + ",equalizer=f=%d:width_type=o:width=2:g=%.2f" % (
+                    int(1800 + 900 * f), -(0.5 + 1.0 * f))
                 achain.append("[0:a]%s[a0]" % af)
             else:
                 achain.append("[0:a]anull[a0]")

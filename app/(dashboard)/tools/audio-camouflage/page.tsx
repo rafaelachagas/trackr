@@ -19,8 +19,8 @@ type Chave =
 type Opcao = { chave: Chave; titulo: string; desc: string; tom?: 'video' | 'audio' | 'white' }
 
 const VIDEO: Opcao[] = [
-  { chave: 'entry_layer', titulo: 'Camada de entrada', desc: 'Proteção inteligente no início do criativo' },
-  { chave: 'exit_layer', titulo: 'Camada de saída', desc: 'Proteção inteligente no final do criativo' },
+  { chave: 'entry_layer', titulo: 'Camada de entrada', desc: 'Proteção inteligente nos primeiros quadros do criativo' },
+  { chave: 'exit_layer', titulo: 'Camada de saída', desc: 'Proteção inteligente nos últimos quadros do criativo' },
   { chave: 'invisible_shield', titulo: 'Blindagem invisível', desc: 'Camada de proteção visual imperceptível ao usuário' },
   { chave: 'pulses', titulo: 'Pulsos de proteção', desc: 'Micro-pulsos visuais que confundem sistemas de análise' },
   { chave: 'chroma', titulo: 'Variação cromática', desc: 'Ajuste sutil de cor para gerar identidade única' },
@@ -28,7 +28,7 @@ const VIDEO: Opcao[] = [
 ]
 
 const AUDIO: Opcao[] = [
-  { chave: 'audio_shield', titulo: 'Blindagem de áudio', tom: 'audio', desc: 'O áudio permanece idêntico ao ouvido humano, mas fica invisível para sistemas automáticos de análise de conteúdo.' },
+  { chave: 'audio_shield', titulo: 'Blindagem de áudio', tom: 'audio', desc: 'Desvio mínimo (abaixo do limiar da audição) que muda a impressão digital do áudio sem alterar a voz nem a duração.' },
   { chave: 'white_audio', titulo: 'Substituição de áudio (White Audio)', tom: 'white', desc: 'O áudio original permanece para quem assiste. Uma conversa neutra é embutida como pista alternativa — é o que sistemas de transcrição e IA de revisão detectam.' },
 ]
 
