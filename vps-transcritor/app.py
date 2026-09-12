@@ -1035,18 +1035,46 @@ def _regex_palavras(lista):
     return re.compile(r"\b(" + "|".join(sorted(set(partes))) + r")", re.I)
 
 
+def _preparar_efeito(origem, dest):
+    """Arruma o som que veio de fora pra ele tocar NO instante da marcação.
+
+    Arquivo de banco de efeitos quase sempre tem silêncio antes do ataque —
+    décimos de segundo, às vezes um segundo inteiro. Como a gente posiciona o
+    início do arquivo na marcação, esse silêncio vira atraso audível: a marca
+    está certa e o som chega depois. Aqui a gente corta o silêncio inicial,
+    padroniza pra estéreo 44,1 kHz e limita a 3s (efeito longo borra a fala)."""
+    cmd = ["ffmpeg", "-v", "error", "-i", origem, "-t", "3",
+           "-af", "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0,"
+                  "aformat=channel_layouts=stereo:sample_rates=44100",
+           dest, "-y"]
+    try:
+        if subprocess.run(cmd, capture_output=True, timeout=120).returncode == 0                 and os.path.exists(dest) and os.path.getsize(dest) > 1000:
+            return True
+    except Exception:
+        pass
+    # Se não deu pra tratar, melhor usar o arquivo cru que não usar nada.
+    try:
+        shutil.copy(origem, dest)
+        return True
+    except Exception:
+        return False
+
+
 def _som_dinheiro(dest, enviado=None):
     """Som de caixa registradora. Usa o asset da VPS se existir; senão
     sintetiza duas notas curtas de sino, que é o "cha-ching" reconhecível."""
     # 1º o som que o usuário enviou, 2º um asset fixo na VPS, 3º o sintetizado.
+    pronto = None
     if enviado and os.path.exists(enviado):
-        shutil.copy(enviado, dest)
+        pronto = enviado
+    else:
+        for nome in ("money.wav", "money.mp3", "money.m4a"):
+            cam = os.path.join(ASSETS_DIR, nome)
+            if os.path.exists(cam):
+                pronto = cam
+                break
+    if pronto and _preparar_efeito(pronto, dest):
         return True
-    for nome in ("money.wav", "money.mp3", "money.m4a"):
-        cam = os.path.join(ASSETS_DIR, nome)
-        if os.path.exists(cam):
-            shutil.copy(cam, dest)
-            return True
     # Duas notas com decaimento exponencial (sino de caixa registradora). O
     # `sine` + `afade` saía a -21 dBFS, baixo demais pra ser ouvido sobre a
     # locução; com aevalsrc a amplitude é explícita e o pico fica em -3 dBFS.
