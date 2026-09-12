@@ -15,8 +15,9 @@ import { supabase } from '@/lib/supabase'
 type Chave =
   | 'entry_layer' | 'exit_layer' | 'invisible_shield' | 'pulses'
   | 'chroma' | 'safe_context' | 'audio_shield' | 'white_audio' | 'voice_mask'
+  | 'money_sfx'
 
-type Opcao = { chave: Chave; titulo: string; desc: string; tom?: 'video' | 'audio' | 'white' | 'mask' }
+type Opcao = { chave: Chave; titulo: string; desc: string; tom?: 'video' | 'audio' | 'white' | 'mask' | 'money' }
 
 // Níveis da máscara de voz. O ganho contra transcrição automática é pequeno:
 // medido com o Whisper (modelo small, PT-BR) num criativo real, o nível leve
@@ -42,6 +43,7 @@ const VIDEO: Opcao[] = [
 const AUDIO: Opcao[] = [
   { chave: 'audio_shield', titulo: 'Blindagem de áudio', tom: 'audio', desc: 'Desvio mínimo (abaixo do limiar da audição) que muda a impressão digital do áudio sem alterar a voz nem a duração.' },
   { chave: 'voice_mask', titulo: 'Máscara de voz', tom: 'mask', desc: 'Murmúrio de fundo gerado a partir da própria locução, na banda da voz. Muda a assinatura sonora do criativo. Atrapalha pouco a transcrição automática — nos níveis imperceptíveis, quase nada.' },
+  { chave: 'money_sfx', titulo: 'Som de caixa registradora', tom: 'money', desc: 'Toca um “cha-ching” quando a locução fala de dinheiro, renda ou valores. As marcações saem da transcrição do próprio vídeo. É efeito de edição — não esconde nada de ninguém.' },
   { chave: 'white_audio', titulo: 'Substituição de áudio (White Audio)', tom: 'white', desc: 'O áudio original permanece para quem assiste. Uma conversa neutra é embutida como pista alternativa — é o que sistemas de transcrição e IA de revisão detectam.' },
 ]
 
@@ -55,6 +57,7 @@ const PADRAO: Record<Chave, boolean> = {
   audio_shield: true,
   white_audio: true,
   voice_mask: false,
+  money_sfx: false,
 }
 
 const ACEITOS = /\.(mp4|mov|webm|jpe?g|png|webp|gif)$/i
@@ -74,7 +77,7 @@ type Item = {
 
 function Toggle({ on, onChange, tom }: { on: boolean; onChange: (v: boolean) => void; tom?: string }) {
   const cor = on ? (tom === 'audio' ? 'bg-amber-500' : tom === 'white' ? 'bg-violet-500'
-    : tom === 'mask' ? 'bg-sky-500' : 'bg-emerald-500') : 'bg-muted'
+    : tom === 'mask' ? 'bg-sky-500' : tom === 'money' ? 'bg-lime-500' : 'bg-emerald-500') : 'bg-muted'
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
       className={`shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${cor}`}>
@@ -89,6 +92,7 @@ function CardOpcao({ o, on, set, extra }: {
   const borda = on && o.tom === 'audio' ? 'border-amber-500/40 bg-amber-500/10'
     : on && o.tom === 'white' ? 'border-violet-500/40 bg-violet-500/10'
     : on && o.tom === 'mask' ? 'border-sky-500/40 bg-sky-500/10'
+    : on && o.tom === 'money' ? 'border-lime-500/40 bg-lime-500/10'
     : 'border-border bg-white/[0.02]'
   return (
     <div className={`rounded-xl border px-4 py-3 transition ${borda}`}>
@@ -110,6 +114,7 @@ export default function AudioCamouflagePage() {
   const [intensidade, setIntensidade] = useState(5)
   const [nivelMascara, setNivelMascara] = useState<Nivel>('leve')
   const [fundo, setFundo] = useState<File | null>(null)
+  const [volDinheiro, setVolDinheiro] = useState(6)
   // Capa "white" gerada por IA: vira a imagem de sobreposição (mesmo papel do
   // CTA enviado à mão). Um arquivo enviado manualmente tem prioridade.
   const [capa, setCapa] = useState<{ path: string; url: string } | null>(null)
@@ -224,7 +229,10 @@ export default function AudioCamouflagePage() {
             method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
               inputPath, originalName: item.file.name, ctaPath, bgPath,
-              options: { ...ops, intensity: intensidade, voice_mask_level: nivelMascara },
+              options: {
+                ...ops, intensity: intensidade, voice_mask_level: nivelMascara,
+                money_sfx_volume: volDinheiro,
+              },
             }),
           }).then(json)
           if (proc.error) throw new Error(proc.error)
@@ -408,7 +416,20 @@ export default function AudioCamouflagePage() {
               {AUDIO.map((o) => (
                 <CardOpcao key={o.chave} o={o} on={ops[o.chave]}
                   set={(v) => setOps((s) => ({ ...s, [o.chave]: v }))}
-                  extra={o.chave !== 'voice_mask' ? undefined : (
+                  extra={o.chave === 'money_sfx' ? (
+                    <div className="mt-3 pt-3 border-t border-lime-500/20">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] text-muted-foreground">Volume do efeito</span>
+                        <span className="text-[11px] font-bold text-foreground tabular-nums">{volDinheiro}/10</span>
+                      </div>
+                      <input type="range" min={1} max={10} step={1} value={volDinheiro}
+                        onChange={(e) => setVolDinheiro(Number(e.target.value))}
+                        className="w-full accent-lime-500" />
+                      <p className="text-[11px] text-muted-foreground mt-1.5">
+                        A transcrição roda na sua VPS e leva cerca de um minuto a mais por vídeo.
+                      </p>
+                    </div>
+                  ) : o.chave !== 'voice_mask' ? undefined : (
                     <div className="mt-3 pt-3 border-t border-sky-500/20">
                       <div className="grid grid-cols-3 gap-1.5">
                         {NIVEIS.map((n) => (

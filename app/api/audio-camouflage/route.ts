@@ -23,6 +23,8 @@ type Opcoes = {
   white_audio: boolean
   voice_mask: boolean
   voice_mask_level: 'leve' | 'medio' | 'pesado'
+  money_sfx: boolean
+  money_sfx_volume: number
 }
 
 const IMAGEM = /\.(jpe?g|png|webp|gif)$/i
@@ -79,6 +81,8 @@ export async function POST(req: Request) {
           white_audio: options?.white_audio,
           voice_mask: options?.voice_mask,
           voice_mask_level: options?.voice_mask_level,
+          money_sfx: options?.money_sfx,
+          money_sfx_volume: options?.money_sfx_volume,
         }),
         })
     } catch {

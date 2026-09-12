@@ -2,6 +2,7 @@ import os
 import json
 import re
 import shutil
+import unicodedata
 import subprocess
 import tempfile
 import threading
@@ -983,6 +984,78 @@ def _erro_ffmpeg(r):
     return err[-300:] or "falhou sem mensagem (código %d)" % r.returncode
 
 
+# Palavras que disparam o efeito de caixa registradora. Só menção a dinheiro,
+# renda e valores — é o que o usuário pediu marcar.
+RE_DINHEIRO = re.compile(
+    r"\b(dinheiro|renda|rendas|reais|real|salario|salarios|lucro|lucros|"
+    r"faturamento|faturar|ganho|ganhos|ganhar|ganhei|ganha|pix|grana|mil|"
+    r"centavos|pagamento|investimento|comissao|\d{2,})" ,
+    re.I)
+
+
+def _som_dinheiro(dest):
+    """Som de caixa registradora. Usa o asset da VPS se existir; senão
+    sintetiza duas notas curtas de sino, que é o "cha-ching" reconhecível."""
+    for nome in ("money.wav", "money.mp3", "money.m4a"):
+        cam = os.path.join(ASSETS_DIR, nome)
+        if os.path.exists(cam):
+            shutil.copy(cam, dest)
+            return True
+    # Duas notas com decaimento exponencial (sino de caixa registradora). O
+    # `sine` + `afade` saía a -21 dBFS, baixo demais pra ser ouvido sobre a
+    # locução; com aevalsrc a amplitude é explícita e o pico fica em -3 dBFS.
+    cmd = ["ffmpeg", "-v", "error",
+           "-f", "lavfi", "-i",
+           "aevalsrc='0.85*sin(2*PI*1318*t)*exp(-9*t)':d=0.12:s=44100",
+           "-f", "lavfi", "-i",
+           "aevalsrc='0.85*(sin(2*PI*1976*t)+0.5*sin(2*PI*2637*t))*exp(-4.5*t)':d=0.55:s=44100",
+           "-filter_complex",
+           "[0][1]concat=n=2:v=0:a=1,alimiter=limit=0.95,"
+           "aformat=channel_layouts=stereo:sample_rates=44100[out]",
+           "-map", "[out]", dest, "-y"]
+    try:
+        return subprocess.run(cmd, capture_output=True, timeout=60).returncode == 0
+    except Exception:
+        return False
+
+
+def _momentos_dinheiro(entrada, tmp, limite=40):
+    """Segundos em que a locução fala de dinheiro/valores, via Whisper com
+    tempo palavra a palavra. Marcações a menos de 1,2s uma da outra viram uma
+    só — senão 'mil reais' dispararia o som duas vezes coladas."""
+    wav = os.path.join(tmp, "fala.wav")
+    r = subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-i", entrada,
+                        "-vn", "-ac", "1", "-ar", "16000", wav, "-y"],
+                       capture_output=True, timeout=900)
+    if r.returncode != 0 or not os.path.exists(wav):
+        return []
+    if not TRANSCRIBE_LOCK.acquire(timeout=600):
+        return []
+    try:
+        segs, _ = model.transcribe(wav, language="pt", vad_filter=True,
+                                   word_timestamps=True)
+        marcas = []
+        for seg in segs:
+            for w in (seg.words or []):
+                # sem acento: o Whisper devolve "salário", a lista é "salario"
+                palavra = unicodedata.normalize("NFD", w.word or "")
+                palavra = "".join(c for c in palavra if not unicodedata.combining(c))
+                if RE_DINHEIRO.search(palavra):
+                    t = max(0.0, float(w.start))
+                    if not marcas or t - marcas[-1] > 1.2:
+                        marcas.append(t)
+                    if len(marcas) >= limite:
+                        return marcas
+        return marcas
+    except Exception as e:
+        print("[camuflagem] transcricao do efeito falhou: %s" % e, flush=True)
+        return []
+    finally:
+        TRANSCRIBE_LOCK.release()
+        if os.path.exists(wav):
+            os.remove(wav)
+
+
 def _mascara_voz_volume(nivel, f):
     """Volume do fundo e filtro extra na voz, já com o ajuste fino da barra."""
     vol, voz = MASCARA_NIVEIS.get(nivel) or MASCARA_NIVEIS["leve"]
@@ -1068,6 +1141,8 @@ def _camuflar(body):
     voice_mask = _bool(body.get("voice_mask"))
     voice_mask_level = str(body.get("voice_mask_level") or "leve")
     bg_path = body.get("bg_path") or None
+    money_sfx = _bool(body.get("money_sfx"))
+    money_vol = _clamp(body.get("money_sfx_volume"), 1, 10, 6) / 10.0
 
     if not CAMUFLAGEM_LOCK.acquire(timeout=180):
         return ({"error": "processador ocupado — tente de novo em instantes"}, 503)
@@ -1193,7 +1268,7 @@ def _camuflar(body):
         # pacote de áudio — e num criativo de 11 Mbps isso mata o processo.
         # Gerando o áudio sozinho primeiro, a memória fica limitada ao áudio.
         audio_pronto = None
-        if tem_audio and voice_mask:
+        if tem_audio and (voice_mask or money_sfx):
             audio_pronto = os.path.join(tmp, "amask.m4a")
             ac = []
             if audio_shield:
@@ -1204,12 +1279,51 @@ def _camuflar(body):
             else:
                 ac.append("[0:a]anull[a0]")
             cmd_a = ["nice", "-n", "10", "ffmpeg", "-threads", "1", "-i", entrada]
-            if bg:
-                cmd_a += ["-stream_loop", "-1", "-t", "%.2f" % max(dur or 30, 1), "-i", bg]
-                ac.append(_mascara_voz_arquivo("a0", "1:a", "am", voice_mask_level, f))
+            idx_a = 1
+            if voice_mask:
+                if bg:
+                    cmd_a += ["-stream_loop", "-1", "-t", "%.2f" % max(dur or 30, 1), "-i", bg]
+                    ac.append(_mascara_voz_arquivo("a0", "%d:a" % idx_a, "am", voice_mask_level, f))
+                    idx_a += 1
+                else:
+                    ac.append(_mascara_voz("a0", "am", voice_mask_level, f))
             else:
-                ac.append(_mascara_voz("a0", "am", voice_mask_level, f))
-            cmd_a += ["-filter_complex", ";".join(ac), "-map", "[am]",
+                ac.append("[a0]anull[am]")
+            saida_a = "am"
+
+            # Efeito de caixa registradora nas menções a dinheiro/valores. As
+            # marcações vêm do Whisper (tempo palavra a palavra); o som é uma
+            # cópia por marcação, atrasada pro instante certo e somada por cima.
+            if money_sfx:
+                t0m = time.time()
+                marcas = _momentos_dinheiro(entrada, tmp)
+                sfx = os.path.join(tmp, "cha.wav")
+                if marcas and _som_dinheiro(sfx):
+                    cmd_a += ["-i", sfx]
+                    si = idx_a
+                    idx_a += 1
+                    n = len(marcas)
+                    rot = ["sfx%d" % k for k in range(n)]
+                    if n == 1:
+                        ac.append("[%d:a]anull[%s]" % (si, rot[0]))
+                    else:
+                        ac.append("[%d:a]asplit=%d%s" % (si, n, "".join("[%s]" % r for r in rot)))
+                    atrasados = []
+                    for k, t in enumerate(marcas):
+                        ms = int(round(t * 1000))
+                        ac.append("[%s]adelay=%d|%d,volume=%.2f[d%d]" % (rot[k], ms, ms, money_vol, k))
+                        atrasados.append("[d%d]" % k)
+                    if n > 1:
+                        ac.append("%samix=inputs=%d:duration=longest:normalize=0[chas]"
+                                  % ("".join(atrasados), n))
+                    else:
+                        ac.append("%sanull[chas]" % atrasados[0])
+                    ac.append("[am][chas]amix=inputs=2:duration=first:normalize=0[amx]")
+                    saida_a = "amx"
+                tempos["marcacoes"] = round(time.time() - t0m, 1)
+                tempos["mencoes"] = len(marcas)
+
+            cmd_a += ["-filter_complex", ";".join(ac), "-map", "[%s]" % saida_a,
                       "-c:a", "aac", "-b:a", "192k", audio_pronto, "-y"]
             t0 = time.time()
             ra = subprocess.run(cmd_a, capture_output=True, timeout=1800)
