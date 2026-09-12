@@ -959,6 +959,30 @@ MASCARA_NIVEIS = {
 }
 
 
+def _erro_ffmpeg(r):
+    """Mensagem útil a partir de uma execução falha do ffmpeg.
+
+    Os últimos 400 caracteres do stderr costumam ser só o cabeçalho (Input,
+    Stream mapping, Metadata) e não dizem nada. Aqui a gente procura as linhas
+    que realmente descrevem o erro; e um código de retorno NEGATIVO significa
+    morte por sinal — 9 é o matador de falta de memória, que é o caso quando
+    um criativo grande estoura o teto do container."""
+    if r.returncode < 0:
+        sinal = -r.returncode
+        if sinal == 9:
+            return ("o vídeo estourou a memória disponível na VPS "
+                    "(processo morto). Tente um arquivo menor ou em 1080p.")
+        return "processamento interrompido pelo sistema (sinal %d)" % sinal
+    err = (r.stderr or b"").decode(errors="ignore")
+    chaves = ("Error", "error", "Invalid", "No such", "Conversion failed",
+              "Unable to", "not found", "Cannot", "failed")
+    linhas = [l.strip() for l in err.splitlines()
+              if l.strip() and any(k in l for k in chaves)]
+    if linhas:
+        return " | ".join(linhas[-3:])[:400]
+    return err[-300:] or "falhou sem mensagem (código %d)" % r.returncode
+
+
 def _mascara_voz_volume(nivel, f):
     """Volume do fundo e filtro extra na voz, já com o ajuste fino da barra."""
     vol, voz = MASCARA_NIVEIS.get(nivel) or MASCARA_NIVEIS["leve"]
@@ -1152,7 +1176,7 @@ def _camuflar(body):
             cmd += [saida, "-y"]
             r = subprocess.run(cmd, capture_output=True, timeout=900)
             if r.returncode != 0 or not os.path.exists(saida):
-                return ({"error": "ffmpeg: " + r.stderr[-400:].decode(errors="ignore")}, 500)
+                return ({"error": _erro_ffmpeg(r)}, 500)
             tipos = {".gif": "image/gif", ".png": "image/png", ".webp": "image/webp"}
             _storage_subir(bucket, outp, saida, content_type=tipos.get(ext, "image/jpeg"))
             _storage_apagar(bucket, inp)
@@ -1228,7 +1252,9 @@ def _camuflar(body):
         r = subprocess.run(cmd, capture_output=True, timeout=3600)
         tempos["ffmpeg"] = round(time.time() - t0, 1)
         if r.returncode != 0 or not os.path.exists(saida):
-            return ({"error": "ffmpeg: " + r.stderr[-400:].decode(errors="ignore")}, 500)
+            print("[camuflagem] ffmpeg falhou (rc=%d) %s"
+                  % (r.returncode, (r.stderr or b"").decode(errors="ignore")[-4000:]), flush=True)
+            return ({"error": _erro_ffmpeg(r)}, 500)
         t0 = time.time()
         _storage_subir(bucket, outp, saida)
         tempos["subir"] = round(time.time() - t0, 1)
