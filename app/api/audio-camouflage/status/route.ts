@@ -35,7 +35,7 @@ export async function GET(req: Request) {
       .createSignedUrl(outputPath, 3600, { download: downloadName })
     if (error || !data) return NextResponse.json({ error: error?.message || 'falha ao gerar download' }, { status: 500 })
 
-    return NextResponse.json({ status: 'pronto', url: data.signedUrl, downloadName })
+    return NextResponse.json({ status: 'pronto', url: data.signedUrl, downloadName, tempos: j.tempos || null })
   } catch (e) {
     return NextResponse.json({ error: `erro: ${e}` }, { status: 500 })
   }

@@ -957,13 +957,24 @@ def _camuflar(body):
     if not CAMUFLAGEM_LOCK.acquire(timeout=180):
         return ({"error": "processador ocupado — tente de novo em instantes"}, 503)
 
+    tempos = {}
     tmp = tempfile.mkdtemp(prefix="camuf_")
     ext = os.path.splitext(inp)[1].lower() or (".jpg" if kind == "image" else ".mp4")
     entrada = os.path.join(tmp, "in" + ext)
     saida = os.path.join(tmp, "out" + (ext if kind == "image" else ".mp4"))
     try:
+        t0 = time.time()
         _storage_baixar(bucket, inp, entrada)
+        tempos["baixar"] = round(time.time() - t0, 1)
         w, h, dur = _ffprobe(entrada)
+
+        # Teto de 1080p: criativo de anuncio nao ganha nada acima disso e o
+        # encode custa por PIXEL — um 4K leva ~4x mais tempo que o mesmo em
+        # 1080p. So reduz, nunca amplia.
+        escala = min(1.0, 1080.0 / min(w, h), 1920.0 / max(w, h))
+        if kind == "video" and escala < 0.999:
+            w = max(2, int(w * escala) // 2 * 2)
+            h = max(2, int(h * escala) // 2 * 2)
 
         # Sobreposição (CTA do usuário ou quadro padrão) — só baixa se for usar.
         precisa_ov = entrada_on or saida_on or contexto
@@ -981,6 +992,8 @@ def _camuflar(body):
 
         # --- filtros base de vídeo (valem pra imagem também) ---
         base = []
+        if kind == "video" and escala < 0.999:
+            base.append("scale=%d:%d:flags=fast_bilinear" % (w, h))
         if cromatica:
             base.append("hue=h=%.2f:s=%.3f" % (1.5 + 6.0 * f, 1.0 + 0.06 * f))
         if blindagem:
@@ -1073,21 +1086,27 @@ def _camuflar(body):
             if wa_idx is not None:
                 cmd += ["-map", "[a1]", "-shortest"]
         cmd += ["-map_metadata", "-1",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
+                "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+                "-pix_fmt", "yuv420p", "-threads", "0"]
         if tem_audio:
             cmd += ["-c:a", "aac", "-b:a", "192k", "-disposition:a:0", "default"]
             if wa_idx is not None:
                 cmd += ["-metadata:s:a:1", "title=alt", "-disposition:a:1", "0"]
         cmd += ["-movflags", "+faststart", saida, "-y"]
 
-        r = subprocess.run(cmd, capture_output=True, timeout=1800)
+        t0 = time.time()
+        r = subprocess.run(cmd, capture_output=True, timeout=3600)
+        tempos["ffmpeg"] = round(time.time() - t0, 1)
         if r.returncode != 0 or not os.path.exists(saida):
             return ({"error": "ffmpeg: " + r.stderr[-400:].decode(errors="ignore")}, 500)
+        t0 = time.time()
         _storage_subir(bucket, outp, saida)
+        tempos["subir"] = round(time.time() - t0, 1)
+        print("[camuflagem] %s %dx%d %.0fs -> %s" % (kind, w, h, dur, tempos), flush=True)
         _storage_apagar(bucket, inp)
         if cta_path:
             _storage_apagar(bucket, cta_path)
-        return ({"ok": True}, 200)
+        return ({"ok": True, "tempos": tempos}, 200)
     except subprocess.TimeoutExpired:
         return ({"error": "processamento excedeu o tempo limite"}, 504)
     except Exception as e:
@@ -1118,7 +1137,7 @@ def camouflage():
             try:
                 payload, status = _camuflar(body)
                 if status == 200 and payload.get("ok"):
-                    _job_set(jid, status="pronto")
+                    _job_set(jid, status="pronto", tempos=payload.get("tempos") or {})
                 else:
                     _job_set(jid, status="erro", erro=str(payload.get("error") or "falha"))
             except Exception as e:
@@ -1141,7 +1160,7 @@ def camouflage_status():
         j = dict(CAMUFLAGEM_JOBS.get(jid) or {})
     if not j:
         return jsonify(error="job desconhecido"), 404
-    return jsonify(ok=True, status=j.get("status"), erro=j.get("erro"))
+    return jsonify(ok=True, status=j.get("status"), erro=j.get("erro"), tempos=j.get("tempos") or {})
 
 
 if __name__ == "__main__":

@@ -55,6 +55,7 @@ type Item = {
   url?: string
   downloadName?: string
   kind?: 'video' | 'image'
+  tempos?: Record<string, number>
 }
 
 function Toggle({ on, onChange, tom }: { on: boolean; onChange: (v: boolean) => void; tom?: string }) {
@@ -185,7 +186,10 @@ export default function AudioCamouflagePage() {
             else atualizar(item.id, { fase: `Processando no servidor... ${Math.round((Date.now() - inicio) / 1000)}s` })
           }
 
-          atualizar(item.id, { status: 'pronto', fase: undefined, url: pronto.url, downloadName: pronto.downloadName, kind: proc.kind })
+          atualizar(item.id, {
+            status: 'pronto', fase: undefined, url: pronto.url,
+            downloadName: pronto.downloadName, kind: proc.kind, tempos: pronto.tempos,
+          })
         } catch (e: any) {
           atualizar(item.id, { status: 'erro', fase: undefined, erro: e.message || 'falha no processamento' })
         }
@@ -335,6 +339,11 @@ export default function AudioCamouflagePage() {
                   </span>
                 )}
                 {i.status === 'erro' && <span className="text-xs text-rose-300/90 max-w-[240px] truncate" title={i.erro}>{i.erro}</span>}
+                {i.status === 'pronto' && i.tempos?.ffmpeg != null && (
+                  <span className="text-[11px] text-muted-foreground tabular-nums" title="tempo de cada fase no servidor">
+                    baixar {i.tempos.baixar}s · encode {i.tempos.ffmpeg}s · subir {i.tempos.subir}s
+                  </span>
+                )}
                 {i.status === 'pronto' && i.url && (
                   <>
                     <button onClick={() => setPreview(i)}
