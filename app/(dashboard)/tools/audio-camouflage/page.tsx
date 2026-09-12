@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { AudioLines, Loader2, UploadCloud, Download, RotateCcw, Film } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AudioLines, Loader2, UploadCloud, Download, RotateCcw, Film, X, Play } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 // Camuflagem de áudio: sobe um .mp4, ajusta os efeitos nos sliders e baixa o
@@ -42,8 +42,16 @@ export default function AudioCamouflagePage() {
   const [fase, setFase] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [download, setDownload] = useState<{ url: string; name: string } | null>(null)
+  const [preview, setPreview] = useState(false)
   const [arrastando, setArrastando] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!preview) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreview(false) }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [preview])
 
   function escolher(f: File | null) {
     setErro(null); setDownload(null)
@@ -80,10 +88,7 @@ export default function AudioCamouflagePage() {
       if (proc.error) throw new Error(proc.error)
 
       setDownload({ url: proc.url, name: proc.downloadName })
-      // dispara o download automaticamente
-      const a = document.createElement('a')
-      a.href = proc.url; a.download = proc.downloadName
-      document.body.appendChild(a); a.click(); a.remove()
+      setPreview(true)   // abre o modal de preview com o vídeo já processado
     } catch (e: any) {
       setErro(e.message || 'Falha no processamento.')
     } finally {
@@ -162,16 +167,44 @@ export default function AudioCamouflagePage() {
         {fase && <p className="text-xs text-primary/90 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {fase}</p>}
         {erro && <p className="text-xs text-rose-300/90">{erro}</p>}
 
-        {download && (
+        {download && !preview && (
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 flex items-center justify-between gap-3">
-            <p className="text-sm text-emerald-300/90 font-medium">Pronto! O download começou.</p>
-            <a href={download.url} download={download.name}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500 text-white hover:opacity-90 inline-flex items-center gap-1.5">
-              <Download className="w-3.5 h-3.5" /> Baixar de novo
-            </a>
+            <p className="text-sm text-emerald-300/90 font-medium">Pronto! Vídeo processado.</p>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => setPreview(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/40 text-emerald-300/90 hover:bg-emerald-500/10 inline-flex items-center gap-1.5">
+                <Play className="w-3.5 h-3.5" /> Ver preview
+              </button>
+              <a href={download.url} download={download.name}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500 text-white hover:opacity-90 inline-flex items-center gap-1.5">
+                <Download className="w-3.5 h-3.5" /> Baixar
+              </a>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Modal de preview do vídeo processado */}
+      {preview && download && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75" onClick={() => setPreview(false)}>
+          <div className="w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <p className="text-sm font-bold text-foreground truncate flex items-center gap-2"><Film className="w-4 h-4 text-primary shrink-0" /> <span className="truncate">{download.name}</span></p>
+              <button onClick={() => setPreview(false)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="bg-black">
+              <video src={download.url} controls autoPlay className="w-full max-h-[65vh] mx-auto" />
+            </div>
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border">
+              <p className="text-xs text-muted-foreground">Confira o áudio — o vídeo é o mesmo.</p>
+              <a href={download.url} download={download.name}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 inline-flex items-center gap-1.5">
+                <Download className="w-4 h-4" /> Baixar .mp4
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
