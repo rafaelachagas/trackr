@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
 import { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } from '@/lib/transcritor'
 import { BUCKET } from './sign-upload/route'
 
-// Orquestra a camuflagem: o criativo já está no Storage (inputPath). Chama a VPS
-// (server-side, HTTP ok) só com os PATHS + opções; a VPS baixa do Storage, roda
-// o ffmpeg e sobe o resultado. Devolve uma URL assinada de DOWNLOAD já com o
-// nome de saída (o mesmo do arquivo original — sem sufixo).
+// Inicia a camuflagem: o criativo já está no Storage (inputPath). Chama a VPS
+// (server-side, HTTP ok) só com os PATHS + opções; lá o ffmpeg roda em segundo
+// plano. Esta rota responde na hora com o job_id — quem espera é o navegador,
+// consultando /api/audio-camouflage/status. Um vídeo grande com reencode passa
+// muito do tempo limite de uma função serverless.
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-export const maxDuration = 300  // arquivos grandes: a VPS baixa + ffmpeg + sobe
+export const maxDuration = 60
 
 type Opcoes = {
   intensity: number
@@ -56,6 +56,7 @@ export async function POST(req: Request) {
         output_path: outputPath,
         cta_path: ctaPath || null,
         kind: ehImagem ? 'image' : 'video',
+        async: true,
         intensity: options?.intensity,
         entry_layer: options?.entry_layer,
         exit_layer: options?.exit_layer,
@@ -68,16 +69,11 @@ export async function POST(req: Request) {
       }),
     })
     const j = await resp.json().catch(() => ({} as any))
-    if (!resp.ok || j?.error) {
-      return NextResponse.json({ error: j?.error || 'falha no processamento do criativo' }, { status: 502 })
+    if (!resp.ok || j?.error || !j?.job_id) {
+      return NextResponse.json({ error: j?.error || 'falha ao iniciar o processamento' }, { status: 502 })
     }
 
-    const { data, error } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUrl(outputPath, 3600, { download: downloadName })
-    if (error || !data) return NextResponse.json({ error: error?.message || 'falha ao gerar download' }, { status: 500 })
-
-    return NextResponse.json({ url: data.signedUrl, downloadName, kind: ehImagem ? 'image' : 'video' })
+    return NextResponse.json({ jobId: j.job_id, outputPath, downloadName, kind: ehImagem ? 'image' : 'video' })
   } catch (e) {
     return NextResponse.json({ error: `erro: ${e}` }, { status: 500 })
   }

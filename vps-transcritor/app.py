@@ -912,20 +912,33 @@ def _white_audio_entrada(dur):
             "anoisesrc=c=brown:a=0.30,highpass=f=180,lowpass=f=3400,tremolo=f=5:d=0.7"]
 
 
-@app.route("/camouflage", methods=["POST"])
-def camouflage():
-    key = request.args.get("key") or (request.get_json(silent=True) or {}).get("key")
-    if APIKEY and key != APIKEY:
-        return jsonify(error="nao autorizado"), 401
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        return jsonify(error="storage não configurado no servidor"), 500
+# Jobs em memória: id -> {"status": "rodando|pronto|erro", "erro": str}. O
+# processo é único (gunicorn com 1 worker), então dict simples basta.
+CAMUFLAGEM_JOBS = {}
+CAMUFLAGEM_JOBS_LOCK = threading.Lock()
 
-    body = request.get_json(silent=True) or {}
+
+def _job_set(jid, **campos):
+    with CAMUFLAGEM_JOBS_LOCK:
+        j = CAMUFLAGEM_JOBS.setdefault(jid, {})
+        j.update(campos)
+        # não deixa a memória crescer pra sempre
+        if len(CAMUFLAGEM_JOBS) > 200:
+            for k in list(CAMUFLAGEM_JOBS)[:100]:
+                CAMUFLAGEM_JOBS.pop(k, None)
+
+
+def _camuflar(body):
+    """Faz o trabalho todo. Devolve (payload, http_status). Roda numa thread —
+    nada aqui pode tocar em `request` (não há contexto de requisição)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return ({"error": "storage não configurado no servidor"}, 500)
+
     bucket = body.get("bucket") or "camuflagem"
     inp = body.get("input_path")
     outp = body.get("output_path")
     if not inp or not outp:
-        return jsonify(error="input_path/output_path ausentes"), 400
+        return ({"error": "input_path/output_path ausentes"}, 400)
 
     kind = "image" if str(body.get("kind") or "video") == "image" else "video"
     cta_path = body.get("cta_path") or None
@@ -942,7 +955,7 @@ def camouflage():
     white_audio = _bool(body.get("white_audio"))
 
     if not CAMUFLAGEM_LOCK.acquire(timeout=180):
-        return jsonify(error="processador ocupado — tente de novo em instantes"), 503
+        return ({"error": "processador ocupado — tente de novo em instantes"}, 503)
 
     tmp = tempfile.mkdtemp(prefix="camuf_")
     ext = os.path.splitext(inp)[1].lower() or (".jpg" if kind == "image" else ".mp4")
@@ -1023,13 +1036,13 @@ def camouflage():
             cmd += [saida, "-y"]
             r = subprocess.run(cmd, capture_output=True, timeout=900)
             if r.returncode != 0 or not os.path.exists(saida):
-                return jsonify(error="ffmpeg: " + r.stderr[-400:].decode(errors="ignore")), 500
+                return ({"error": "ffmpeg: " + r.stderr[-400:].decode(errors="ignore")}, 500)
             tipos = {".gif": "image/gif", ".png": "image/png", ".webp": "image/webp"}
             _storage_subir(bucket, outp, saida, content_type=tipos.get(ext, "image/jpeg"))
             _storage_apagar(bucket, inp)
             if cta_path:
                 _storage_apagar(bucket, cta_path)
-            return jsonify(ok=True)
+            return ({"ok": True}, 200)
 
         # ---------------- VÍDEO ----------------
         tem_audio = _tem_audio(entrada)
@@ -1069,19 +1082,66 @@ def camouflage():
 
         r = subprocess.run(cmd, capture_output=True, timeout=1800)
         if r.returncode != 0 or not os.path.exists(saida):
-            return jsonify(error="ffmpeg: " + r.stderr[-400:].decode(errors="ignore")), 500
+            return ({"error": "ffmpeg: " + r.stderr[-400:].decode(errors="ignore")}, 500)
         _storage_subir(bucket, outp, saida)
         _storage_apagar(bucket, inp)
         if cta_path:
             _storage_apagar(bucket, cta_path)
-        return jsonify(ok=True)
+        return ({"ok": True}, 200)
     except subprocess.TimeoutExpired:
-        return jsonify(error="processamento excedeu o tempo limite"), 504
+        return ({"error": "processamento excedeu o tempo limite"}, 504)
     except Exception as e:
-        return jsonify(error="falha: %s" % e), 500
+        return ({"error": "falha: %s" % e}, 500)
     finally:
         CAMUFLAGEM_LOCK.release()
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.route("/camouflage", methods=["POST"])
+def camouflage():
+    key = request.args.get("key") or (request.get_json(silent=True) or {}).get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="storage não configurado no servidor"), 500
+
+    body = request.get_json(silent=True) or {}
+
+    # Modo assíncrono (padrão do app): responde na hora com um job_id e roda o
+    # ffmpeg numa thread. Vídeo grande com reencode passa MUITO do tempo limite
+    # de uma função serverless — quem espera é o navegador, consultando o status.
+    if _bool(body.get("async"), True):
+        jid = uuid.uuid4().hex
+        _job_set(jid, status="rodando", erro=None)
+
+        def _rodar():
+            try:
+                payload, status = _camuflar(body)
+                if status == 200 and payload.get("ok"):
+                    _job_set(jid, status="pronto")
+                else:
+                    _job_set(jid, status="erro", erro=str(payload.get("error") or "falha"))
+            except Exception as e:
+                _job_set(jid, status="erro", erro=f"falha: {e}")
+
+        threading.Thread(target=_rodar, daemon=True).start()
+        return jsonify(ok=True, job_id=jid), 202
+
+    payload, status = _camuflar(body)
+    return jsonify(**payload), status
+
+
+@app.route("/camouflage_status", methods=["GET"])
+def camouflage_status():
+    key = request.args.get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    jid = request.args.get("job") or ""
+    with CAMUFLAGEM_JOBS_LOCK:
+        j = dict(CAMUFLAGEM_JOBS.get(jid) or {})
+    if not j:
+        return jsonify(error="job desconhecido"), 404
+    return jsonify(ok=True, status=j.get("status"), erro=j.get("erro"))
 
 
 if __name__ == "__main__":

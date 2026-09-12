@@ -119,11 +119,23 @@ export default function AudioCamouflagePage() {
     setItens((s) => s.map((i) => (i.id === id ? { ...i, ...patch } : i)))
   }
 
+  // A resposta pode não ser JSON (erro de gateway, função estourando o tempo).
+  // Parse tolerante pra mostrar mensagem de gente em vez de "is not valid JSON".
+  async function json(r: Response) {
+    const txt = await r.text()
+    try {
+      return JSON.parse(txt)
+    } catch {
+      if (r.status === 504 || /timeout|timed out/i.test(txt)) throw new Error('o servidor demorou demais pra responder')
+      throw new Error(`resposta inesperada do servidor (${r.status})`)
+    }
+  }
+
   async function subir(f: File, kind: 'in' | 'cta') {
     const sign = await fetch('/api/audio-camouflage/sign-upload', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: f.name, kind }),
-    }).then((r) => r.json())
+    }).then(json)
     if (sign.error) throw new Error(sign.error)
     const ct = f.type || (EH_IMAGEM.test(f.name) ? 'image/jpeg' : 'video/mp4')
     const up = await supabase.storage.from('camuflagem').uploadToSignedUrl(sign.path, sign.token, f, { contentType: ct })
@@ -154,10 +166,26 @@ export default function AudioCamouflagePage() {
               inputPath, originalName: item.file.name, ctaPath,
               options: { ...ops, intensity: intensidade },
             }),
-          }).then((r) => r.json())
+          }).then(json)
           if (proc.error) throw new Error(proc.error)
 
-          atualizar(item.id, { status: 'pronto', fase: undefined, url: proc.url, downloadName: proc.downloadName, kind: proc.kind })
+          // O ffmpeg roda em segundo plano na VPS: aqui a gente só pergunta de
+          // tempos em tempos se já terminou (sem prender nenhuma requisição).
+          const params = new URLSearchParams({
+            job: proc.jobId, outputPath: proc.outputPath, downloadName: proc.downloadName,
+          })
+          const inicio = Date.now()
+          let pronto: any = null
+          while (!pronto) {
+            await new Promise((r) => setTimeout(r, 5000))
+            if (Date.now() - inicio > 2 * 60 * 60 * 1000) throw new Error('o processamento demorou demais')
+            const st = await fetch(`/api/audio-camouflage/status?${params}`, { cache: 'no-store' }).then(json)
+            if (st.error && st.status !== 'rodando') throw new Error(st.error)
+            if (st.status === 'pronto') pronto = st
+            else atualizar(item.id, { fase: `Processando no servidor... ${Math.round((Date.now() - inicio) / 1000)}s` })
+          }
+
+          atualizar(item.id, { status: 'pronto', fase: undefined, url: pronto.url, downloadName: pronto.downloadName, kind: proc.kind })
         } catch (e: any) {
           atualizar(item.id, { status: 'erro', fase: undefined, erro: e.message || 'falha no processamento' })
         }
