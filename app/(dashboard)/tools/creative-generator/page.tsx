@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Clapperboard, FolderPlus, Folder, Trash2, UploadCloud, Loader2, Type, Mic2,
-  FileText, Sparkles, Check, AlertTriangle, ChevronLeft, Wand2, Film, Plus, Clock,
+  FileText, Sparkles, Check, AlertTriangle, ChevronLeft, Wand2, Film, Plus, Clock, Download,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -15,6 +15,7 @@ type Aba = 'roteiro' | 'biblioteca' | 'fontes' | 'config'
 type Pasta = { nome: string; clipes: number }
 type Arquivo = { nome: string; caminho: string; tamanho: number }
 type Voz = { id: string; nome: string; categoria?: string }
+type FonteCatalogo = { familia: string; peso: number; instalada: boolean }
 
 // Formatos de entrega. A proporção manda no enquadramento dos b-rolls (corte
 // central) e no tamanho da legenda, por isso é escolha de projeto, não de
@@ -57,6 +58,8 @@ export default function CreativeGeneratorPage() {
 
   // --- fontes ---
   const [fontes, setFontes] = useState<Arquivo[]>([])
+  const [catalogo, setCatalogo] = useState<FonteCatalogo[]>([])
+  const [baixando, setBaixando] = useState<string | null>(null)
   const fonteRef = useRef<HTMLInputElement>(null)
 
   // --- config ---
@@ -121,6 +124,7 @@ export default function CreativeGeneratorPage() {
     try {
       const j = await fetch('/api/creative-generator/fonts').then(json)
       setFontes(j.fontes || [])
+      setCatalogo(j.catalogo || [])
     } catch (e) { setErro(`${e}`) }
   }, [])
 
@@ -169,6 +173,18 @@ export default function CreativeGeneratorPage() {
       if (tipo === 'fonte') await carregarFontes()
       else if (pastaAberta) { await abrirPasta(pastaAberta); await carregarPastas() }
     } catch (e) { setErro(`${e}`) } finally { setEnviando(null) }
+  }
+
+  async function baixarFonte(familia: string, peso: number) {
+    setBaixando(familia); setErro(null)
+    try {
+      const j = await fetch('/api/creative-generator/fonts', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ familia, peso }),
+      }).then(json)
+      if (j.error) throw new Error(j.error)
+      await carregarFontes()
+    } catch (e) { setErro(`${e}`) } finally { setBaixando(null) }
   }
 
   async function apagar(corpo: object, recarrega: () => void) {
@@ -545,13 +561,61 @@ export default function CreativeGeneratorPage() {
 
       {aba === 'fontes' && (
         <div className="space-y-3">
+          {/* A prévia usa a fonte de verdade: o Google serve woff2 pro
+              navegador, e o servidor baixa o TTF da MESMA família. */}
+          <link rel="stylesheet" href={`https://fonts.googleapis.com/css2?${
+            catalogo.map((c) => `family=${encodeURIComponent(c.familia)}:wght@${c.peso}`).join('&')
+          }&display=swap`} />
+
           <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3 flex items-start gap-2">
             <Type className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
             <p className="text-xs text-muted-foreground">
-              A fonte é usada na legenda animada. O servidor de vídeo não vem com fonte nenhuma
-              instalada, então sem pelo menos uma aqui a legenda não é desenhada. Aceita .ttf, .otf e .woff2.
+              A fonte é usada na legenda animada. Escolha uma do catálogo que eu baixo e instalo,
+              ou envie a sua. O servidor de vídeo não vem com fonte nenhuma, então sem pelo menos
+              uma aqui a legenda não é desenhada.
             </p>
           </div>
+
+          <div>
+            <p className="text-xs font-semibold text-foreground mb-2">Catálogo</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {catalogo.map((c) => (
+                <div key={c.familia}
+                  className={`rounded-xl border overflow-hidden transition ${
+                    c.instalada ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : 'border-border bg-white/[0.02]'
+                  }`}>
+                  <div className="h-16 grid place-items-center px-3 bg-black/30">
+                    <span className="text-xl text-foreground truncate max-w-full"
+                      style={{ fontFamily: `'${c.familia}', sans-serif`, fontWeight: c.peso }}>
+                      Ganhei R$ 1
+                    </span>
+                  </div>
+                  <div className="px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium text-foreground truncate">{c.familia}</span>
+                      <span className="block text-[10px] text-muted-foreground">peso {c.peso}</span>
+                    </span>
+                    {c.instalada ? (
+                      <span className="text-[10px] text-emerald-300 inline-flex items-center gap-1 shrink-0">
+                        <Check className="w-3 h-3" /> instalada
+                      </span>
+                    ) : (
+                      <button onClick={() => baixarFonte(c.familia, c.peso)} disabled={!!baixando}
+                        className="shrink-0 rounded-md px-2 py-1 text-[10px] font-bold bg-fuchsia-600
+                                   hover:bg-fuchsia-500 text-white disabled:opacity-50 inline-flex items-center gap-1">
+                        {baixando === c.familia
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <Download className="w-3 h-3" />}
+                        Instalar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-xs font-semibold text-foreground pt-1">Ou envie a sua</p>
           <button onClick={() => fonteRef.current?.click()} disabled={!!enviando}
             className="rounded-lg px-3 py-2 text-xs font-bold bg-fuchsia-600 hover:bg-fuchsia-500 text-white
                        disabled:opacity-60 inline-flex items-center gap-1.5">
