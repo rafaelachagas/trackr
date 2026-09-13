@@ -14,7 +14,7 @@ import { supabase } from '@/lib/supabase'
 type Aba = 'roteiro' | 'biblioteca' | 'fontes' | 'config'
 type Pasta = { nome: string; clipes: number }
 type Clipe = { nome: string; pasta: string; caminho: string }
-type Arquivo = { nome: string; caminho: string; tamanho: number }
+type Arquivo = { nome: string; caminho: string; tamanho: number; url?: string | null }
 type Voz = { id: string; nome: string; categoria?: string }
 type FonteCatalogo = {
   familia: string; categoria: string; peso: number; pesos: string[]; instalada: boolean
@@ -59,6 +59,11 @@ export default function CreativeGeneratorPage() {
   const [novaPasta, setNovaPasta] = useState('')
   const [enviando, setEnviando] = useState<string | null>(null)
   const brollRef = useRef<HTMLInputElement>(null)
+  const [renomeando, setRenomeando] = useState<string | null>(null)
+  const [nomeNovo, setNomeNovo] = useState('')
+  // Duração vem do próprio player, quando ele carrega os metadados: evita uma
+  // volta no servidor só pra saber quantos segundos o clipe tem.
+  const [duracoes, setDuracoes] = useState<Record<string, number>>({})
 
   // --- fontes ---
   const [fontes, setFontes] = useState<Arquivo[]>([])
@@ -265,6 +270,20 @@ export default function CreativeGeneratorPage() {
       if (j.error) throw new Error(j.error)
       await carregarFontes(buscaFonte, categoriaFonte)
     } catch (e) { setErro(`${e}`) } finally { setBaixando(null) }
+  }
+
+  async function renomear(caminho: string) {
+    const alvo = nomeNovo.trim()
+    setRenomeando(null)
+    if (!alvo) return
+    try {
+      const j = await fetch('/api/creative-generator/library', {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ caminho, novoNome: alvo }),
+      }).then(json)
+      if (j.error) throw new Error(j.error)
+      if (pastaAberta) { await abrirPasta(pastaAberta); await carregarPastas() }
+    } catch (e) { setErro(`${e}`) }
   }
 
   async function apagar(corpo: object, recarrega: () => void) {
@@ -679,20 +698,70 @@ export default function CreativeGeneratorPage() {
               <p className="text-[11px] text-muted-foreground">
                 O áudio dos clipes é removido na montagem — só a locução fica. Pode enviar com som.
               </p>
-              <div className="space-y-1.5">
-                {arquivos.map((a) => (
-                  <div key={a.caminho}
-                    className="rounded-lg border border-border bg-white/[0.02] px-3 py-2 flex items-center justify-between gap-3">
-                    <span className="text-xs text-foreground truncate">{a.nome}</span>
-                    <span className="flex items-center gap-3 shrink-0">
-                      <span className="text-[11px] text-muted-foreground">{mb(a.tamanho)}</span>
-                      <button onClick={() => apagar({ caminho: a.caminho }, () => abrirPasta(pastaAberta))}
-                        className="text-rose-300/70 hover:text-rose-300"><Trash2 className="w-3.5 h-3.5" /></button>
-                    </span>
-                  </div>
-                ))}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {arquivos.map((a) => {
+                  const semExt = a.nome.replace(/\.[^.]+$/, '')
+                  const dur = duracoes[a.caminho]
+                  return (
+                    <div key={a.caminho}
+                      className="rounded-xl border border-border bg-white/[0.02] overflow-hidden group">
+                      {/* #t=0.5 faz o player mostrar um quadro em vez de tela
+                          preta, sem precisar gerar miniatura no servidor. */}
+                      {a.url ? (
+                        <video src={`${a.url}#t=0.5`} preload="metadata" muted playsInline
+                          controls={false}
+                          onLoadedMetadata={(e) => {
+                            // Lê ANTES do setState: dentro da função de
+                            // atualização o React já zerou currentTarget.
+                            const d = e.currentTarget.duration
+                            setDuracoes((m) => ({ ...m, [a.caminho]: d }))
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.play().catch(() => {}) }}
+                          onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0.5 }}
+                          className="w-full aspect-[9/16] object-cover bg-black cursor-pointer"
+                          onClick={(e) => {
+                            const v = e.currentTarget
+                            if (v.paused) v.play().catch(() => {}); else v.pause()
+                          }} />
+                      ) : (
+                        <div className="w-full aspect-[9/16] bg-black grid place-items-center">
+                          <Film className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
+
+                      <div className="px-2.5 py-2">
+                        {renomeando === a.caminho ? (
+                          <input autoFocus value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)}
+                            onBlur={() => renomear(a.caminho)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') renomear(a.caminho)
+                              if (e.key === 'Escape') setRenomeando(null)
+                            }}
+                            className="w-full rounded border border-fuchsia-500/60 bg-black/30 px-1.5 py-1
+                                       text-[11px] text-foreground focus:outline-none" />
+                        ) : (
+                          <button onClick={() => { setRenomeando(a.caminho); setNomeNovo(semExt) }}
+                            title="clique pra renomear"
+                            className="block w-full text-left text-[11px] font-mono text-foreground truncate
+                                       hover:text-fuchsia-300">
+                            ${semExt}
+                          </button>
+                        )}
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            {mb(a.tamanho)}{dur ? ` · ${dur.toFixed(1)}s` : ''}
+                          </span>
+                          <button onClick={() => apagar({ caminho: a.caminho }, () => abrirPasta(pastaAberta))}
+                            className="text-rose-300/60 hover:text-rose-300 opacity-0 group-hover:opacity-100 transition">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
                 {arquivos.length === 0 && (
-                  <p className="text-xs text-muted-foreground py-6 text-center">Pasta vazia.</p>
+                  <p className="text-xs text-muted-foreground py-6 text-center col-span-full">Pasta vazia.</p>
                 )}
               </div>
             </>

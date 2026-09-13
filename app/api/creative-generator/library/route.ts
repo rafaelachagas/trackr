@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { BUCKET_CRIATIVOS, RAIZ_BROLL, MARCADOR, nomeSeguro } from '@/lib/criativos'
 
+
 // Biblioteca de b-rolls: pastas por tema (broll/dinheiro, broll/celular...).
 // A etiqueta usada no roteiro é o NOME DA PASTA — por isso ela é o que o
 // usuário vê e escolhe, não um id.
@@ -20,16 +21,23 @@ export async function GET(req: Request) {
   try {
     const pasta = new URL(req.url).searchParams.get('pasta')
     if (pasta) {
-      const itens = await listar(`${RAIZ_BROLL}/${nomeSeguro(pasta)}`)
+      const p = nomeSeguro(pasta)
+      const itens = (await listar(`${RAIZ_BROLL}/${p}`)).filter((i) => i.name !== MARCADOR && i.id)
+      const caminhos = itens.map((i) => `${RAIZ_BROLL}/${p}/${i.name}`)
+      // URLs assinadas pro navegador mostrar a prévia sem baixar o arquivo
+      // inteiro — o player pede só o pedaço que precisa.
+      const { data: assinadas } = caminhos.length
+        ? await supabaseAdmin.storage.from(BUCKET_CRIATIVOS).createSignedUrls(caminhos, 3600)
+        : { data: [] as any[] }
+      const urlDe = new Map((assinadas || []).map((a: any) => [a.path, a.signedUrl]))
       return NextResponse.json({
-        arquivos: itens
-          .filter((i) => i.name !== MARCADOR && i.id)
-          .map((i) => ({
-            nome: i.name,
-            caminho: `${RAIZ_BROLL}/${nomeSeguro(pasta)}/${i.name}`,
-            tamanho: (i.metadata as any)?.size ?? 0,
-            criadoEm: i.created_at,
-          })),
+        arquivos: itens.map((i, k) => ({
+          nome: i.name,
+          caminho: caminhos[k],
+          tamanho: (i.metadata as any)?.size ?? 0,
+          criadoEm: i.created_at,
+          url: urlDe.get(caminhos[k]) || null,
+        })),
       })
     }
     // Sem pasta: as pastas com a contagem, e a lista achatada de clipes — o
@@ -68,6 +76,35 @@ export async function POST(req: Request) {
       .upload(`${RAIZ_BROLL}/${nome}/${MARCADOR}`, new Blob(['']), { upsert: true })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true, pasta: nome })
+  } catch (e) {
+    return NextResponse.json({ error: `${e}` }, { status: 500 })
+  }
+}
+
+// Renomear = mover no Storage. O nome é o identificador usado no roteiro
+// ("$broll-um"), então renomear aqui muda a referência — por isso a resposta
+// devolve o nome novo, pra tela avisar o usuário.
+export async function PATCH(req: Request) {
+  try {
+    const { caminho, novoNome } = await req.json()
+    if (!caminho?.startsWith(`${RAIZ_BROLL}/`)) {
+      return NextResponse.json({ error: 'caminho inválido' }, { status: 400 })
+    }
+    const extensao = caminho.match(/\.[^./]+$/)?.[0] || ''
+    const base = nomeSeguro(String(novoNome || '').replace(/\.[^./]+$/, ''), 80)
+    if (!base) return NextResponse.json({ error: 'nome inválido' }, { status: 400 })
+
+    const destino = `${caminho.split('/').slice(0, -1).join('/')}/${base}${extensao}`
+    if (destino === caminho) return NextResponse.json({ ok: true, caminho, nome: base + extensao })
+
+    const { error } = await supabaseAdmin.storage.from(BUCKET_CRIATIVOS).move(caminho, destino)
+    if (error) {
+      const dup = /exist/i.test(error.message)
+      return NextResponse.json(
+        { error: dup ? 'já existe um clipe com esse nome nessa pasta' : error.message },
+        { status: 400 })
+    }
+    return NextResponse.json({ ok: true, caminho: destino, nome: base + extensao })
   } catch (e) {
     return NextResponse.json({ error: `${e}` }, { status: 500 })
   }
