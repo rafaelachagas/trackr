@@ -533,10 +533,16 @@ export default function CreativeGeneratorPage() {
           <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">Gerar vídeo</p>
+              {/* Enquanto o montador não existe, dizer isso na CARA — botão
+                  desabilitado com "tudo pronto" ao lado promete o que a tela
+                  não entrega. */}
+              <p className="text-[11px] text-amber-300">
+                A montagem ainda está sendo construída — o botão não funciona.
+              </p>
               <p className="text-[11px] text-muted-foreground">
                 {faltando.length === 0
-                  ? 'Tudo pronto — a montagem roda no servidor de vídeo.'
-                  : `Falta ${faltando.join(', ')}.`}
+                  ? 'O preparo está completo: assim que o montador existir, é só clicar.'
+                  : `Ainda falta ${faltando.join(', ')}.`}
               </p>
             </div>
             <button disabled title="A montagem do vídeo ainda está sendo construída"
