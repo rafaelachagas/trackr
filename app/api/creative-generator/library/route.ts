@@ -32,15 +32,27 @@ export async function GET(req: Request) {
           })),
       })
     }
-    // Sem pasta: devolve as pastas com a contagem de clipes de cada uma.
+    // Sem pasta: as pastas com a contagem, e a lista achatada de clipes — o
+    // roteiro referencia clipe por nome ("$broll-dinheiro"), então o editor
+    // precisa saber quais nomes existem pra avisar quando não existir.
     const pastas = (await listar(RAIZ_BROLL)).filter((i) => !i.id)
+    const clipes: { nome: string; pasta: string; caminho: string }[] = []
     const comContagem = await Promise.all(
       pastas.map(async (p) => {
-        const itens = await listar(`${RAIZ_BROLL}/${p.name}`)
-        return { nome: p.name, clipes: itens.filter((i) => i.name !== MARCADOR && i.id).length }
+        const itens = (await listar(`${RAIZ_BROLL}/${p.name}`))
+          .filter((i) => i.name !== MARCADOR && i.id)
+        for (const i of itens) {
+          clipes.push({
+            // Sem extensão: é assim que se escreve no roteiro.
+            nome: i.name.replace(/\.[^.]+$/, ''),
+            pasta: p.name,
+            caminho: `${RAIZ_BROLL}/${p.name}/${i.name}`,
+          })
+        }
+        return { nome: p.name, clipes: itens.length }
       }),
     )
-    return NextResponse.json({ pastas: comContagem })
+    return NextResponse.json({ pastas: comContagem, clipes })
   } catch (e) {
     return NextResponse.json({ error: `${e}` }, { status: 500 })
   }

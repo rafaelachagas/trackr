@@ -5,6 +5,8 @@
 export const BUCKET_CRIATIVOS = 'criativos'
 export const RAIZ_BROLL = 'broll'
 export const RAIZ_FONTES = 'fontes'
+// Locução pronta, pra quem não pode (ou não quer) gerar a voz pela API.
+export const RAIZ_LOCUCAO = 'locucao'
 
 // Arquivo-marcador: o Storage não guarda pasta vazia. Sem isto, uma pasta
 // recém-criada sumiria até o primeiro upload.
@@ -12,6 +14,7 @@ export const MARCADOR = '.pasta'
 
 export const VIDEO_OK = /\.(mp4|mov|webm|m4v)$/i
 export const FONTE_OK = /\.(ttf|otf|woff2?)$/i
+export const AUDIO_OK = /\.(mp3|wav|m4a|aac|ogg)$/i
 
 /** Nome de pasta/arquivo seguro pra usar como caminho no Storage. */
 export function nomeSeguro(s: string, max = 60): string {

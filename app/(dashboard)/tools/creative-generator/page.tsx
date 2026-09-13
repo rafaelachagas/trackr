@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase'
 
 type Aba = 'roteiro' | 'biblioteca' | 'fontes' | 'config'
 type Pasta = { nome: string; clipes: number }
+type Clipe = { nome: string; pasta: string; caminho: string }
 type Arquivo = { nome: string; caminho: string; tamanho: number }
 type Voz = { id: string; nome: string; categoria?: string }
 type FonteCatalogo = {
@@ -52,6 +53,7 @@ export default function CreativeGeneratorPage() {
 
   // --- biblioteca ---
   const [pastas, setPastas] = useState<Pasta[]>([])
+  const [clipes, setClipes] = useState<Clipe[]>([])
   const [pastaAberta, setPastaAberta] = useState<string | null>(null)
   const [arquivos, setArquivos] = useState<Arquivo[]>([])
   const [novaPasta, setNovaPasta] = useState('')
@@ -75,6 +77,11 @@ export default function CreativeGeneratorPage() {
   const [vozes, setVozes] = useState<Voz[]>([])
   const [vozId, setVozId] = useState('')
   const [salvando, setSalvando] = useState(false)
+  // Duas origens de locução: a API do ElevenLabs, ou um arquivo pronto. Plano
+  // que não libera voz clonada via API fica preso sem a segunda.
+  const [origemVoz, setOrigemVoz] = useState<'api' | 'arquivo'>('api')
+  const [locucao, setLocucao] = useState<{ nome: string; caminho: string } | null>(null)
+  const locucaoRef = useRef<HTMLInputElement>(null)
 
   // --- roteiro ---
   const [origem, setOrigem] = useState<'minha' | 'concorrente' | 'nosso'>('minha')
@@ -94,21 +101,30 @@ export default function CreativeGeneratorPage() {
   const clipesTotais = pastas.reduce((n, p) => n + p.clipes, 0)
 
   const prontos = {
-    voz: configurada && !!vozEscolhida,
+    voz: origemVoz === 'arquivo' ? !!locucao : (configurada && !!vozEscolhida),
     broll: clipesTotais > 0,
     fonte: fontes.length > 0,
     roteiro: palavras >= 10,
   }
   const faltando = [
-    !prontos.voz && 'escolher a voz',
+    !prontos.voz && (origemVoz === 'arquivo' ? 'enviar a locução' : 'escolher a voz'),
     !prontos.broll && 'enviar b-rolls',
     !prontos.fonte && 'enviar uma fonte',
     !prontos.roteiro && 'escrever o roteiro',
   ].filter(Boolean) as string[]
 
-  function inserirEtiqueta(nome: string) {
+  // Duas formas de chamar imagem de apoio, e elas servem a coisas diferentes:
+  // "$nome-do-clipe" fixa um arquivo; "[broll: pasta xN]" sorteia dentro da
+  // pasta, que é o que dá variação entre criativos.
+  const refsClipe = [...roteiro.matchAll(/\$([\w-]+)/g)].map((m) => m[1])
+  const refsPasta = [...roteiro.matchAll(/\[broll:\s*([\w-]+)/gi)].map((m) => m[1])
+  const desconhecidas = [
+    ...refsClipe.filter((r) => !clipes.some((c) => c.nome === r)).map((r) => `$${r}`),
+    ...refsPasta.filter((r) => !pastas.some((p) => p.nome === r)).map((r) => `[broll: ${r}]`),
+  ]
+
+  function inserir(marca: string) {
     const el = roteiroRef.current
-    const marca = `[broll: ${nome} x1]`
     if (!el) { setRoteiro((r) => r + marca); return }
     const ini = el.selectionStart ?? roteiro.length
     const fim = el.selectionEnd ?? ini
@@ -124,6 +140,7 @@ export default function CreativeGeneratorPage() {
       const j = await fetch('/api/creative-generator/library').then(json)
       if (j.error) throw new Error(j.error)
       setPastas(j.pastas || [])
+      setClipes(j.clipes || [])
     } catch (e) { setErro(`${e}`) }
   }, [])
 
@@ -180,7 +197,7 @@ export default function CreativeGeneratorPage() {
     carregarPastas()
   }
 
-  async function subir(f: File, tipo: 'broll' | 'fonte') {
+  async function subir(f: File, tipo: 'broll' | 'fonte' | 'locucao') {
     setEnviando(f.name)
     try {
       const sign = await fetch('/api/creative-generator/sign-upload', {
@@ -191,7 +208,8 @@ export default function CreativeGeneratorPage() {
       const { error } = await supabase.storage.from('criativos')
         .uploadToSignedUrl(sign.path, sign.token, f)
       if (error) throw new Error(error.message)
-      if (tipo === 'fonte') await carregarFontes()
+      if (tipo === 'fonte') await carregarFontes(buscaFonte, categoriaFonte)
+      else if (tipo === 'locucao') setLocucao({ nome: f.name, caminho: sign.caminho })
       else if (pastaAberta) { await abrirPasta(pastaAberta); await carregarPastas() }
     } catch (e) { setErro(`${e}`) } finally { setEnviando(null) }
   }
@@ -273,7 +291,9 @@ export default function CreativeGeneratorPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {([
             { ok: prontos.voz, aba: 'config' as Aba, icone: Mic2, titulo: 'Voz da expert',
-              feito: 'voz escolhida', falta: configurada ? 'escolha a voz' : 'conectar ElevenLabs' },
+              feito: origemVoz === 'arquivo' ? 'locução enviada' : 'voz escolhida',
+              falta: origemVoz === 'arquivo' ? 'enviar o áudio da locução'
+                : configurada ? 'escolha a voz' : 'conectar ElevenLabs' },
             { ok: prontos.broll, aba: 'biblioteca' as Aba, icone: Film, titulo: 'B-rolls',
               feito: `${clipesTotais} clipe(s) em ${pastas.length} pasta(s)`, falta: 'criar pasta e enviar clipes' },
             { ok: prontos.fonte, aba: 'fontes' as Aba, icone: Type, titulo: 'Fonte da legenda',
@@ -385,7 +405,11 @@ export default function CreativeGeneratorPage() {
 
           <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3">
             <p className="text-[11px] text-muted-foreground">
-              <b className="text-foreground">Etiquetas</b> — clique pra inserir a marcação onde o cursor está.
+              <b className="text-foreground">Imagens de apoio</b> — clique pra inserir onde o cursor está.
+              <span className="block mt-0.5">
+                <code className="text-foreground">[broll: pasta x3]</code> sorteia 3 clipes da pasta ·{' '}
+                <code className="text-foreground">$nome-do-clipe</code> usa aquele arquivo específico.
+              </span>
             </p>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {pastas.length === 0 ? (
@@ -396,7 +420,7 @@ export default function CreativeGeneratorPage() {
                   <Plus className="w-3 h-3" /> criar a primeira pasta de b-roll
                 </button>
               ) : pastas.map((p) => (
-                <button key={p.nome} onClick={() => inserirEtiqueta(p.nome)} disabled={p.clipes === 0}
+                <button key={p.nome} onClick={() => inserir(`[broll: ${p.nome} x1]`)} disabled={p.clipes === 0}
                   title={p.clipes === 0 ? 'pasta vazia — envie clipes antes' : `inserir [broll: ${p.nome} x1]`}
                   className="text-[11px] rounded-md bg-white/5 border border-border px-2 py-1 text-foreground
                              hover:border-fuchsia-500/50 hover:bg-fuchsia-500/10 disabled:opacity-40
@@ -405,6 +429,33 @@ export default function CreativeGeneratorPage() {
                 </button>
               ))}
             </div>
+
+            {clipes.length > 0 && (
+              <>
+                <p className="text-[11px] text-muted-foreground mt-3 mb-1.5">Clipes, por nome:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {clipes.map((c) => (
+                    <button key={c.caminho} onClick={() => inserir(`$${c.nome}`)}
+                      title={`pasta ${c.pasta}`}
+                      className="text-[11px] rounded-md bg-white/5 border border-border px-2 py-1 text-foreground
+                                 hover:border-fuchsia-500/50 hover:bg-fuchsia-500/10 transition font-mono">
+                      ${c.nome}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {desconhecidas.length > 0 && (
+              <p className="text-[11px] text-amber-300 mt-3 flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                <span>
+                  Sem correspondência na biblioteca: {desconhecidas.map((d) => (
+                    <code key={d} className="font-mono">{d}</code>
+                  )).reduce((a, b) => <>{a}, {b}</>)}. A montagem vai pular esses trechos.
+                </span>
+              </p>
+            )}
           </div>
 
           {/* Formato e legenda: decisões de projeto, não de exportação — a
@@ -450,11 +501,13 @@ export default function CreativeGeneratorPage() {
                       <span className="block h-20 bg-black/40 grid place-items-center px-2">
                         {e.id === 'palavra' && (
                           <span className="text-lg font-extrabold text-white"
-                            style={{ WebkitTextStroke: '2px black' }}>DINHEIRO</span>
+                            style={{ textShadow: '0 0 3px #000, 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000' }}>
+                            DINHEIRO
+                          </span>
                         )}
                         {e.id === 'destaque' && (
                           <span className="text-[11px] font-extrabold text-white text-center leading-tight"
-                            style={{ WebkitTextStroke: '1px black' }}>
+                            style={{ textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000' }}>
                             hoje eu vou te <span className="text-lime-300">mostrar</span> uma forma
                           </span>
                         )}
@@ -556,8 +609,12 @@ export default function CreativeGeneratorPage() {
                   }} />
               </div>
               <p className="text-xs text-muted-foreground">
-                Pasta <code className="text-foreground">{pastaAberta}</code> — etiqueta{' '}
-                <code className="text-foreground">[broll: {pastaAberta}]</code>
+                Pasta <code className="text-foreground">{pastaAberta}</code> — sorteio com{' '}
+                <code className="text-foreground">[broll: {pastaAberta} x2]</code>, ou um clipe
+                específico com <code className="text-foreground">$nome-do-arquivo</code>.
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                O áudio dos clipes é removido na montagem — só a locução fica. Pode enviar com som.
               </p>
               <div className="space-y-1.5">
                 {arquivos.map((a) => (
@@ -713,7 +770,55 @@ export default function CreativeGeneratorPage() {
 
       {aba === 'config' && (
         <div className="space-y-3">
-          <div className="rounded-xl border border-border bg-white/[0.02] p-4 space-y-2.5">
+          <div className="flex gap-1.5">
+            {([['api', 'Gerar por API'], ['arquivo', 'Enviar áudio pronto']] as const).map(([id, rot]) => (
+              <button key={id} onClick={() => setOrigemVoz(id)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition ${
+                  origemVoz === id ? 'border-fuchsia-500 bg-fuchsia-500/15 text-foreground'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}>{rot}</button>
+            ))}
+          </div>
+
+          {origemVoz === 'arquivo' && (
+            <div className="rounded-xl border border-border bg-white/[0.02] p-4 space-y-2.5">
+              <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                <UploadCloud className="w-4 h-4 text-fuchsia-400" /> Locução pronta
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Gere a voz onde você preferir, baixe o arquivo e envie aqui. Os tempos de cada
+                palavra saem da transcrição na sua VPS, então a legenda animada funciona igual.
+              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground min-w-0 truncate">
+                  {locucao
+                    ? <>Arquivo: <span className="text-foreground font-medium">{locucao.nome}</span></>
+                    : 'Nenhum arquivo enviado.'}
+                </p>
+                <div className="flex items-center gap-2 shrink-0">
+                  {locucao && (
+                    <button onClick={() => setLocucao(null)}
+                      className="text-[11px] text-muted-foreground hover:text-foreground">remover</button>
+                  )}
+                  <button onClick={() => locucaoRef.current?.click()} disabled={!!enviando}
+                    className="rounded-lg px-3 py-2 text-xs font-bold bg-fuchsia-600 hover:bg-fuchsia-500
+                               text-white disabled:opacity-60 inline-flex items-center gap-1.5">
+                    {enviando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                    {locucao ? 'Trocar' : 'Enviar áudio'}
+                  </button>
+                </div>
+              </div>
+              <input ref={locucaoRef} type="file" accept="audio/*" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f, 'locucao'); e.target.value = '' }} />
+              <p className="text-[11px] text-muted-foreground">
+                O roteiro continua sendo usado pras marcações de b-roll — o áudio manda no tempo.
+              </p>
+            </div>
+          )}
+
+          <div className={`rounded-xl border border-border bg-white/[0.02] p-4 space-y-2.5 ${
+            origemVoz === 'arquivo' ? 'opacity-50' : ''
+          }`}>
             <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
               <Mic2 className="w-4 h-4 text-fuchsia-400" /> ElevenLabs
               {configurada && <span className="text-[11px] text-emerald-300 inline-flex items-center gap-1">
