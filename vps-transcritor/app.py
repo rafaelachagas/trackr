@@ -1,5 +1,6 @@
 import os
 import json
+import random
 import re
 import shutil
 import unicodedata
@@ -1598,6 +1599,405 @@ def camouflage_status():
     if not j:
         return jsonify(error="job desconhecido"), 404
     return jsonify(ok=True, status=j.get("status"), erro=j.get("erro"), tempos=j.get("tempos") or {})
+
+
+
+# ===================== MONTADOR DE CRIATIVOS =====================
+# Recebe: locução (áudio pronto), roteiro com marcações, clipes de b-roll,
+# fonte e estilo. Devolve: o vídeo montado.
+#
+# A espinha é o ÁUDIO: ele define a duração de tudo. O Whisper dá o tempo de
+# cada palavra falada; as marcações do roteiro são ancoradas nesses tempos, e
+# cada trecho de b-roll ocupa o intervalo entre uma marcação e a seguinte.
+
+RE_MARCA_CLIPE = re.compile(r"\$([\w-]+)")
+RE_MARCA_PASTA = re.compile(r"\[broll:\s*([\w-]+)(?:\s*x(\d+))?\s*\]", re.I)
+
+
+def _palavras_da_locucao(wav):
+    """Palavras faladas com tempo, do próprio áudio da locução."""
+    if not TRANSCRIBE_LOCK.acquire(timeout=900):
+        raise RuntimeError("transcritor ocupado")
+    try:
+        segs, _ = model.transcribe(wav, language="pt", vad_filter=False,
+                                   word_timestamps=True)
+        out = []
+        for seg in segs:
+            for w in (seg.words or []):
+                t = (w.word or "").strip()
+                if t:
+                    out.append({"t": t, "ini": float(w.start), "fim": float(w.end)})
+        return out
+    finally:
+        TRANSCRIBE_LOCK.release()
+
+
+def _normaliza(p):
+    p = _sem_acento(p or "").lower()
+    return re.sub(r"[^a-z0-9]", "", p)
+
+
+def _plano_do_roteiro(roteiro, palavras):
+    """Liga cada marcação do roteiro ao instante em que ela acontece no áudio.
+
+    A marcação vive entre palavras do roteiro. Então a gente conta quantas
+    palavras vêm ANTES dela e procura essa mesma posição na transcrição — a
+    locução é o roteiro lido em voz alta, então as duas sequências batem quase
+    palavra a palavra. Usar a posição (e não o texto todo) aguenta o Whisper
+    trocar uma palavra ou outra."""
+    plano = []
+    contador = 0
+    for linha in (roteiro or "").splitlines():
+        pos = 0
+        for m in re.finditer(r"\$[\w-]+|\[broll:[^\]]*\]", linha):
+            antes = linha[pos:m.start()]
+            contador += len([w for w in re.split(r"\s+", antes) if _normaliza(w)])
+            alvo = min(contador, len(palavras) - 1) if palavras else 0
+            quando = palavras[alvo]["ini"] if palavras else 0.0
+            txt = m.group(0)
+            mc = RE_MARCA_CLIPE.fullmatch(txt)
+            mp = RE_MARCA_PASTA.fullmatch(txt)
+            if mc:
+                plano.append({"quando": quando, "tipo": "clipe", "alvo": mc.group(1), "n": 1})
+            elif mp:
+                plano.append({"quando": quando, "tipo": "pasta", "alvo": mp.group(1),
+                              "n": max(1, min(int(mp.group(2) or 1), 6))})
+            pos = m.end()
+        resto = linha[pos:]
+        contador += len([w for w in re.split(r"\s+", resto) if _normaliza(w)])
+    plano.sort(key=lambda x: x["quando"])
+    return plano
+
+
+def _melhor_trecho(caminho, dur_alvo, tmp, idx):
+    """Onde cortar o clipe. Sem julgar o conteúdo — o que dá pra medir é
+    nitidez e movimento. Descarta as pontas (câmera sendo ligada/guardada),
+    pontua janelas e devolve o início da melhor. Nitidez pesa o dobro: clipe
+    tremido estraga o criativo, clipe parado só fica sem graça."""
+    try:
+        d = _ffprobe(caminho)[2] or 0
+    except Exception:
+        return 0.0
+    if d <= dur_alvo + 0.6:
+        return 0.0
+    borda = min(0.5, d * 0.08)
+    inicio, fim = borda, d - borda - dur_alvo
+    if fim <= inicio:
+        return max(0.0, (d - dur_alvo) / 2)
+
+    def medir(t, filtro, chave):
+        cmd = ["nice", "-n", "10", "ffmpeg", "-hide_banner", "-ss", "%.2f" % t,
+               "-t", "%.2f" % min(1.0, dur_alvo), "-i", caminho, "-an",
+               "-vf", filtro, "-f", "null", "-"]
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=120)
+            vals = re.findall(chave + r"=([0-9.]+)", r.stderr.decode(errors="ignore"))
+            vals = [float(v) for v in vals]
+            return sum(vals) / len(vals) if vals else 0.0
+        except Exception:
+            return 0.0
+
+    candidatos = [inicio + (fim - inicio) * k / 4.0 for k in range(5)]
+    melhor, nota_melhor = candidatos[0], -1
+    for t in candidatos:
+        mov = medir(t, "scale=160:-2,format=gray,signalstats,metadata=print", "YDIF")
+        nit = medir(t, "scale=160:-2,format=gray,convolution='0 -1 0 -1 4 -1 0 -1 0',"
+                       "signalstats,metadata=print", "YAVG")
+        nota = nit * 2 + mov
+        if nota > nota_melhor:
+            melhor, nota_melhor = t, nota
+    return melhor
+
+
+def _corta_broll(caminho, ini, dur, w, h, dest):
+    """Um trecho do b-roll no formato de saída: recorte central, sem áudio."""
+    vf = ("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,"
+          "setsar=1,fps=30,format=yuv420p" % (w, h, w, h))
+    cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-ss", "%.2f" % ini,
+           "-t", "%.2f" % dur, "-i", caminho, "-an", "-vf", vf,
+           "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+           "-threads", "1", dest, "-y"]
+    return subprocess.run(cmd, capture_output=True, timeout=1800).returncode == 0
+
+
+def _ass_tempo(t):
+    t = max(0.0, t)
+    h = int(t // 3600); m = int((t % 3600) // 60); s = t % 60
+    return "%d:%02d:%05.2f" % (h, m, s)
+
+
+def _legenda_ass(palavras, w, h, estilo, fonte_nome):
+    """Legenda queimada, no formato ASS (o libass desenha).
+
+    Três estilos, que são três jeitos de usar o MESMO tempo por palavra:
+      palavra  — uma por vez, gigante, no centro
+      destaque — a frase inteira fica, a palavra falada muda de cor
+      bloco    — duas linhas na base, trocando a cada frase
+    """
+    corpo = int(h * (0.085 if estilo == "palavra" else 0.045))
+    margem = int(h * 0.10)
+    contorno = max(3, int(corpo * 0.09))
+    cab = [
+        "[Script Info]", "ScriptType: v4.00+", "WrapStyle: 2",
+        "PlayResX: %d" % w, "PlayResY: %d" % h, "ScaledBorderAndShadow: yes", "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour,"
+        " Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        # &H00BBGGRR — branco com contorno preto; o destaque usa verde-limão.
+        "Style: Base,%s,%d,&H00FFFFFF,&H00000000,&H80000000,-1,1,%d,0,%d,60,60,%d,1"
+        % (fonte_nome, corpo, contorno, 5 if estilo == "palavra" else 2, margem),
+        "", "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ]
+    linhas = []
+
+    if estilo == "palavra":
+        for p in palavras:
+            fim = max(p["fim"], p["ini"] + 0.12)
+            linhas.append("Dialogue: 0,%s,%s,Base,,0,0,0,,{\fad(40,40)}%s"
+                          % (_ass_tempo(p["ini"]), _ass_tempo(fim), p["t"].upper()))
+    else:
+        # Agrupa em frases curtas: 5 palavras no destaque, 7 no bloco — mais
+        # que isso não cabe na largura sem virar duas linhas ilegíveis.
+        tam = 5 if estilo == "destaque" else 7
+        grupos = [palavras[i:i + tam] for i in range(0, len(palavras), tam)]
+        for g in grupos:
+            ini, fim = g[0]["ini"], max(g[-1]["fim"], g[0]["ini"] + 0.4)
+            if estilo == "bloco":
+                txt = " ".join(p["t"] for p in g)
+                linhas.append("Dialogue: 0,%s,%s,Base,,0,0,0,,%s"
+                              % (_ass_tempo(ini), _ass_tempo(fim), txt))
+            else:
+                # Uma linha por palavra acesa: a frase fica, a palavra do
+                # momento muda de cor. É o efeito dos criativos que o usuário
+                # mandou de referência.
+                for k, p in enumerate(g):
+                    partes = []
+                    for j, q in enumerate(g):
+                        partes.append((r"{\c&H00E1FF00&}%s{\c&H00FFFFFF&}" % q["t"])
+                                      if j == k else q["t"])
+                    linhas.append("Dialogue: 0,%s,%s,Base,,0,0,0,,%s"
+                                  % (_ass_tempo(p["ini"]),
+                                     _ass_tempo(max(p["fim"], p["ini"] + 0.12)),
+                                     " ".join(partes)))
+    return "\n".join(cab + linhas) + "\n"
+
+
+MONTAGEM_JOBS = {}
+MONTAGEM_LOCK = threading.Lock()
+MONTAGEM_TRAVA = threading.Lock()
+
+
+def _mjob(jid, **campos):
+    with MONTAGEM_LOCK:
+        j = MONTAGEM_JOBS.setdefault(jid, {})
+        j.update(campos)
+        if len(MONTAGEM_JOBS) > 100:
+            for k in list(MONTAGEM_JOBS)[:50]:
+                MONTAGEM_JOBS.pop(k, None)
+
+
+def _nome_interno_da_fonte(caminho):
+    """O ASS chama a fonte pelo NOME INTERNO dela, não pelo nome do arquivo."""
+    try:
+        r = subprocess.run(["fc-scan", "--format", "%{family[0]}", caminho],
+                           capture_output=True, timeout=30)
+        nome = r.stdout.decode(errors="ignore").strip()
+        if nome:
+            return nome
+    except Exception:
+        pass
+    # Sem fontconfig, deduz do nome do arquivo ("Montserrat-800.ttf").
+    return re.sub(r"[-_]\d+$", "", os.path.splitext(os.path.basename(caminho))[0])
+
+
+def _montar(body):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return ({"error": "storage não configurado no servidor"}, 500)
+    bucket = body.get("bucket") or "criativos"
+    loc_path = body.get("locucao_path")
+    outp = body.get("output_path")
+    if not loc_path or not outp:
+        return ({"error": "locucao_path/output_path ausentes"}, 400)
+
+    roteiro = body.get("roteiro") or ""
+    estilo = str(body.get("estilo") or "palavra")
+    w = int(body.get("largura") or 1080)
+    h = int(body.get("altura") or 1920)
+    fonte_path = body.get("fonte_path") or None
+    clipes = body.get("clipes") or {}     # nome -> caminho
+    pastas = body.get("pastas") or {}     # pasta -> [caminhos]
+
+    if not MONTAGEM_TRAVA.acquire(timeout=60):
+        return ({"error": "já tem uma montagem rodando — tente em instantes"}, 503)
+
+    tmp = tempfile.mkdtemp(prefix="montar_")
+    tempos = {}
+    try:
+        # 1. Locução — é ela que manda na duração de tudo.
+        t0 = time.time()
+        loc = os.path.join(tmp, "loc" + (os.path.splitext(loc_path)[1].lower() or ".mp3"))
+        _storage_baixar(bucket, loc_path, loc)
+        wav = os.path.join(tmp, "loc.wav")
+        subprocess.run(["ffmpeg", "-v", "error", "-i", loc, "-vn", "-ac", "1",
+                        "-ar", "16000", wav, "-y"], capture_output=True, timeout=900)
+        dur_total = _ffprobe(loc)[2] or 0
+        if dur_total <= 0:
+            return ({"error": "não consegui ler a duração da locução"}, 400)
+        tempos["locucao"] = round(time.time() - t0, 1)
+
+        # 2. Palavras com tempo — servem pra legenda E pra ancorar as marcações.
+        t0 = time.time()
+        palavras = _palavras_da_locucao(wav)
+        tempos["transcricao"] = round(time.time() - t0, 1)
+        if not palavras:
+            return ({"error": "não consegui reconhecer fala na locução"}, 400)
+
+        # 3. Marcações do roteiro viram trechos com início e fim.
+        plano = _plano_do_roteiro(roteiro, palavras)
+        usados = {}
+        trechos = []
+        for i, p in enumerate(plano):
+            ini = p["quando"]
+            fim = plano[i + 1]["quando"] if i + 1 < len(plano) else dur_total
+            if fim - ini < 0.4:
+                continue
+            escolhidos = []
+            if p["tipo"] == "clipe":
+                c = clipes.get(p["alvo"])
+                if c:
+                    escolhidos = [c]
+            else:
+                disp = list(pastas.get(p["alvo"]) or [])
+                if disp:
+                    # Sorteio sem repetir enquanto houver clipe novo na pasta —
+                    # repetir b-roll no mesmo vídeo é o que mais denuncia
+                    # montagem automática.
+                    vistos = usados.setdefault(p["alvo"], set())
+                    novos = [c for c in disp if c not in vistos] or disp
+                    random.shuffle(novos)
+                    escolhidos = novos[: p["n"]]
+                    vistos.update(escolhidos)
+            if not escolhidos:
+                continue
+            fatia = (fim - ini) / len(escolhidos)
+            for k, c in enumerate(escolhidos):
+                trechos.append({"caminho": c, "ini": ini + k * fatia, "dur": fatia})
+
+        if not trechos:
+            return ({"error": "nenhuma marcação de b-roll válida no roteiro"}, 400)
+
+        # 4. Cada trecho: baixa, acha o melhor pedaço, corta no formato, sem som.
+        t0 = time.time()
+        partes = []
+        cache = {}
+        for i, tr in enumerate(trechos):
+            orig = cache.get(tr["caminho"])
+            if not orig:
+                ext = os.path.splitext(tr["caminho"])[1] or ".mp4"
+                orig = os.path.join(tmp, "src%d%s" % (i, ext))
+                _storage_baixar(bucket, tr["caminho"], orig)
+                cache[tr["caminho"]] = orig
+            inicio = _melhor_trecho(orig, tr["dur"], tmp, i)
+            dest = os.path.join(tmp, "parte%03d.mp4" % i)
+            if _corta_broll(orig, inicio, tr["dur"], w, h, dest):
+                partes.append(dest)
+        if not partes:
+            return ({"error": "não consegui preparar nenhum b-roll"}, 500)
+        tempos["brolls"] = round(time.time() - t0, 1)
+
+        # 5. Emenda os trechos.
+        lista = os.path.join(tmp, "lista.txt")
+        with open(lista, "w", encoding="utf-8") as fh:
+            for caminho_parte in partes:
+                fh.write("file " + repr(caminho_parte.replace("\\", "/")) + "\n")
+        base = os.path.join(tmp, "base.mp4")
+        r = subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-f", "concat",
+                            "-safe", "0", "-i", lista, "-c", "copy", base, "-y"],
+                           capture_output=True, timeout=1800)
+        if r.returncode != 0:
+            return ({"error": _erro_ffmpeg(r)}, 500)
+
+        # 6. Legenda. Sem fonte instalada o libass não desenha nada, então a
+        # fonte enviada é copiada pra uma pasta que o libass enxerga.
+        fonte_nome = "Sans"
+        fdir = os.path.join(tmp, "fontes")
+        os.makedirs(fdir, exist_ok=True)
+        if fonte_path:
+            alvo = os.path.join(fdir, os.path.basename(fonte_path))
+            try:
+                _storage_baixar(bucket, fonte_path, alvo)
+                fonte_nome = _nome_interno_da_fonte(alvo) or "Sans"
+            except Exception:
+                pass
+        ass = os.path.join(tmp, "leg.ass")
+        with open(ass, "w", encoding="utf-8") as fh:
+            fh.write(_legenda_ass(palavras, w, h, estilo, fonte_nome))
+
+        # 7. Vídeo + legenda + locução. O -shortest corta no fim do áudio.
+        t0 = time.time()
+        saida = os.path.join(tmp, "final.mp4")
+        vf = "ass=%s:fontsdir=%s" % (ass, fdir)
+        cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-i", base, "-i", loc,
+               "-vf", vf, "-map", "0:v", "-map", "1:a", "-shortest",
+               "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+               "-pix_fmt", "yuv420p", "-threads", "1", "-r", "30",
+               "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", saida, "-y"]
+        r = subprocess.run(cmd, capture_output=True, timeout=3600)
+        tempos["render"] = round(time.time() - t0, 1)
+        if r.returncode != 0 or not os.path.exists(saida):
+            print("[montador] ffmpeg falhou: %s"
+                  % (r.stderr or b"").decode(errors="ignore")[-3000:], flush=True)
+            return ({"error": _erro_ffmpeg(r)}, 500)
+
+        _storage_subir(bucket, outp, saida)
+        print("[montador] %dx%d %.0fs %d trecho(s) -> %s"
+              % (w, h, dur_total, len(partes), tempos), flush=True)
+        return ({"ok": True, "tempos": tempos, "trechos": len(partes),
+                 "duracao": round(dur_total, 1)}, 200)
+    except subprocess.TimeoutExpired:
+        return ({"error": "a montagem excedeu o tempo limite"}, 504)
+    except Exception as e:
+        return ({"error": "falha: %s" % e}, 500)
+    finally:
+        MONTAGEM_TRAVA.release()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.route("/assemble", methods=["POST"])
+def assemble():
+    key = request.args.get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    body = request.get_json(silent=True) or {}
+    jid = uuid.uuid4().hex
+    _mjob(jid, status="rodando")
+
+    def tarefa():
+        try:
+            payload, status = _montar(body)
+        except Exception as e:
+            payload, status = {"error": "falha: %s" % e}, 500
+        if status == 200:
+            _mjob(jid, status="pronto", tempos=payload.get("tempos") or {},
+                  trechos=payload.get("trechos"), duracao=payload.get("duracao"))
+        else:
+            _mjob(jid, status="erro", erro=payload.get("error") or "falhou")
+
+    threading.Thread(target=tarefa, daemon=True).start()
+    return jsonify(ok=True, job_id=jid), 202
+
+
+@app.route("/assemble_status", methods=["GET"])
+def assemble_status():
+    key = request.args.get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    with MONTAGEM_LOCK:
+        j = dict(MONTAGEM_JOBS.get(request.args.get("job") or "") or {})
+    if not j:
+        return jsonify(error="job desconhecido"), 404
+    return jsonify(ok=True, **j)
 
 
 if __name__ == "__main__":

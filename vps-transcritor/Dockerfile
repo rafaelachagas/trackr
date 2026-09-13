@@ -1,7 +1,9 @@
 FROM python:3.11-slim
 
 # ffmpeg é necessário pro Whisper ler o áudio do vídeo.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# fontconfig entra pro montador: o ASS chama a fonte pelo NOME INTERNO dela,
+# e quem le esse nome do .ttf enviado pelo usuario e o fc-scan.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

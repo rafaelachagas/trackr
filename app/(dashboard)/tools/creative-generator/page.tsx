@@ -69,6 +69,12 @@ export default function CreativeGeneratorPage() {
   const [categorias, setCategorias] = useState<string[]>([])
   const [totalFontes, setTotalFontes] = useState(0)
   const [pesoEscolhido, setPesoEscolhido] = useState<Record<string, number>>({})
+  const [fonteEscolhida, setFonteEscolhida] = useState('')
+
+  // --- montagem ---
+  const [montando, setMontando] = useState(false)
+  const [faseMontagem, setFaseMontagem] = useState('')
+  const [videoPronto, setVideoPronto] = useState<{ url: string; tempos?: Record<string, number> } | null>(null)
   const fonteRef = useRef<HTMLInputElement>(null)
 
   // --- config ---
@@ -212,6 +218,41 @@ export default function CreativeGeneratorPage() {
       else if (tipo === 'locucao') setLocucao({ nome: f.name, caminho: sign.caminho })
       else if (pastaAberta) { await abrirPasta(pastaAberta); await carregarPastas() }
     } catch (e) { setErro(`${e}`) } finally { setEnviando(null) }
+  }
+
+  async function montar() {
+    setMontando(true); setErro(null); setVideoPronto(null)
+    setFaseMontagem('Enviando pro servidor de vídeo...')
+    try {
+      const j = await fetch('/api/creative-generator/assemble', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          roteiro, locucaoPath: locucao?.caminho, formato, estilo,
+          fontePath: fonteEscolhida || fontes[0]?.caminho || null,
+        }),
+      }).then(json)
+      if (j.error) throw new Error(j.error)
+
+      // O ffmpeg roda em segundo plano na VPS; aqui só se pergunta de tempos
+      // em tempos, como na camuflagem.
+      const params = new URLSearchParams({ job: j.jobId, outputPath: j.outputPath })
+      for (let i = 0; i < 360; i++) {
+        await new Promise((r) => setTimeout(r, 5000))
+        const st = await fetch(`/api/creative-generator/assemble?${params}`, { cache: 'no-store' })
+          .then(json).catch(() => ({ status: 'rodando' }))
+        if (st.status === 'erro') throw new Error(st.erro || 'a montagem falhou')
+        if (st.status === 'pronto') {
+          setVideoPronto({ url: st.url, tempos: st.tempos })
+          setFaseMontagem('')
+          return
+        }
+        setFaseMontagem(`Montando... ${(i + 1) * 5}s`)
+      }
+      throw new Error('a montagem demorou demais')
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : `${e}`)
+      setFaseMontagem('')
+    } finally { setMontando(false) }
   }
 
   async function baixarFonte(familia: string, peso: number) {
@@ -533,24 +574,40 @@ export default function CreativeGeneratorPage() {
           <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">Gerar vídeo</p>
-              {/* Enquanto o montador não existe, dizer isso na CARA — botão
-                  desabilitado com "tudo pronto" ao lado promete o que a tela
-                  não entrega. */}
-              <p className="text-[11px] text-amber-300">
-                A montagem ainda está sendo construída — o botão não funciona.
-              </p>
               <p className="text-[11px] text-muted-foreground">
-                {faltando.length === 0
-                  ? 'O preparo está completo: assim que o montador existir, é só clicar.'
-                  : `Ainda falta ${faltando.join(', ')}.`}
+                {faseMontagem ? faseMontagem
+                  : faltando.length === 0
+                    ? 'A montagem roda no servidor de vídeo e leva alguns minutos.'
+                    : `Ainda falta ${faltando.join(', ')}.`}
               </p>
             </div>
-            <button disabled title="A montagem do vídeo ainda está sendo construída"
-              className="shrink-0 rounded-lg px-4 py-2 text-xs font-bold bg-fuchsia-600 text-white
-                         disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
-              <Film className="w-3.5 h-3.5" /> Gerar
+            <button onClick={montar} disabled={montando || faltando.length > 0 || desconhecidas.length > 0}
+              className="shrink-0 rounded-lg px-4 py-2 text-xs font-bold bg-fuchsia-600 hover:bg-fuchsia-500
+                         text-white disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+              {montando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Film className="w-3.5 h-3.5" />}
+              {montando ? 'Montando...' : 'Gerar'}
             </button>
           </div>
+
+          {videoPronto && (
+            <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/[0.07] p-4 space-y-3">
+              <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-400" /> Vídeo pronto
+                {videoPronto.tempos && (
+                  <span className="text-[11px] font-normal text-muted-foreground">
+                    ({Object.entries(videoPronto.tempos).map(([k, v]) => `${k} ${v}s`).join(' · ')})
+                  </span>
+                )}
+              </p>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video src={videoPronto.url} controls className="w-full max-w-[320px] rounded-lg border border-border" />
+              <a href={videoPronto.url} download
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold
+                           bg-emerald-600 hover:bg-emerald-500 text-white">
+                Baixar
+              </a>
+            </div>
+          )}
         </div>
       )}
 
@@ -755,8 +812,16 @@ export default function CreativeGeneratorPage() {
           <div className="space-y-1.5">
             {fontes.map((f) => (
               <div key={f.caminho}
-                className="rounded-lg border border-border bg-white/[0.02] px-3 py-2 flex items-center justify-between gap-3">
-                <span className="text-xs text-foreground truncate">{f.nome}</span>
+                className={`rounded-lg border px-3 py-2 flex items-center justify-between gap-3 ${
+                  (fonteEscolhida || fontes[0]?.caminho) === f.caminho
+                    ? 'border-fuchsia-500/50 bg-fuchsia-500/10' : 'border-border bg-white/[0.02]'
+                }`}>
+                <button onClick={() => setFonteEscolhida(f.caminho)}
+                  className="text-xs text-foreground truncate text-left flex-1 min-w-0">
+                  {f.nome}
+                  {(fonteEscolhida || fontes[0]?.caminho) === f.caminho &&
+                    <span className="text-[10px] text-fuchsia-300 ml-2">usando na legenda</span>}
+                </button>
                 <span className="flex items-center gap-3 shrink-0">
                   <span className="text-[11px] text-muted-foreground">{mb(f.tamanho)}</span>
                   <button onClick={async () => {
