@@ -879,6 +879,23 @@ def _ffprobe(path):
         return (720, 1280, 0.0)
 
 
+def _duracao(path):
+    """Duração de QUALQUER arquivo, com ou sem vídeo.
+
+    O `_ffprobe` acima pede `-select_streams v:0` porque nasceu pra criativo;
+    num MP3 de locução não existe faixa de vídeo e ele devolvia zero, o que
+    derrubava a montagem logo no início.
+    """
+    try:
+        r = subprocess.run([
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=nw=1:nk=1", path,
+        ], capture_output=True, timeout=60)
+        return float((r.stdout.decode(errors="ignore").strip() or "0") or 0)
+    except Exception:
+        return 0.0
+
+
 def _fps(path):
     """Taxa de quadros MÉDIA do vídeo. Arquivo de celular/gravação de tela
     costuma ser VFR (taxa variável): players de navegador lidam bem, muitos
@@ -1674,10 +1691,7 @@ def _melhor_trecho(caminho, dur_alvo, tmp, idx):
     nitidez e movimento. Descarta as pontas (câmera sendo ligada/guardada),
     pontua janelas e devolve o início da melhor. Nitidez pesa o dobro: clipe
     tremido estraga o criativo, clipe parado só fica sem graça."""
-    try:
-        d = _ffprobe(caminho)[2] or 0
-    except Exception:
-        return 0.0
+    d = _duracao(caminho)
     if d <= dur_alvo + 0.6:
         return 0.0
     borda = min(0.5, d * 0.08)
@@ -1841,7 +1855,7 @@ def _montar(body):
         wav = os.path.join(tmp, "loc.wav")
         subprocess.run(["ffmpeg", "-v", "error", "-i", loc, "-vn", "-ac", "1",
                         "-ar", "16000", wav, "-y"], capture_output=True, timeout=900)
-        dur_total = _ffprobe(loc)[2] or 0
+        dur_total = _duracao(loc)
         if dur_total <= 0:
             return ({"error": "não consegui ler a duração da locução"}, 400)
         tempos["locucao"] = round(time.time() - t0, 1)
@@ -1886,6 +1900,14 @@ def _montar(body):
 
         if not trechos:
             return ({"error": "nenhuma marcação de b-roll válida no roteiro"}, 400)
+
+        # A primeira marcação quase nunca está no segundo zero — ela vem
+        # depois da primeira frase. Como os trechos são só emendados, sem
+        # cobrir esse começo o vídeo inteiro sairia adiantado e mais curto que
+        # a locução. O primeiro clipe cobre a abertura.
+        if trechos[0]["ini"] > 0.4:
+            trechos.insert(0, {"caminho": trechos[0]["caminho"], "ini": 0.0,
+                               "dur": trechos[0]["ini"]})
 
         # 4. Cada trecho: baixa, acha o melhor pedaço, corta no formato, sem som.
         t0 = time.time()
