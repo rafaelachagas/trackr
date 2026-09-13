@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase'
 import { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } from '@/lib/transcritor'
 import { BUCKET_CRIATIVOS, RAIZ_BROLL, MARCADOR, nomeSeguro } from '@/lib/criativos'
+import { PASTA_PROJETOS } from '@/lib/criativos-projeto'
 
 // Monta o criativo. Aqui a gente só resolve QUAIS arquivos entram (o roteiro
 // fala em nomes; o Storage fala em caminhos) e manda pra VPS, que faz o vídeo
@@ -47,6 +48,8 @@ export async function POST(req: Request) {
 
     const fmt = FORMATOS[formato] || FORMATOS['9:16']
     const outputPath = `saida/${randomUUID()}.mp4`
+    // A VPS grava aqui o projeto (trechos, palavras, legenda) que o editor abre.
+    const projetoId = randomUUID()
 
     let resp: Response
     try {
@@ -65,6 +68,7 @@ export async function POST(req: Request) {
           fonte_path: fontePath || null,
           clipes,
           pastas,
+          projeto_path: `${PASTA_PROJETOS}/${projetoId}.json`,
         }),
       })
     } catch {
@@ -78,7 +82,7 @@ export async function POST(req: Request) {
     if (!resp.ok || j?.error || !j?.job_id) {
       return NextResponse.json({ error: j?.error || 'falha ao iniciar a montagem' }, { status: 502 })
     }
-    return NextResponse.json({ jobId: j.job_id, outputPath })
+    return NextResponse.json({ jobId: j.job_id, outputPath, projetoId })
   } catch (e) {
     return NextResponse.json({ error: `${e}` }, { status: 500 })
   }
@@ -99,9 +103,12 @@ export async function GET(req: Request) {
 
   // Pronto: devolve um link assinado pro navegador baixar direto do Storage.
   if (j?.status === 'pronto' && outputPath) {
-    const { data } = await supabaseAdmin.storage
-      .from(BUCKET_CRIATIVOS).createSignedUrl(outputPath, 3600)
-    return NextResponse.json({ ...j, url: data?.signedUrl })
+    const st = supabaseAdmin.storage.from(BUCKET_CRIATIVOS)
+    const { data } = await st.createSignedUrl(outputPath, 3600)
+    // Link separado com Content-Disposition: sem ele o navegador abre o vídeo
+    // numa aba em vez de baixar (o atributo download não vale entre domínios).
+    const { data: dl } = await st.createSignedUrl(outputPath, 3600, { download: 'criativo.mp4' })
+    return NextResponse.json({ ...j, url: data?.signedUrl, downloadUrl: dl?.signedUrl })
   }
   return NextResponse.json(j)
 }

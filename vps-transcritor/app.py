@@ -1723,10 +1723,34 @@ def _melhor_trecho(caminho, dur_alvo, tmp, idx):
     return melhor
 
 
-def _corta_broll(caminho, ini, dur, w, h, dest):
-    """Um trecho do b-roll no formato de saída: recorte central, sem áudio."""
-    vf = ("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,"
-          "setsar=1,fps=30,format=yuv420p" % (w, h, w, h))
+ZOOM_FORCA = 0.12
+TRANSICAO_DUR = 0.18
+
+
+def _corta_broll(caminho, ini, dur, w, h, dest, zoom="nenhum", transicao="corte"):
+    """Um trecho do b-roll no formato de saída: recorte central, sem áudio.
+
+    zoom: nenhum | in | out — aproximação lenta ao longo do trecho (12%).
+    transicao: corte | fade (sai do preto) | flash (sai do branco) — no começo
+    do trecho. Os dois são por trecho, então o custo é o mesmo corte de hoje;
+    nada de xfade entre clipes, que obrigaria renderizar tudo junto."""
+    filtros = ["scale=%d:%d:force_original_aspect_ratio=increase" % (w, h),
+               "crop=%d:%d" % (w, h), "fps=30"]
+    d = max(0.1, float(dur))
+    if zoom in ("in", "out"):
+        prog = "(t/%.3f)" % d if zoom == "in" else "(1-t/%.3f)" % d
+        # Vírgula escapada em vez de aspas: aspas somem no caminho em alguns
+        # ambientes e a vírgula do min() quebraria a cadeia de filtros.
+        fator = r"(1+%.3f*min(1\,max(0\,%s)))" % (ZOOM_FORCA, prog)
+        filtros += ["scale=w=trunc(%d*%s/2)*2:h=trunc(%d*%s/2)*2:eval=frame"
+                    % (w, fator, h, fator),
+                    "crop=%d:%d" % (w, h)]
+    if transicao == "fade":
+        filtros.append("fade=t=in:st=0:d=%.2f:color=black" % TRANSICAO_DUR)
+    elif transicao == "flash":
+        filtros.append("fade=t=in:st=0:d=%.2f:color=white" % TRANSICAO_DUR)
+    filtros += ["setsar=1", "format=yuv420p"]
+    vf = ",".join(filtros)
     cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-ss", "%.2f" % ini,
            "-t", "%.2f" % dur, "-i", caminho, "-an", "-vf", vf,
            "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
@@ -1740,7 +1764,7 @@ def _ass_tempo(t):
     return "%d:%02d:%05.2f" % (h, m, s)
 
 
-def _legenda_ass(palavras, w, h, estilo, fonte_nome):
+def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None):
     """Legenda queimada, no formato ASS (o libass desenha).
 
     Três estilos, que são três jeitos de usar o MESMO tempo por palavra:
@@ -1748,53 +1772,101 @@ def _legenda_ass(palavras, w, h, estilo, fonte_nome):
       destaque — a frase inteira fica, a palavra falada muda de cor
       bloco    — duas linhas na base, trocando a cada frase
     """
-    corpo = int(h * (0.085 if estilo == "palavra" else 0.045))
-    margem = int(h * 0.10)
+    # Tudo o que o editor deixa ajustar. A prévia do navegador
+    # (lib/criativos-legenda.ts) usa as MESMAS contas — mudou aqui, muda lá.
+    cfg = cfg or {}
+    cor = _hex_ass(cfg.get("cor"), "FFFFFF")
+    dest = _hex_ass(cfg.get("destaque"), "B8FF00")
+    escala = _clamp(cfg.get("tamanho"), 0.5, 2.0, 1.0)
+    corpo = int(h * (0.085 if estilo == "palavra" else 0.05) * escala)
+    y = int(h * _clamp(cfg.get("posicao"), 0.1, 0.92, 0.5 if estilo == "palavra" else 0.75))
+    caixa = _bool(cfg.get("caixa"), False)
+    maiusc = _bool(cfg.get("maiusculas"), estilo == "palavra")
+    pop = str(cfg.get("animacao") or "pop") == "pop"
+    fundo = str(cfg.get("tipo_destaque") or "cor") == "fundo"
+    por_linha = int(_clamp(cfg.get("por_linha"), 2, 10, 4 if estilo == "destaque" else 6))
     contorno = max(3, int(corpo * 0.09))
+
+    if caixa:
+        # BorderStyle 3 = caixa opaca atrás do texto, com a cor do contorno.
+        estilo_borda, borda, cor_borda, sombra = 3, int(corpo * 0.22), "&H33000000", 0
+    else:
+        estilo_borda, borda, cor_borda, sombra = 1, contorno, "&H00000000", max(1, int(corpo * 0.04))
     cab = [
-        "[Script Info]", "ScriptType: v4.00+", "WrapStyle: 2",
+        "[Script Info]", "ScriptType: v4.00+", "WrapStyle: 0",
         "PlayResX: %d" % w, "PlayResY: %d" % h, "ScaledBorderAndShadow: yes", "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour,"
         " Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        # &H00BBGGRR — branco com contorno preto; o destaque usa verde-limão.
-        "Style: Base,%s,%d,&H00FFFFFF,&H00000000,&H80000000,-1,1,%d,0,%d,60,60,%d,1"
-        % (fonte_nome, corpo, contorno, 5 if estilo == "palavra" else 2, margem),
+        "Style: Base,%s,%d,&H00%s,%s,%s,-1,%d,%d,%d,5,80,80,0,1"
+        % (fonte_nome, corpo, cor[2:-1], cor_borda, cor_borda if caixa else "&H80000000",
+           estilo_borda, borda, sombra),
         "", "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
-    linhas = []
+    pos = r"{\an5\pos(%d,%d)}" % (w // 2, y)
+    anima_linha = r"{\fscx80\fscy80\t(0,80,\fscx108\fscy108)\t(80,150,\fscx100\fscy100)}"
+    anima_palavra = r"{\t(0,80,\fscx114\fscy114)\t(80,150,\fscx100\fscy100)}"
 
+    vis = [p for p in palavras if not p.get("oculta") and (p.get("t") or "").strip()]
+
+    def texto(p):
+        t = p["t"].strip()
+        return t.upper() if maiusc else t
+
+    def fim_de(lista, i):
+        # Segura a palavra até a próxima começar (se o respiro for curto):
+        # sem isso a legenda pisca entre uma palavra e outra.
+        p = lista[i]
+        fim = max(p["fim"], p["ini"] + 0.12)
+        if i + 1 < len(lista) and 0 <= lista[i + 1]["ini"] - fim < 0.5:
+            fim = lista[i + 1]["ini"]
+        return fim
+
+    def marcada(p, ativa):
+        t = texto(p)
+        if ativa and fundo and not caixa:
+            return r"{\3c%s\bord%d}%s{\3c&H000000&\bord%d}" % (dest, contorno * 3, t, borda)
+        if ativa or p.get("enfase"):
+            return r"{\c%s}%s{\c%s}" % (dest, t, cor)
+        return t
+
+    def dialogo(ini, fim, txt):
+        return "Dialogue: 0,%s,%s,Base,,0,0,0,,%s%s" % (_ass_tempo(ini), _ass_tempo(fim), pos, txt)
+
+    linhas = []
     if estilo == "palavra":
-        for p in palavras:
-            fim = max(p["fim"], p["ini"] + 0.12)
-            linhas.append("Dialogue: 0,%s,%s,Base,,0,0,0,,{\fad(40,40)}%s"
-                          % (_ass_tempo(p["ini"]), _ass_tempo(fim), p["t"].upper()))
+        for i, p in enumerate(vis):
+            txt = marcada(p, False)
+            if p.get("enfase"):
+                txt = r"{\fscx118\fscy118}" + txt
+            linhas.append(dialogo(p["ini"], fim_de(vis, i), (anima_linha if pop else "") + txt))
     else:
-        # Agrupa em frases curtas: 5 palavras no destaque, 7 no bloco — mais
-        # que isso não cabe na largura sem virar duas linhas ilegíveis.
-        tam = 5 if estilo == "destaque" else 7
-        grupos = [palavras[i:i + tam] for i in range(0, len(palavras), tam)]
+        grupos = [vis[i:i + por_linha] for i in range(0, len(vis), por_linha)]
         for g in grupos:
-            ini, fim = g[0]["ini"], max(g[-1]["fim"], g[0]["ini"] + 0.4)
             if estilo == "bloco":
-                txt = " ".join(p["t"] for p in g)
-                linhas.append("Dialogue: 0,%s,%s,Base,,0,0,0,,%s"
-                              % (_ass_tempo(ini), _ass_tempo(fim), txt))
-            else:
-                # Uma linha por palavra acesa: a frase fica, a palavra do
-                # momento muda de cor. É o efeito dos criativos que o usuário
-                # mandou de referência.
-                for k, p in enumerate(g):
-                    partes = []
-                    for j, q in enumerate(g):
-                        partes.append((r"{\c&H00E1FF00&}%s{\c&H00FFFFFF&}" % q["t"])
-                                      if j == k else q["t"])
-                    linhas.append("Dialogue: 0,%s,%s,Base,,0,0,0,,%s"
-                                  % (_ass_tempo(p["ini"]),
-                                     _ass_tempo(max(p["fim"], p["ini"] + 0.12)),
-                                     " ".join(partes)))
+                fim = max(g[-1]["fim"], g[0]["ini"] + 0.4)
+                linhas.append(dialogo(g[0]["ini"], fim, " ".join(marcada(p, False) for p in g)))
+                continue
+            for k, p in enumerate(g):
+                partes = []
+                for j, q in enumerate(g):
+                    if j == k:
+                        partes.append((anima_palavra if pop else "") + marcada(q, True)
+                                      + (r"{\fscx100\fscy100}" if pop else ""))
+                    else:
+                        partes.append(marcada(q, False))
+                linhas.append(dialogo(p["ini"], fim_de(g, k), " ".join(partes)))
     return "\n".join(cab + linhas) + "\n"
+
+
+def _hex_ass(valor, padrao):
+    """'#RRGGBB' -> '&HBBGGRR&' (o ASS guarda as cores de trás pra frente)."""
+    hx = str(valor or "").lstrip("#")
+    if not re.fullmatch(r"[0-9a-fA-F]{6}", hx):
+        hx = padrao
+    hx = hx.upper()
+    return "&H%s%s%s&" % (hx[4:6], hx[2:4], hx[0:2])
 
 
 MONTAGEM_JOBS = {}
@@ -1825,22 +1897,123 @@ def _nome_interno_da_fonte(caminho):
     return re.sub(r"[-_]\d+$", "", os.path.splitext(os.path.basename(caminho))[0])
 
 
+class MontagemErro(Exception):
+    def __init__(self, msg, status=400):
+        super().__init__(msg)
+        self.status = status
+
+
+def _projeto_automatico(body, baixar, tmp, tempos):
+    """A primeira montagem: do roteiro + locução até a lista de trechos.
+
+    O resultado é o PROJETO — o mesmo JSON que o editor abre e devolve. Daqui
+    pra frente, renderizar é só obedecer o projeto."""
+    loc_path = body.get("locucao_path")
+    clipes = body.get("clipes") or {}     # nome -> caminho
+    pastas = body.get("pastas") or {}     # pasta -> [caminhos]
+
+    # 1. Locução — é ela que manda na duração de tudo.
+    t0 = time.time()
+    loc = baixar(loc_path)
+    wav = os.path.join(tmp, "loc.wav")
+    subprocess.run(["ffmpeg", "-v", "error", "-i", loc, "-vn", "-ac", "1",
+                    "-ar", "16000", wav, "-y"], capture_output=True, timeout=900)
+    dur_total = _duracao(loc)
+    if dur_total <= 0:
+        raise MontagemErro("não consegui ler a duração da locução")
+    tempos["locucao"] = round(time.time() - t0, 1)
+
+    # 2. Palavras com tempo — servem pra legenda E pra ancorar as marcações.
+    t0 = time.time()
+    palavras = _palavras_da_locucao(wav)
+    tempos["transcricao"] = round(time.time() - t0, 1)
+    if not palavras:
+        raise MontagemErro("não consegui reconhecer fala na locução")
+
+    # 3. Marcações do roteiro viram trechos com início e fim.
+    plano = _plano_do_roteiro(body.get("roteiro") or "", palavras)
+    usados = {}
+    trechos = []
+    for i, p in enumerate(plano):
+        ini = p["quando"]
+        fim = plano[i + 1]["quando"] if i + 1 < len(plano) else dur_total
+        if fim - ini < 0.4:
+            continue
+        escolhidos = []
+        if p["tipo"] == "clipe":
+            c = clipes.get(p["alvo"])
+            if c:
+                escolhidos = [c]
+        else:
+            disp = list(pastas.get(p["alvo"]) or [])
+            if disp:
+                # Sorteio sem repetir enquanto houver clipe novo na pasta —
+                # repetir b-roll no mesmo vídeo é o que mais denuncia
+                # montagem automática.
+                vistos = usados.setdefault(p["alvo"], set())
+                novos = [c for c in disp if c not in vistos] or disp
+                random.shuffle(novos)
+                escolhidos = novos[: p["n"]]
+                vistos.update(escolhidos)
+        if not escolhidos:
+            continue
+        fatia = (fim - ini) / len(escolhidos)
+        for k, c in enumerate(escolhidos):
+            trechos.append({"caminho": c, "ini": ini + k * fatia, "dur": fatia})
+
+    if not trechos:
+        raise MontagemErro("nenhuma marcação de b-roll válida no roteiro")
+
+    # A primeira marcação quase nunca está no segundo zero — ela vem
+    # depois da primeira frase. Como os trechos são só emendados, sem
+    # cobrir esse começo o vídeo inteiro sairia adiantado e mais curto que
+    # a locução. O primeiro clipe cobre a abertura.
+    if trechos[0]["ini"] > 0.4:
+        trechos.insert(0, {"caminho": trechos[0]["caminho"], "ini": 0.0,
+                           "dur": trechos[0]["ini"]})
+    else:
+        trechos[0]["dur"] += trechos[0]["ini"]
+        trechos[0]["ini"] = 0.0
+
+    # 4. O melhor pedaço de cada clipe — vira o "origem" do trecho, que o
+    # editor deixa arrastar depois.
+    t0 = time.time()
+    for i, tr in enumerate(trechos):
+        tr["origem"] = round(_melhor_trecho(baixar(tr["caminho"]), tr["dur"], tmp, i), 2)
+        tr["id"] = "t%d" % i
+        tr["zoom"] = "nenhum"
+        tr["transicao"] = "corte"
+        tr["ini"] = round(tr.pop("ini"), 3)
+        tr.pop("dur", None)
+    tempos["analise"] = round(time.time() - t0, 1)
+
+    estilo = str(body.get("estilo") or "palavra")
+    return {
+        "versao": 1,
+        "criado_em": int(time.time()),
+        "largura": int(body.get("largura") or 1080),
+        "altura": int(body.get("altura") or 1920),
+        "duracao": round(dur_total, 3),
+        "locucao_path": loc_path,
+        "fonte_path": body.get("fonte_path") or None,
+        "roteiro": body.get("roteiro") or "",
+        "legenda": {"estilo": estilo},
+        "palavras": [{"t": p["t"], "ini": round(p["ini"], 3), "fim": round(p["fim"], 3)}
+                     for p in palavras],
+        "trechos": trechos,
+        "cortes": [],
+    }
+
+
 def _montar(body):
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return ({"error": "storage não configurado no servidor"}, 500)
     bucket = body.get("bucket") or "criativos"
-    loc_path = body.get("locucao_path")
     outp = body.get("output_path")
-    if not loc_path or not outp:
+    projeto = body.get("projeto")
+    projeto_path = body.get("projeto_path")
+    if not outp or (not projeto and not body.get("locucao_path")):
         return ({"error": "locucao_path/output_path ausentes"}, 400)
-
-    roteiro = body.get("roteiro") or ""
-    estilo = str(body.get("estilo") or "palavra")
-    w = int(body.get("largura") or 1080)
-    h = int(body.get("altura") or 1920)
-    fonte_path = body.get("fonte_path") or None
-    clipes = body.get("clipes") or {}     # nome -> caminho
-    pastas = body.get("pastas") or {}     # pasta -> [caminhos]
 
     if not MONTAGEM_TRAVA.acquire(timeout=60):
         return ({"error": "já tem uma montagem rodando — tente em instantes"}, 503)
@@ -1848,82 +2021,60 @@ def _montar(body):
     tmp = tempfile.mkdtemp(prefix="montar_")
     tempos = {}
     try:
-        # 1. Locução — é ela que manda na duração de tudo.
-        t0 = time.time()
-        loc = os.path.join(tmp, "loc" + (os.path.splitext(loc_path)[1].lower() or ".mp3"))
-        _storage_baixar(bucket, loc_path, loc)
-        wav = os.path.join(tmp, "loc.wav")
-        subprocess.run(["ffmpeg", "-v", "error", "-i", loc, "-vn", "-ac", "1",
-                        "-ar", "16000", wav, "-y"], capture_output=True, timeout=900)
-        dur_total = _duracao(loc)
-        if dur_total <= 0:
-            return ({"error": "não consegui ler a duração da locução"}, 400)
-        tempos["locucao"] = round(time.time() - t0, 1)
+        baixados = {}
 
-        # 2. Palavras com tempo — servem pra legenda E pra ancorar as marcações.
-        t0 = time.time()
-        palavras = _palavras_da_locucao(wav)
-        tempos["transcricao"] = round(time.time() - t0, 1)
-        if not palavras:
-            return ({"error": "não consegui reconhecer fala na locução"}, 400)
+        def baixar(caminho):
+            # Um clipe usado em vários trechos (ou a locução) desce uma vez só.
+            if caminho not in baixados:
+                ext = os.path.splitext(caminho)[1].lower() or ".bin"
+                dest = os.path.join(tmp, "src%d%s" % (len(baixados), ext))
+                _storage_baixar(bucket, caminho, dest)
+                baixados[caminho] = dest
+            return baixados[caminho]
 
-        # 3. Marcações do roteiro viram trechos com início e fim.
-        plano = _plano_do_roteiro(roteiro, palavras)
-        usados = {}
-        trechos = []
-        for i, p in enumerate(plano):
-            ini = p["quando"]
-            fim = plano[i + 1]["quando"] if i + 1 < len(plano) else dur_total
-            if fim - ini < 0.4:
-                continue
-            escolhidos = []
-            if p["tipo"] == "clipe":
-                c = clipes.get(p["alvo"])
-                if c:
-                    escolhidos = [c]
-            else:
-                disp = list(pastas.get(p["alvo"]) or [])
-                if disp:
-                    # Sorteio sem repetir enquanto houver clipe novo na pasta —
-                    # repetir b-roll no mesmo vídeo é o que mais denuncia
-                    # montagem automática.
-                    vistos = usados.setdefault(p["alvo"], set())
-                    novos = [c for c in disp if c not in vistos] or disp
-                    random.shuffle(novos)
-                    escolhidos = novos[: p["n"]]
-                    vistos.update(escolhidos)
-            if not escolhidos:
-                continue
-            fatia = (fim - ini) / len(escolhidos)
-            for k, c in enumerate(escolhidos):
-                trechos.append({"caminho": c, "ini": ini + k * fatia, "dur": fatia})
+        if not projeto:
+            projeto = _projeto_automatico(body, baixar, tmp, tempos)
+        projeto["saida_path"] = outp
+        if projeto_path:
+            arq = os.path.join(tmp, "projeto.json")
+            with open(arq, "w", encoding="utf-8") as fh:
+                json.dump(projeto, fh, ensure_ascii=False)
+            _storage_subir(bucket, projeto_path, arq, "application/json")
 
+        w = int(projeto.get("largura") or 1080)
+        h = int(projeto.get("altura") or 1920)
+        loc = baixar(projeto["locucao_path"])
+        dur_total = float(projeto.get("duracao") or 0) or _duracao(loc)
+        palavras = projeto.get("palavras") or []
+        leg = projeto.get("legenda") or {}
+        estilo = str(leg.get("estilo") or "palavra")
+        fonte_path = projeto.get("fonte_path") or None
+
+        # A duração de cada trecho sai do início do próximo: o editor mexe
+        # nos inícios, e assim nunca sobra buraco nem sobreposição.
+        trechos = sorted([t for t in (projeto.get("trechos") or []) if t.get("caminho")],
+                         key=lambda t: float(t.get("ini") or 0))
         if not trechos:
-            return ({"error": "nenhuma marcação de b-roll válida no roteiro"}, 400)
+            raise MontagemErro("o projeto não tem nenhum b-roll")
+        trechos[0]["ini"] = 0.0
 
-        # A primeira marcação quase nunca está no segundo zero — ela vem
-        # depois da primeira frase. Como os trechos são só emendados, sem
-        # cobrir esse começo o vídeo inteiro sairia adiantado e mais curto que
-        # a locução. O primeiro clipe cobre a abertura.
-        if trechos[0]["ini"] > 0.4:
-            trechos.insert(0, {"caminho": trechos[0]["caminho"], "ini": 0.0,
-                               "dur": trechos[0]["ini"]})
-
-        # 4. Cada trecho: baixa, acha o melhor pedaço, corta no formato, sem som.
         t0 = time.time()
         partes = []
-        cache = {}
         for i, tr in enumerate(trechos):
-            orig = cache.get(tr["caminho"])
-            if not orig:
-                ext = os.path.splitext(tr["caminho"])[1] or ".mp4"
-                orig = os.path.join(tmp, "src%d%s" % (i, ext))
-                _storage_baixar(bucket, tr["caminho"], orig)
-                cache[tr["caminho"]] = orig
-            inicio = _melhor_trecho(orig, tr["dur"], tmp, i)
+            ini = float(tr.get("ini") or 0)
+            fim = float(trechos[i + 1]["ini"]) if i + 1 < len(trechos) else dur_total
+            dur = fim - ini
+            if dur < 0.05:
+                continue
+            orig = baixar(tr["caminho"])
             dest = os.path.join(tmp, "parte%03d.mp4" % i)
-            if _corta_broll(orig, inicio, tr["dur"], w, h, dest):
+            if _corta_broll(orig, float(tr.get("origem") or 0), dur, w, h, dest,
+                            str(tr.get("zoom") or "nenhum"), str(tr.get("transicao") or "corte")):
                 partes.append(dest)
+            else:
+                print("[montador] falhou o trecho %d (%s)" % (i, tr["caminho"]), flush=True)
+            print("[montador] trecho %d %.2f-%.2f %s @%.2f"
+                  % (i, ini, fim, tr["caminho"], float(tr.get("origem") or 0)), flush=True)
         if not partes:
             return ({"error": "não consegui preparar nenhum b-roll"}, 500)
         tempos["brolls"] = round(time.time() - t0, 1)
@@ -1954,14 +2105,23 @@ def _montar(body):
                 pass
         ass = os.path.join(tmp, "leg.ass")
         with open(ass, "w", encoding="utf-8") as fh:
-            fh.write(_legenda_ass(palavras, w, h, estilo, fonte_nome))
+            fh.write(_legenda_ass(palavras, w, h, estilo, fonte_nome, leg))
 
         # 7. Vídeo + legenda + locução. O -shortest corta no fim do áudio.
         t0 = time.time()
         saida = os.path.join(tmp, "final.mp4")
         vf = "ass=%s:fontsdir=%s" % (ass, fdir)
+        af = "anull"
+        # Trechos cortados no editor saem do vídeo inteiro — imagem, legenda e
+        # voz juntas, depois de tudo montado, pra nada dessincronizar.
+        cortes = [(float(c["ini"]), float(c["fim"])) for c in (projeto.get("cortes") or [])
+                  if float(c.get("fim") or 0) - float(c.get("ini") or 0) > 0.05]
+        if cortes:
+            expr = "+".join(r"between(t\,%.3f\,%.3f)" % c for c in cortes)
+            vf += ",select=not(%s),setpts=N/FRAME_RATE/TB" % expr
+            af = "aselect=not(%s),asetpts=N/SR/TB" % expr
         cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-i", base, "-i", loc,
-               "-vf", vf, "-map", "0:v", "-map", "1:a", "-shortest",
+               "-vf", vf, "-af", af, "-map", "0:v", "-map", "1:a", "-shortest",
                "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                "-pix_fmt", "yuv420p", "-threads", "1", "-r", "30",
                "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", saida, "-y"]
@@ -1977,6 +2137,8 @@ def _montar(body):
               % (w, h, dur_total, len(partes), tempos), flush=True)
         return ({"ok": True, "tempos": tempos, "trechos": len(partes),
                  "duracao": round(dur_total, 1)}, 200)
+    except MontagemErro as e:
+        return ({"error": str(e)}, e.status)
     except subprocess.TimeoutExpired:
         return ({"error": "a montagem excedeu o tempo limite"}, 504)
     except Exception as e:

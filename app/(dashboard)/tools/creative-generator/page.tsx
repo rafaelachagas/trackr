@@ -79,7 +79,10 @@ export default function CreativeGeneratorPage() {
   // --- montagem ---
   const [montando, setMontando] = useState(false)
   const [faseMontagem, setFaseMontagem] = useState('')
-  const [videoPronto, setVideoPronto] = useState<{ url: string; tempos?: Record<string, number> } | null>(null)
+  const [videoPronto, setVideoPronto] = useState<{
+    url: string; downloadUrl?: string; projetoId?: string; tempos?: Record<string, number>
+  } | null>(null)
+  const [projetos, setProjetos] = useState<{ id: string; atualizado: string }[]>([])
   const fonteRef = useRef<HTMLInputElement>(null)
 
   // --- config ---
@@ -187,9 +190,16 @@ export default function CreativeGeneratorPage() {
     } catch (e) { setErro(`${e}`) }
   }, [])
 
+  const carregarProjetos = useCallback(async () => {
+    try {
+      const j = await fetch('/api/creative-generator/project', { cache: 'no-store' }).then(json)
+      setProjetos(j.projetos || [])
+    } catch { /* lista de recentes é conveniência; sem ela a página segue */ }
+  }, [])
+
   useEffect(() => {
-    carregarPastas(); carregarFontes(); carregarConfig()
-  }, [carregarPastas, carregarFontes, carregarConfig])
+    carregarPastas(); carregarFontes(); carregarConfig(); carregarProjetos()
+  }, [carregarPastas, carregarFontes, carregarConfig, carregarProjetos])
 
   const abrirPasta = useCallback(async (nome: string) => {
     setPastaAberta(nome)
@@ -247,7 +257,8 @@ export default function CreativeGeneratorPage() {
           .then(json).catch(() => ({ status: 'rodando' }))
         if (st.status === 'erro') throw new Error(st.erro || 'a montagem falhou')
         if (st.status === 'pronto') {
-          setVideoPronto({ url: st.url, tempos: st.tempos })
+          setVideoPronto({ url: st.url, downloadUrl: st.downloadUrl, projetoId: j.projetoId, tempos: st.tempos })
+          carregarProjetos()
           setFaseMontagem('')
           return
         }
@@ -620,11 +631,35 @@ export default function CreativeGeneratorPage() {
               </p>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video src={videoPronto.url} controls className="w-full max-w-[320px] rounded-lg border border-border" />
-              <a href={videoPronto.url} download
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold
-                           bg-emerald-600 hover:bg-emerald-500 text-white">
-                Baixar
-              </a>
+              <div className="flex flex-wrap gap-2">
+                <a href={videoPronto.downloadUrl || videoPronto.url}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold
+                             bg-emerald-600 hover:bg-emerald-500 text-white">
+                  <Download className="w-3.5 h-3.5" /> Baixar
+                </a>
+                {videoPronto.projetoId && (
+                  <a href={`/tools/creative-generator/editor?id=${videoPronto.projetoId}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold
+                               bg-fuchsia-600 hover:bg-fuchsia-500 text-white">
+                    <Clapperboard className="w-3.5 h-3.5" /> Abrir no editor
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {projetos.length > 0 && (
+            <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+              <p className="text-sm font-semibold text-foreground">Criativos recentes</p>
+              <div className="flex flex-wrap gap-2">
+                {projetos.slice(0, 8).map((pr) => (
+                  <a key={pr.id} href={`/tools/creative-generator/editor?id=${pr.id}`}
+                    className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-muted inline-flex items-center gap-1.5">
+                    <Clapperboard className="w-3.5 h-3.5 text-fuchsia-400" />
+                    {new Date(pr.atualizado).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </a>
+                ))}
+              </div>
             </div>
           )}
         </div>
