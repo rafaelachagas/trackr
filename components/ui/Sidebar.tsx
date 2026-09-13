@@ -72,6 +72,7 @@ const ferramentas = [
   { href: '/tools/simulator', label: 'Simulador de Funil', icon: TrendingUp, beta: true },
   { href: '/tools/ad-naming', label: 'Gerador de Nomenclatura', icon: Tags, beta: true },
   { href: '/tools/audio-camouflage', label: 'Camuflagem de Criativos', icon: AudioLines, beta: true },
+  { href: '/tools/creative-generator', label: 'Gerador de Criativos', icon: Video, beta: true },
   { href: '/tools/tasks', label: 'Afazeres', icon: ListTodo, beta: true },
 ]
 
