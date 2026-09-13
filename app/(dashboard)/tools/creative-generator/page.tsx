@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Clapperboard, FolderPlus, Folder, Trash2, UploadCloud, Loader2, Type, Mic2,
-  FileText, Sparkles, Check, AlertTriangle, ChevronLeft, Wand2,
+  FileText, Sparkles, Check, AlertTriangle, ChevronLeft, Wand2, Film, Plus, Clock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -15,6 +15,26 @@ type Aba = 'roteiro' | 'biblioteca' | 'fontes' | 'config'
 type Pasta = { nome: string; clipes: number }
 type Arquivo = { nome: string; caminho: string; tamanho: number }
 type Voz = { id: string; nome: string; categoria?: string }
+
+// Formatos de entrega. A proporção manda no enquadramento dos b-rolls (corte
+// central) e no tamanho da legenda, por isso é escolha de projeto, não de
+// exportação — muda o vídeo inteiro, não só o arquivo final.
+const FORMATOS = [
+  { id: '9:16', rotulo: '9:16', onde: 'Reels · TikTok · Shorts', w: 1080, h: 1920 },
+  { id: '4:5', rotulo: '4:5', onde: 'Feed do Instagram', w: 1080, h: 1350 },
+  { id: '1:1', rotulo: '1:1', onde: 'Feed quadrado', w: 1080, h: 1080 },
+  { id: '16:9', rotulo: '16:9', onde: 'YouTube · horizontal', w: 1920, h: 1080 },
+] as const
+type FormatoId = (typeof FORMATOS)[number]['id']
+
+// Estilos de legenda. A amostra é desenhada em CSS aqui mesmo — é o que mais
+// se aproxima do que o libass vai render, e evita subir imagem de exemplo.
+const ESTILOS = [
+  { id: 'palavra', nome: 'Palavra a palavra', desc: 'Uma palavra por vez, grande e centralizada.' },
+  { id: 'destaque', nome: 'Frase com destaque', desc: 'A frase fica, a palavra falada acende.' },
+  { id: 'bloco', nome: 'Bloco fixo', desc: 'Duas linhas na base, troca a cada frase.' },
+] as const
+type EstiloId = (typeof ESTILOS)[number]['id']
 
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`
 
@@ -52,6 +72,42 @@ export default function CreativeGeneratorPage() {
   const [linkVideo, setLinkVideo] = useState('')
   const [produto, setProduto] = useState('')
   const [ocupado, setOcupado] = useState<string | null>(null)
+  const roteiroRef = useRef<HTMLTextAreaElement>(null)
+  const [vozEscolhida, setVozEscolhida] = useState('')
+  const [formato, setFormato] = useState<FormatoId>('9:16')
+  const [estilo, setEstilo] = useState<EstiloId>('palavra')
+
+  // Locução em PT-BR fica perto de 160 palavras por minuto. Serve pra avisar
+  // que o roteiro passou do tamanho de um criativo antes de gastar TTS.
+  const palavras = roteiro.trim() ? roteiro.trim().split(/\s+/).length : 0
+  const segundos = Math.round((palavras / 160) * 60)
+  const clipesTotais = pastas.reduce((n, p) => n + p.clipes, 0)
+
+  const prontos = {
+    voz: configurada && !!vozEscolhida,
+    broll: clipesTotais > 0,
+    fonte: fontes.length > 0,
+    roteiro: palavras >= 10,
+  }
+  const faltando = [
+    !prontos.voz && 'escolher a voz',
+    !prontos.broll && 'enviar b-rolls',
+    !prontos.fonte && 'enviar uma fonte',
+    !prontos.roteiro && 'escrever o roteiro',
+  ].filter(Boolean) as string[]
+
+  function inserirEtiqueta(nome: string) {
+    const el = roteiroRef.current
+    const marca = `[broll: ${nome} x1]`
+    if (!el) { setRoteiro((r) => r + marca); return }
+    const ini = el.selectionStart ?? roteiro.length
+    const fim = el.selectionEnd ?? ini
+    setRoteiro(roteiro.slice(0, ini) + marca + roteiro.slice(fim))
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(ini + marca.length, ini + marca.length)
+    })
+  }
 
   const carregarPastas = useCallback(async () => {
     try {
@@ -73,6 +129,7 @@ export default function CreativeGeneratorPage() {
       const j = await fetch('/api/creative-generator/settings').then(json)
       setConfigurada(!!j.configurada)
       setVozes(j.vozes || [])
+      if (j.vozId) { setVozId(j.vozId); setVozEscolhida(j.vozId) }
       if (j.erro) setErro(j.erro)
     } catch (e) { setErro(`${e}`) }
   }, [])
@@ -132,6 +189,7 @@ export default function CreativeGeneratorPage() {
       }).then(json)
       if (j.error) throw new Error(j.error)
       setChave('')
+      setVozEscolhida(vozId)
       await carregarConfig()
     } catch (e) { setErro(`${e}`) } finally { setSalvando(false) }
   }
@@ -171,6 +229,41 @@ export default function CreativeGeneratorPage() {
           </p>
         </div>
       </div>
+
+      {/* Preparo: antes de escrever, três coisas precisam existir. Enquanto
+          faltar alguma, ela fica em evidência; completo, vira uma linha fina. */}
+      {faltando.filter((f) => f !== 'escrever o roteiro').length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {([
+            { ok: prontos.voz, aba: 'config' as Aba, icone: Mic2, titulo: 'Voz da expert',
+              feito: 'voz escolhida', falta: configurada ? 'escolha a voz' : 'conectar ElevenLabs' },
+            { ok: prontos.broll, aba: 'biblioteca' as Aba, icone: Film, titulo: 'B-rolls',
+              feito: `${clipesTotais} clipe(s) em ${pastas.length} pasta(s)`, falta: 'criar pasta e enviar clipes' },
+            { ok: prontos.fonte, aba: 'fontes' as Aba, icone: Type, titulo: 'Fonte da legenda',
+              feito: `${fontes.length} fonte(s)`, falta: 'enviar um .ttf ou .otf' },
+          ]).map((c) => (
+            <button key={c.titulo} onClick={() => setAba(c.aba)}
+              className={`text-left rounded-xl border px-4 py-3 transition ${
+                c.ok ? 'border-emerald-500/30 bg-emerald-500/[0.07]'
+                     : 'border-border bg-white/[0.02] hover:border-fuchsia-500/40'
+              }`}>
+              <span className="flex items-center gap-2">
+                {c.ok
+                  ? <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  : <c.icone className="w-4 h-4 text-muted-foreground shrink-0" />}
+                <span className="text-sm font-semibold text-foreground">{c.titulo}</span>
+              </span>
+              <span className={`block text-[11px] mt-0.5 ${c.ok ? 'text-emerald-300/80' : 'text-muted-foreground'}`}>
+                {c.ok ? c.feito : c.falta}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-emerald-300/80 inline-flex items-center gap-1.5">
+          <Check className="w-3.5 h-3.5" /> Tudo pronto: voz, {clipesTotais} clipe(s) e {fontes.length} fonte(s).
+        </p>
+      )}
 
       {erro && (
         <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 flex items-start gap-2">
@@ -235,7 +328,19 @@ export default function CreativeGeneratorPage() {
             </div>
           )}
 
-          <textarea value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={14}
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-foreground">Roteiro</p>
+            <p className="text-[11px] text-muted-foreground inline-flex items-center gap-3">
+              <span>{palavras} palavra(s)</span>
+              {palavras > 0 && (
+                <span className={`inline-flex items-center gap-1 ${segundos > 90 ? 'text-amber-300' : ''}`}>
+                  <Clock className="w-3 h-3" /> ~{segundos}s de locução
+                </span>
+              )}
+            </p>
+          </div>
+
+          <textarea ref={roteiroRef} value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={10}
             placeholder={'Uma fala por linha, do jeito que vai ser locutado.\n\nOnde quiser imagem de apoio, marque assim:\nHoje eu vou te mostrar [broll: dinheiro x3] uma forma diferente.'}
             className="w-full rounded-xl border border-border bg-black/20 px-4 py-3 text-sm text-foreground
                        placeholder:text-muted-foreground/50 font-mono leading-relaxed resize-y
@@ -243,17 +348,112 @@ export default function CreativeGeneratorPage() {
 
           <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3">
             <p className="text-[11px] text-muted-foreground">
-              <b className="text-foreground">Etiquetas disponíveis</b> — use exatamente estes nomes na marcação:
+              <b className="text-foreground">Etiquetas</b> — clique pra inserir a marcação onde o cursor está.
             </p>
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {pastas.length === 0
-                ? <span className="text-[11px] text-muted-foreground/70">nenhuma pasta ainda — crie na aba B-rolls</span>
-                : pastas.map((p) => (
-                  <code key={p.nome} className="text-[11px] rounded-md bg-white/5 border border-border px-2 py-0.5 text-foreground">
-                    {p.nome} <span className="text-muted-foreground">({p.clipes})</span>
-                  </code>
-                ))}
+              {pastas.length === 0 ? (
+                <button onClick={() => setAba('biblioteca')}
+                  className="text-[11px] rounded-md border border-dashed border-border px-2 py-1
+                             text-muted-foreground hover:text-foreground hover:border-fuchsia-500/40
+                             inline-flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> criar a primeira pasta de b-roll
+                </button>
+              ) : pastas.map((p) => (
+                <button key={p.nome} onClick={() => inserirEtiqueta(p.nome)} disabled={p.clipes === 0}
+                  title={p.clipes === 0 ? 'pasta vazia — envie clipes antes' : `inserir [broll: ${p.nome} x1]`}
+                  className="text-[11px] rounded-md bg-white/5 border border-border px-2 py-1 text-foreground
+                             hover:border-fuchsia-500/50 hover:bg-fuchsia-500/10 disabled:opacity-40
+                             disabled:hover:border-border disabled:hover:bg-white/5 transition">
+                  {p.nome} <span className="text-muted-foreground">({p.clipes})</span>
+                </button>
+              ))}
             </div>
+          </div>
+
+          {/* Formato e legenda: decisões de projeto, não de exportação — a
+              proporção muda o enquadramento dos b-rolls e o corpo da legenda. */}
+          <div className="rounded-xl border border-border bg-white/[0.02] p-4 space-y-4">
+            <div>
+              <p className="text-xs font-semibold text-foreground mb-2">Formato</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {FORMATOS.map((f) => {
+                  const ativo = formato === f.id
+                  const alturaAmostra = 40
+                  const larguraAmostra = Math.round(alturaAmostra * (f.w / f.h))
+                  return (
+                    <button key={f.id} onClick={() => setFormato(f.id)}
+                      className={`rounded-lg border px-3 py-2.5 flex items-center gap-2.5 transition ${
+                        ativo ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-border hover:border-fuchsia-500/40'
+                      }`}>
+                      <span className={`shrink-0 rounded-sm border ${ativo ? 'border-fuchsia-400 bg-fuchsia-400/20' : 'border-muted-foreground/50'}`}
+                        style={{ width: larguraAmostra, height: alturaAmostra }} />
+                      <span className="min-w-0 text-left">
+                        <span className="block text-xs font-bold text-foreground">{f.rotulo}</span>
+                        <span className="block text-[10px] text-muted-foreground leading-tight">{f.onde}</span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                Saída em {FORMATOS.find((f) => f.id === formato)!.w}×{FORMATOS.find((f) => f.id === formato)!.h}, 30 fps.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-foreground mb-2">Estilo da legenda</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {ESTILOS.map((e) => {
+                  const ativo = estilo === e.id
+                  return (
+                    <button key={e.id} onClick={() => setEstilo(e.id)}
+                      className={`rounded-lg border overflow-hidden text-left transition ${
+                        ativo ? 'border-fuchsia-500' : 'border-border hover:border-fuchsia-500/40'
+                      }`}>
+                      <span className="block h-20 bg-black/40 grid place-items-center px-2">
+                        {e.id === 'palavra' && (
+                          <span className="text-lg font-extrabold text-white"
+                            style={{ WebkitTextStroke: '2px black' }}>DINHEIRO</span>
+                        )}
+                        {e.id === 'destaque' && (
+                          <span className="text-[11px] font-extrabold text-white text-center leading-tight"
+                            style={{ WebkitTextStroke: '1px black' }}>
+                            hoje eu vou te <span className="text-lime-300">mostrar</span> uma forma
+                          </span>
+                        )}
+                        {e.id === 'bloco' && (
+                          <span className="text-[10px] font-bold text-white text-center leading-tight bg-black/70 px-2 py-1 rounded">
+                            hoje eu vou te mostrar<br />uma forma diferente
+                          </span>
+                        )}
+                      </span>
+                      <span className={`block px-3 py-2 ${ativo ? 'bg-fuchsia-500/10' : ''}`}>
+                        <span className="block text-xs font-semibold text-foreground">{e.nome}</span>
+                        <span className="block text-[10px] text-muted-foreground leading-tight">{e.desc}</span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Destino da página: o botão existe desde já e diz o que falta —
+              some melhor que um botão escondido que aparece do nada no fim. */}
+          <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Gerar vídeo</p>
+              <p className="text-[11px] text-muted-foreground">
+                {faltando.length === 0
+                  ? 'Tudo pronto — a montagem roda no servidor de vídeo.'
+                  : `Falta ${faltando.join(', ')}.`}
+              </p>
+            </div>
+            <button disabled title="A montagem do vídeo ainda está sendo construída"
+              className="shrink-0 rounded-lg px-4 py-2 text-xs font-bold bg-fuchsia-600 text-white
+                         disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+              <Film className="w-3.5 h-3.5" /> Gerar
+            </button>
           </div>
         </div>
       )}

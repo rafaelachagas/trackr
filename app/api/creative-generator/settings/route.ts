@@ -14,16 +14,22 @@ async function lerChave(): Promise<string> {
   return data?.valor?.toString().trim() || process.env.ELEVENLABS_API_KEY || ''
 }
 
+async function lerVoz(): Promise<string> {
+  const { data } = await supabaseAdmin.from('configuracoes').select('valor')
+    .eq('chave', 'elevenlabs_voz_id').maybeSingle()
+  return data?.valor?.toString() || ''
+}
+
 export async function GET() {
-  const key = await lerChave()
-  if (!key) return NextResponse.json({ configurada: false, vozes: [] })
+  const [key, vozId] = await Promise.all([lerChave(), lerVoz()])
+  if (!key) return NextResponse.json({ configurada: false, vozes: [], vozId })
   try {
     const r = await fetch(`${EL}/voices`, {
       headers: { 'xi-api-key': key },
       signal: AbortSignal.timeout(15_000),
     })
     if (!r.ok) {
-      return NextResponse.json({ configurada: true, erro: `ElevenLabs respondeu ${r.status}`, vozes: [] })
+      return NextResponse.json({ configurada: true, erro: `ElevenLabs respondeu ${r.status}`, vozes: [], vozId })
     }
     const j = await r.json()
     const vozes = (j?.voices || []).map((v: any) => ({
@@ -32,9 +38,9 @@ export async function GET() {
       categoria: v.category,
       previa: v.preview_url,
     }))
-    return NextResponse.json({ configurada: true, vozes })
+    return NextResponse.json({ configurada: true, vozes, vozId })
   } catch {
-    return NextResponse.json({ configurada: true, erro: 'não consegui falar com o ElevenLabs', vozes: [] })
+    return NextResponse.json({ configurada: true, erro: 'não consegui falar com o ElevenLabs', vozes: [], vozId })
   }
 }
 
