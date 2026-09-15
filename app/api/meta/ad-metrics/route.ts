@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extrairCriativo, calcularRoas } from '@/lib/utils'
-import { faseToken, flagsToken } from '@/lib/meta-chave'
+import { faseToken, chaveDoAnuncio, criarResolvedor } from '@/lib/meta-chave'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 
@@ -41,14 +41,10 @@ export interface AdMetric {
 // ————————————————————————————————————————————————————————————————
 // CHAVE de agrupamento — IDÊNTICA ao /api/performance-v2 (overview). Junta os
 // dois lados (gasto Meta × venda real) por código do anúncio + fase + marcadores
-// (bmsub/bmus/v2), estável mesmo com typo no sck. Assim a lista e os números da
-// Análise batem com a tabela "Performance por Criativo V2".
-// faseToken/flagsToken vêm de @/lib/meta-chave (fonte única — inclui o marcador
-// de retest). Não duplicar aqui.
+// (bmsub/bmus/v2) + campanha, estável mesmo com typo no sck. Assim a lista e os
+// números da Análise batem com a tabela "Performance por Criativo V2".
+// A chave vem de @/lib/meta-chave (fonte única). Não duplicar aqui.
 // ————————————————————————————————————————————————————————————————
-function chaveDe(codigo: string, faseTok: string | null, flags: string) {
-  return `${codigo}|${faseTok ?? '?'}|${flags}`
-}
 
 type AdAtivo = { name: string; campaign: string | null; creativeId: string | null }
 
@@ -85,7 +81,7 @@ async function buscarAtivos(accessToken: string, adAccountIds: string[]): Promis
   const creativeIdPorAdName = new Map<string, string>()
   for (const ads of listas) for (const ad of ads) {
     const cod = extrairCriativo(ad.name)
-    if (cod) keys.add(chaveDe(cod, faseToken(ad.campaign), flagsToken(ad.name)))
+    if (cod) keys.add(chaveDoAnuncio(cod, ad.campaign, ad.name))
     if (ad.creativeId && !creativeIdPorAdName.has(ad.name)) creativeIdPorAdName.set(ad.name, ad.creativeId)
   }
   return { keys, creativeIdPorAdName }
@@ -199,6 +195,7 @@ export async function GET(request: NextRequest) {
     const activeKeys = ativos?.keys ?? null
     const creativeIdPorAdName = ativos?.creativeIdPorAdName ?? new Map<string, string>()
     const filtradoAtivos = activeKeys != null
+    const chaves = criarResolvedor(gastos)
 
     type Entrada = {
       codigo: string
@@ -227,7 +224,7 @@ export async function GET(request: NextRequest) {
     for (const g of gastos) {
       if (!g.criativo) continue
       const faseTok = faseToken(g.campaign_name)
-      const key = chaveDe(g.criativo, faseTok, flagsToken(g.ad_name))
+      const key = chaves.doGasto(g.criativo, g.campaign_name, g.ad_name)
       const e = getEntrada(key, g.criativo, faseTok)
       const val = Number(g.valor_gasto) || 0
       e.gastos.push({ valor: val, data: g.data })
@@ -239,7 +236,7 @@ export async function GET(request: NextRequest) {
       if (!v.criativo) continue
       const parte0 = (v.sck || '').split('|')[0]
       const faseTok = faseToken(parte0)
-      const key = chaveDe(v.criativo, faseTok, flagsToken(v.sck))
+      const key = chaves.doVenda(v.criativo, v.sck)
       const e = getEntrada(key, v.criativo, faseTok)
       e.vendas.push({ liquido: Number(v.valor_liquido ?? v.valor) || 0, data: v.data })
       if (!e.sckName) e.sckName = (v.sck || '').split('|')[2] || null
@@ -251,7 +248,7 @@ export async function GET(request: NextRequest) {
       for (const row of rows) {
         const cod = extrairCriativo(row.ad_name)
         if (!cod) continue
-        const key = chaveDe(cod, faseToken(row.campaign_name), flagsToken(row.ad_name))
+        const key = chaves.doGasto(cod, row.campaign_name, row.ad_name)
         const e = mapa.get(key)
         if (!e) continue
         e.impressions += parseInt(row.impressions) || 0

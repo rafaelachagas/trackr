@@ -87,11 +87,25 @@ async function sincronizarMeta(request: NextRequest) {
     // Gasto CRU das contas BRL por dia — base de cálculo do imposto.
     const gastoBrlPorDia = new Map<string, number>()
 
-    // Agrega por (data, ad_name) sobre TODAS as contas selecionadas.
-    // O mapa vive FORA do loop de contas: se o mesmo ad_name roda em duas
-    // contas no mesmo dia (escala em CA01/CA02/...), os gastos são SOMADOS
-    // em vez de um upsert sobrescrever o outro (onConflict data,ad_name).
-    const mapaRegistros = new Map<string, ReturnType<typeof buildRegistro>>()
+    // Duas agregações dos mesmos insights, sobre TODAS as contas:
+    //  - POR ANÚNCIO (data + ad_id) — a certa. O mesmo ad_name roda em
+    //    campanhas diferentes ao mesmo tempo (ex: ad111 na campanha
+    //    "AD111 | AD112 | AD113" e numa nova "AD111 | AD112"); somar por nome
+    //    jogava o gasto das duas na campanha que aparecesse primeiro.
+    //  - POR NOME (data + ad_name) — o formato antigo, usado só enquanto o banco
+    //    ainda tiver a trava única (data, ad_name). Ver supabase_gastos_por_anuncio.sql.
+    // Os mapas vivem FORA do loop de contas (mesmo anúncio em CA01/CA02 soma).
+    const porAnuncio = new Map<string, ReturnType<typeof buildRegistro>>()
+    const porNome = new Map<string, ReturnType<typeof buildRegistro>>()
+    const somar = (mapa: typeof porAnuncio, chave: string, insight: MetaAdInsight, fator: number) => {
+      const existente = mapa.get(chave)
+      if (!existente) { mapa.set(chave, buildRegistro(insight, orgId, fator)); return }
+      existente.valor_gasto += (parseFloat(insight.spend) || 0) * fator
+      existente.impressions += parseInt(insight.impressions) || 0
+      existente.clicks += parseInt(insight.clicks) || 0
+      existente.lp_views += extrairLpViews(insight)
+      existente.checkouts += extrairCheckouts(insight)
+    }
 
     // Busca os insights de TODAS as contas em paralelo (antes era uma de cada
     // vez, com await encadeado — com várias contas isso dava os ~10s que
@@ -137,22 +151,14 @@ async function sincronizarMeta(request: NextRequest) {
         if (ehBRL) {
           gastoBrlPorDia.set(insight.date_start, (gastoBrlPorDia.get(insight.date_start) ?? 0) + spendRaw)
         }
-        const chave = `${insight.date_start}||${insight.ad_name}`
-        const existente = mapaRegistros.get(chave)
-        if (existente) {
-          existente.valor_gasto += spendRaw * fator
-          existente.impressions += parseInt(insight.impressions) || 0
-          existente.clicks += parseInt(insight.clicks) || 0
-          existente.lp_views += extrairLpViews(insight)
-          existente.checkouts += extrairCheckouts(insight)
-        } else {
-          mapaRegistros.set(chave, buildRegistro(insight, orgId, fator))
-        }
+        somar(porAnuncio, `${insight.date_start}||${insight.ad_id}`, insight, fator)
+        somar(porNome, `${insight.date_start}||${insight.ad_name}`, insight, fator)
       }
     }
 
     let totalRegistros = 0
-    const registros = Array.from(mapaRegistros.values())
+    let modoGravacao: 'por_anuncio' | 'por_nome' = 'por_anuncio'
+    const registros = Array.from(porAnuncio.values())
     if (registros.length > 0) {
       // Agora sim (Meta respondeu OK): apaga os gastos Meta do período e reinsere.
       // Se a busca acima tivesse falhado, já teríamos retornado ANTES daqui, sem
@@ -164,22 +170,14 @@ async function sincronizarMeta(request: NextRequest) {
         .lte('data', dataFim)
         .not('ad_id', 'is', null)
 
-      let { error: erroUpsert } = await supabaseAdmin
-        .from('gastos')
-        .upsert(registros, { onConflict: 'data,ad_name' })
-
-      // Blindagem: se alguma coluna opcional ainda não existe (SQL não rodado),
-      // repõe sem ela pra não deixar o período apagado. Assim que a coluna
-      // existir, passa a preencher sozinha no próximo sync.
-      if (erroUpsert && /checkouts/i.test(erroUpsert.message)) {
-        const semCk = registros.map(({ checkouts, ...r }) => r)
-        const retry = await supabaseAdmin.from('gastos').upsert(semCk, { onConflict: 'data,ad_name' })
-        erroUpsert = retry.error
-      }
-      if (erroUpsert && /lp_views/i.test(erroUpsert.message)) {
-        const semLp = registros.map(({ lp_views, checkouts, ...r }) => r)
-        const retry = await supabaseAdmin.from('gastos').upsert(semLp, { onConflict: 'data,ad_name' })
-        erroUpsert = retry.error
+      // Por anúncio precisa da trava única (data, ad_id). Sem ela (SQL ainda não
+      // rodado) o upsert falha INTEIRO — nada é gravado — e cai no formato
+      // antigo, exatamente como era antes. O período nunca fica apagado.
+      let erroUpsert = await gravarGastos(registros, 'data,ad_id')
+      if (erroUpsert) {
+        console.warn('[Meta] gravação por anúncio indisponível, usando por nome:', erroUpsert.message)
+        modoGravacao = 'por_nome'
+        erroUpsert = await gravarGastos(Array.from(porNome.values()), 'data,ad_name')
       }
 
       if (erroUpsert) {
@@ -187,7 +185,7 @@ async function sincronizarMeta(request: NextRequest) {
         await atualizarSyncLog(syncLog?.id, 'erro', `Erro ao salvar: ${erroUpsert.message}`)
         return NextResponse.json({ error: `Erro ao salvar gastos: ${erroUpsert.message}`, detalhes: erroUpsert }, { status: 500 })
       }
-      totalRegistros = registros.length
+      totalRegistros = modoGravacao === 'por_anuncio' ? registros.length : porNome.size
     }
 
     // Salva o imposto diário: alíquota × gasto CRU das contas BRL de cada dia.
@@ -232,12 +230,28 @@ async function sincronizarMeta(request: NextRequest) {
     return NextResponse.json({
       success: true,
       total_registros: totalRegistros,
+      modo_gravacao: modoGravacao,
       periodo: { inicio: dataInicio, fim: dataFim },
     })
   } catch (error) {
     console.error('[Meta] Erro na sincronização:', error)
     return NextResponse.json({ error: 'Erro interno na sincronização' }, { status: 500 })
   }
+}
+
+// Upsert com a blindagem de colunas opcionais: se checkouts/lp_views ainda não
+// existem (SQL não rodado), repõe sem elas pra não deixar o período apagado.
+async function gravarGastos(registros: ReturnType<typeof buildRegistro>[], onConflict: string) {
+  let { error } = await supabaseAdmin.from('gastos').upsert(registros, { onConflict })
+  if (error && /checkouts/i.test(error.message)) {
+    const semCk = registros.map(({ checkouts, ...r }) => r)
+    ;({ error } = await supabaseAdmin.from('gastos').upsert(semCk, { onConflict }))
+  }
+  if (error && /lp_views/i.test(error.message)) {
+    const semLp = registros.map(({ lp_views, checkouts, ...r }) => r)
+    ;({ error } = await supabaseAdmin.from('gastos').upsert(semLp, { onConflict }))
+  }
+  return error
 }
 
 // Extrai as Landing Page Views das ações da Meta (denominador do play rate real).

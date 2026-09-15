@@ -66,7 +66,18 @@ vice-versa, é sinal de que a tarefa está no lugar errado. Pare e pergunte.
    dos casos em tempo real; o cron só cobre o que sobra.
 
 3. **`lib/meta-chave.ts`** define a CHAVE que junta gasto × venda:
-   `código do anúncio (ex: ad51) | FASE0N | flags (bmsub/bmus/v2)`.
+   `código do anúncio (ex: ad51) | FASE0N | flags (bmsub/bmus/v2) | campanha`.
+   - **Campanha (set/2026):** o mesmo criativo roda em duas campanhas da mesma
+     fase ao mesmo tempo (ad111 em "AD111 | AD112 | AD113" e em "AD111 | AD112").
+     A campanha é o nome só com letras/números; do lado da venda vem do
+     part[0] do sck. A venda NÃO exige match exato (bate em ~96%; o resto é
+     "carafa" × "CA RAFA"): `criarResolvedor` escolhe a campanha com gasto
+     que bate, ou a única que existe, ou a mais parecida. TODA rota que mostra
+     esses números (performance-v2, /diario, /vendas, snapshot, ad-metrics)
+     precisa usar o resolvedor — senão a venda cai numa linha aqui e noutra lá.
+   - **`gastos` é uma linha por (data, ad_id)**, não por (data, ad_name): somar
+     por nome misturava o gasto das duas campanhas. Precisa do
+     `supabase_gastos_por_anuncio.sql`; sem ele o sync grava do jeito antigo.
    - O código vem de `extrairCriativo()` (regex `^(ad\d+)`) — sempre o
      código curto, nunca o slug completo.
    - A fase (FASE01/02/03) já distingue os "3 níveis" de escala do anúncio

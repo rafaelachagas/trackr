@@ -263,7 +263,7 @@ export default function TabelaCriativosV2() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtrados.map((row) => (
-                <tr key={`${row.criativo}__${row.campaign_name}`} className="hover:bg-muted/30 transition-colors">
+                <tr key={row.chave} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3 font-mono font-semibold text-foreground max-w-[260px]">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="truncate" title={row.ad_name}>{row.ad_name}</span>
@@ -278,6 +278,13 @@ export default function TabelaCriativosV2() {
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     </div>
+                    {/* Mesmo criativo na mesma fase em mais de uma campanha: sem o
+                        nome da campanha as linhas ficam idênticas. */}
+                    {row.campaign_name && filtrados.filter(r => r.criativo === row.criativo && r.fase === row.fase).length > 1 && (
+                      <p className="mt-0.5 text-[10px] font-sans font-normal text-sky-400/90 truncate" title={row.campaign_name}>
+                        {row.campaign_name}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center">
                     {row.fase ? (

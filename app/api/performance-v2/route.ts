@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { calcularRoas, extrairCriativo } from '@/lib/utils'
-import { faseToken, flagsToken } from '@/lib/meta-chave'
+import { faseToken, chaveDoAnuncio, criarResolvedor } from '@/lib/meta-chave'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 import { AcaoOtimizacao } from '@/types'
@@ -79,7 +79,7 @@ async function buscarChavesAtivas(accessToken: string, adAccountIds: string[]): 
   for (const ads of listas) for (const ad of ads) {
     const cod = extrairCriativo(ad.name)   // mesma extração usada no sync p/ gastos.criativo
     if (!cod) continue
-    keys.add(`${cod}|${faseToken(ad.campaign) ?? '?'}|${flagsToken(ad.name)}`)
+    keys.add(chaveDoAnuncio(cod, ad.campaign, ad.name))
   }
   return keys
 }
@@ -118,7 +118,7 @@ export interface CriativoV2 {
   ad_name: string
   campaign_name: string | null
   fase: string | null
-  chave: string        // código|fase|flags — usado pra listar as vendas (prova real)
+  chave: string        // código|fase|flags|campanha — usado pra listar as vendas (prova real)
   // Headline = janela de 7 DIAS FECHADOS (terminando ONTEM). Hoje fica de fora.
   gasto_7d: number
   receita_7d: number
@@ -262,10 +262,14 @@ export async function GET(request: Request) {
       return e
     }
 
+    // + CAMPANHA (set/2026): o mesmo código na mesma fase pode rodar em duas
+    // campanhas ao mesmo tempo — cada uma vira sua linha. Ver lib/meta-chave.
+    const chaves = criarResolvedor(gastos)
+
     for (const g of gastos) {
       if (!g.criativo) continue
       const fase = faseToken(g.campaign_name)
-      const key = `${g.criativo}|${fase ?? '?'}|${flagsToken(g.ad_name)}`
+      const key = chaves.doGasto(g.criativo, g.campaign_name, g.ad_name)
       const e = getEntrada(key, g.criativo, fase)
       const val = Number(g.valor_gasto) || 0
       e.gastos.push({ valor: val, data: g.data })
@@ -277,10 +281,11 @@ export async function GET(request: Request) {
       if (!v.criativo) continue
       const parte0 = (v.sck || '').split('|')[0]
       const fase = faseToken(parte0)
-      const key = `${v.criativo}|${fase ?? '?'}|${flagsToken(v.sck)}`
+      const key = chaves.doVenda(v.criativo, v.sck)
       const e = getEntrada(key, v.criativo, fase)
       e.vendas.push({ liquido: Number(v.valor_liquido ?? v.valor) || 0, data: v.data })
       if (!e.sckName) e.sckName = (v.sck || '').split('|')[2] || null
+      if (!e.campaign_name && parte0) e.campaign_name = parte0
     }
 
     // DATA da venda no fuso de São Paulo (não a data UTC crua do timestamptz).

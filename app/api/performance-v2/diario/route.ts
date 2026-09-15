@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
-import { faseToken, flagsToken } from '@/lib/meta-chave'
+import { criarResolvedor, casaChave } from '@/lib/meta-chave'
 
 const TIMEZONE = 'America/Sao_Paulo'
 // Mesma regra do /api/performance-v2: conta reclamada/refunded/chargeback pelo
@@ -23,13 +23,17 @@ export async function GET(req: NextRequest) {
   try {
     const chave = req.nextUrl.searchParams.get('chave') || ''
     const janela = Math.max(1, Math.min(30, Number(req.nextUrl.searchParams.get('janela')) || 7))
-    const [codigo, faseAlvo, flagsAlvo] = chave.split('|')
+    const [codigo] = chave.split('|')
     if (!codigo) return NextResponse.json({ error: 'chave inválida' }, { status: 400 })
 
     const agora = toZonedTime(new Date(), TIMEZONE)
     const hoje = format(agora, 'yyyy-MM-dd')
     const ontem = format(subDays(agora, 1), 'yyyy-MM-dd')
     const inicio = format(subDays(agora, janela), 'yyyy-MM-dd')
+    // A campanha de cada venda é decidida olhando os gastos — com a MESMA janela
+    // da tabela (7d até hoje), senão a venda cai numa linha lá e noutra aqui.
+    const d7 = format(subDays(agora, 7), 'yyyy-MM-dd')
+    const desdeGasto = inicio < d7 ? inicio : d7
     const diaSP = (iso: string) => format(toZonedTime(new Date(iso), TIMEZONE), 'yyyy-MM-dd')
 
     async function fetchAll<T>(build: (from: number, to: number) => any): Promise<T[]> {
@@ -49,17 +53,17 @@ export async function GET(req: NextRequest) {
 
     const [gastos, vendas] = await Promise.all([
       fetchAll<G>((f, t) => supabaseAdmin.from('gastos').select('valor_gasto, data, campaign_name, ad_name, criativo')
-        .not('ad_id', 'is', null).eq('criativo', codigo).gte('data', inicio).lte('data', ontem).range(f, t)),
+        .not('ad_id', 'is', null).eq('criativo', codigo).gte('data', desdeGasto).lte('data', hoje).range(f, t)),
       fetchAll<V>((f, t) => supabaseAdmin.from('vendas').select('sck, valor, valor_liquido, data, criativo')
         .in('status', STATUS_RECEITA).not('transaction_id', 'like', 'manual_%').eq('criativo', codigo)
         .gte('data', `${inicio}T00:00:00`).lte('data', `${hoje}T23:59:59`).range(f, t)),
     ])
 
-    const gastoDaChave = gastos.filter((g) => (faseToken(g.campaign_name) ?? '?') === faseAlvo && flagsToken(g.ad_name) === flagsAlvo)
-    const vendaDaChave = vendas.filter((v) => {
-      const parte0 = (v.sck || '').split('|')[0]
-      return (faseToken(parte0) ?? '?') === faseAlvo && flagsToken(v.sck) === flagsAlvo
-    })
+    // Os dias fora da janela (d7..hoje entra só pra resolver campanha) não somam:
+    // o laço abaixo só percorre inicio..ontem.
+    const chaves = criarResolvedor(gastos)
+    const gastoDaChave = gastos.filter((g) => g.criativo && casaChave(chaves.doGasto(g.criativo, g.campaign_name, g.ad_name), chave))
+    const vendaDaChave = vendas.filter((v) => v.criativo && casaChave(chaves.doVenda(v.criativo, v.sck), chave))
 
     // Monta os dias da janela (inicio..ontem), mesmo os sem gasto/venda.
     const dias: { data: string; gasto: number; receita: number; roas: number | null }[] = []

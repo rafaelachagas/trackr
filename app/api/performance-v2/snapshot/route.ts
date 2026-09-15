@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { faseToken, flagsToken } from '@/lib/meta-chave'
+import { faseToken, criarResolvedor } from '@/lib/meta-chave'
 import { calcularRoas } from '@/lib/utils'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
@@ -71,10 +71,14 @@ async function snapshotDia(dia: string): Promise<{ dia: string; linhas: number; 
     return e
   }
 
+  // Chave com campanha (set/2026) — dias congelados antes disso ficam com a
+  // chave antiga de 3 partes; não são reescritos.
+  const chaves = criarResolvedor((gastos ?? []) as GastoRow[])
+
   for (const g of (gastos ?? []) as GastoRow[]) {
     if (!g.criativo) continue
     const fase = faseToken(g.campaign_name)
-    const key = `${g.criativo}|${fase ?? '?'}|${flagsToken(g.ad_name)}`
+    const key = chaves.doGasto(g.criativo, g.campaign_name, g.ad_name)
     const e = getEntrada(key, g.criativo, fase)
     e.gasto += Number(g.valor_gasto) || 0
     if (!e.ad_name) e.ad_name = g.ad_name
@@ -85,7 +89,7 @@ async function snapshotDia(dia: string): Promise<{ dia: string; linhas: number; 
     if (!v.criativo) continue
     const parte0 = (v.sck || '').split('|')[0]
     const fase = faseToken(parte0)
-    const key = `${v.criativo}|${fase ?? '?'}|${flagsToken(v.sck)}`
+    const key = chaves.doVenda(v.criativo, v.sck)
     const e = getEntrada(key, v.criativo, fase)
     e.receita += Number(v.valor_liquido ?? v.valor) || 0
     e.vendasCount++

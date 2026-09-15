@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { subDays, format } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
-import { faseToken, flagsToken } from '@/lib/meta-chave'
+import { criarResolvedor, casaChave } from '@/lib/meta-chave'
 
 const TIMEZONE = 'America/Sao_Paulo'
 // Mesma regra do /api/performance-v2: conta reclamada/refunded/chargeback (o
@@ -21,7 +21,7 @@ const STATUS_RECEITA = ['approved', 'reclamada', 'refunded', 'chargeback']
 export async function GET(req: NextRequest) {
   try {
     const chave = req.nextUrl.searchParams.get('chave') || ''
-    const [codigo, faseAlvo, flagsAlvo] = chave.split('|')
+    const [codigo] = chave.split('|')
     if (!codigo) return NextResponse.json({ error: 'chave inválida' }, { status: 400 })
 
     const agora = toZonedTime(new Date(), TIMEZONE)
@@ -49,11 +49,23 @@ export async function GET(req: NextRequest) {
       if (data.length < 1000) break
     }
 
+    // Gastos do criativo na mesma janela da tabela: é com eles que se decide em
+    // qual campanha cada venda cai (lib/meta-chave → criarResolvedor).
+    const { data: gastos, error: erroGastos } = await supabaseAdmin
+      .from('gastos')
+      .select('criativo, campaign_name, ad_name')
+      .not('ad_id', 'is', null)
+      .eq('criativo', codigo)
+      .gte('data', d7)
+      .lte('data', hoje)
+      .limit(1000)
+    if (erroGastos) throw erroGastos
+    const chaves = criarResolvedor(gastos ?? [])
+
     const vendas = todas.filter((v) => {
       const d = diaSP(v.data)
       if (d < d7 || d > ontem) return false
-      const parte0 = (v.sck || '').split('|')[0]
-      return (faseToken(parte0) ?? '?') === faseAlvo && flagsToken(v.sck) === flagsAlvo
+      return casaChave(chaves.doVenda(codigo, v.sck), chave)
     }).map((v) => ({
       data: v.data,
       produto: v.produto,
