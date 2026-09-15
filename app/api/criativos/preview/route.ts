@@ -37,10 +37,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Meta Ads não configurado' }, { status: 400 })
   }
 
+  // Nome completo do anúncio da linha (quando a tela tem) — é o que garante
+  // abrir o vídeo CERTO.
+  const alvo = (req.nextUrl.searchParams.get('nome') || '').trim().toLowerCase()
+
   // Casa "ad74" em "ad74-..." mas não em "ad740"/"ad741".
   const re = new RegExp(`(^|[^a-z0-9])${codigo}([^0-9]|$)`, 'i')
 
-  let escolhido: { nome: string; status: string; creativeId: string | null; permalink: string | null } | null = null
+  // Várias contas têm anúncios com o mesmo código que NÃO são o seu criativo
+  // (ex: "AD61 [VID] - Snapinst..." de uma campanha de 2025 noutra conta,
+  // "ADV-AD61" de outro produto). Antes ficava o primeiro que aparecesse.
+  // Agora cada candidato ganha nota e fica o melhor de TODAS as contas:
+  //   nome idêntico ao da linha > padrão "ad61-..." > ativo > tem post.
+  type Cand = { nome: string; status: string; creativeId: string | null; permalink: string | null; nota: number }
+  let escolhido: Cand | null = null
 
   for (const id of ids) {
     const filtering = encodeURIComponent(JSON.stringify([{ field: 'name', operator: 'CONTAIN', value: codigo }]))
@@ -48,14 +58,19 @@ export async function GET(req: NextRequest) {
     try {
       const j = await fetch(url, { cache: 'no-store' }).then((r) => r.json())
       for (const ad of j.data || []) {
-        const nome = ad.name || ''
+        const nome: string = ad.name || ''
         if (!re.test(nome)) continue
-        const cand = { nome, status: ad.effective_status, creativeId: ad.creative?.id ?? null, permalink: ad.creative?.instagram_permalink_url ?? null }
-        if (!escolhido) escolhido = cand
-        if (ad.effective_status === 'ACTIVE') { escolhido = cand; break }
+        const n = nome.toLowerCase()
+        const permalink = ad.creative?.instagram_permalink_url ?? null
+        const nota = (alvo && n === alvo ? 1000 : 0)
+          + (n.startsWith(`${codigo}-`) ? 100 : 0)
+          + (ad.effective_status === 'ACTIVE' ? 10 : 0)
+          + (permalink ? 1 : 0)
+        if (!escolhido || nota > escolhido.nota) {
+          escolhido = { nome, status: ad.effective_status, creativeId: ad.creative?.id ?? null, permalink, nota }
+        }
       }
     } catch {}
-    if (escolhido?.status === 'ACTIVE') break
   }
 
   if (!escolhido) {

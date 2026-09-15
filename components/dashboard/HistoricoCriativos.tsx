@@ -16,6 +16,7 @@ export default function HistoricoCriativos() {
   const [dados, setDados] = useState<HistoricoCriativo[]>([])
   const [loading, setLoading] = useState(true)
   const [modalCriativo, setModalCriativo] = useState<string | null>(null)
+  const [modalNome, setModalNome] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/criativos-historico')
@@ -54,7 +55,7 @@ export default function HistoricoCriativos() {
               const roasColor = row.roas === null ? 'text-muted-foreground' : row.roas >= 2 ? 'text-emerald-400' : row.roas >= 1 ? 'text-yellow-400' : 'text-rose-400'
               const nome = row.nome_completo || row.criativo
               return (
-                <tr key={row.criativo} onClick={() => setModalCriativo(row.criativo)} className="hover:bg-muted/30 transition-colors cursor-pointer">
+                <tr key={row.criativo} onClick={() => { setModalCriativo(row.criativo); setModalNome(row.nome_completo || null) }} className="hover:bg-muted/30 transition-colors cursor-pointer">
                   <td className="px-4 py-3 font-medium text-foreground max-w-[420px]" title={nome}>
                     <span className="hover:underline hover:text-primary transition break-words">{nome}</span>
                     {row.nome_completo && <span className="ml-2 text-[10px] font-mono text-muted-foreground/60 uppercase">{row.criativo}</span>}
@@ -77,7 +78,7 @@ export default function HistoricoCriativos() {
           </tbody>
         </table>
       </div>
-      <ModalPreviewCriativo codigo={modalCriativo} onFechar={() => setModalCriativo(null)} />
+      <ModalPreviewCriativo codigo={modalCriativo} nome={modalNome} onFechar={() => setModalCriativo(null)} />
     </div>
   )
 }

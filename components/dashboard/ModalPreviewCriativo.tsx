@@ -33,7 +33,12 @@ const STATUS_COR: Record<string, string> = {
   PAUSED: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
 }
 
-export default function ModalPreviewCriativo({ codigo, onFechar }: { codigo: string | null; onFechar: () => void }) {
+export default function ModalPreviewCriativo({ codigo, nome, onFechar }: {
+  codigo: string | null
+  /** Nome completo do anúncio da linha — sem ele, o código sozinho pode casar anúncio de outra conta. */
+  nome?: string | null
+  onFechar: () => void
+}) {
   const { isPrivate } = useDashboard()
   const [dados, setDados] = useState<PreviewCriativo | null>(null)
   const [carregando, setCarregando] = useState(false)
@@ -44,7 +49,9 @@ export default function ModalPreviewCriativo({ codigo, onFechar }: { codigo: str
   useEffect(() => {
     if (!codigo) return
     setCarregando(true); setErro(null); setDados(null); setImgErr(false); setHist(null)
-    fetch(`/api/criativos/preview?codigo=${encodeURIComponent(codigo)}`, { cache: 'no-store' })
+    const params = new URLSearchParams({ codigo })
+    if (nome) params.set('nome', nome)
+    fetch(`/api/criativos/preview?${params}`, { cache: 'no-store' })
       .then(async (r) => {
         const j = await r.json()
         if (!r.ok) throw new Error(j.error || 'Falha ao buscar.')
@@ -55,7 +62,7 @@ export default function ModalPreviewCriativo({ codigo, onFechar }: { codigo: str
     // histórico financeiro (não bloqueia o preview)
     fetch(`/api/criativos/historico-detalhe?codigo=${encodeURIComponent(codigo)}`, { cache: 'no-store' })
       .then((r) => r.ok ? r.json() : null).then((j) => setHist(j)).catch(() => {})
-  }, [codigo])
+  }, [codigo, nome])
 
   if (!codigo) return null
 

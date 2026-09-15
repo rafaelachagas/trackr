@@ -34,6 +34,7 @@ export default function VendasCriativosPage() {
   const [sortKey, setSortKey] = useState<SortKey>('front')
   const [range, setRange] = useState<RangePeriodo>(() => rangeDoPreset('Últimos 7 dias'))
   const [modalCriativo, setModalCriativo] = useState<string | null>(null)
+  const [modalNome, setModalNome] = useState<string | null>(null)
 
   useEffect(() => {
     if (!range.ini || !range.fim) return
@@ -197,7 +198,7 @@ export default function VendasCriativosPage() {
                   const shareFront = totais.front > 0 ? (c.front / totais.front) * 100 : 0
                   const codigo = c.codigo || extrairCriativo(c.criativo)
                   return (
-                    <tr key={c.criativo} onClick={() => codigo && setModalCriativo(codigo)} className={`border-t border-border hover:bg-accent/30 ${codigo ? 'cursor-pointer' : ''}`}>
+                    <tr key={c.criativo} onClick={() => { if (codigo) { setModalCriativo(codigo); setModalNome(c.criativo) } }} className={`border-t border-border hover:bg-accent/30 ${codigo ? 'cursor-pointer' : ''}`}>
                       <td className="px-5 py-3 font-semibold text-foreground max-w-[420px]">
                         <div className="flex items-start gap-2">
                           <span className="text-muted-foreground tabular-nums shrink-0">{i + 1}.</span>
@@ -228,7 +229,7 @@ export default function VendasCriativosPage() {
         )}
       </div>
 
-      <ModalPreviewCriativo codigo={modalCriativo} onFechar={() => setModalCriativo(null)} />
+      <ModalPreviewCriativo codigo={modalCriativo} nome={modalNome} onFechar={() => setModalCriativo(null)} />
     </div>
   )
 }

@@ -35,9 +35,11 @@ export async function GET(req: NextRequest) {
   // Casa "ad11" em "ad11-..." / "ADV-ad11-..." mas NÃO em "ad110", "ad111".
   const re = new RegExp(`(^|[^a-z0-9])${codigo}([^0-9]|$)`, 'i')
   const alvo = adName.toLowerCase()
-  let exato: string | null = null   // o anúncio EXATO da linha (quando veio ad_name)
-  let ativo: string | null = null
-  let qualquer: string | null = null
+  // Outras contas têm anúncios com o mesmo código que não são o seu criativo
+  // ("AD61 [VID] - Snapinst...", "ADV-AD61"). Nota por candidato, melhor de
+  // todas as contas: nome idêntico > padrão "ad61-..." > ativo.
+  let destino: string | null = null
+  let notaDestino = -1
 
   for (const id of ids) {
     const filtering = encodeURIComponent(JSON.stringify([{ field: 'name', operator: 'CONTAIN', value: codigo }]))
@@ -49,15 +51,14 @@ export async function GET(req: NextRequest) {
         if (!re.test(nome)) continue
         const link = ad.creative?.instagram_permalink_url
         if (!link) continue
-        if (!qualquer) qualquer = link
-        if (alvo && nome.toLowerCase() === alvo) { exato = link; break }
-        if (ad.effective_status === 'ACTIVE' && !ativo) ativo = link
+        const n = nome.toLowerCase()
+        const nota = (alvo && n === alvo ? 1000 : 0)
+          + (n.startsWith(`${codigo}-`) ? 100 : 0)
+          + (ad.effective_status === 'ACTIVE' ? 10 : 0)
+        if (nota > notaDestino) { destino = link; notaDestino = nota }
       }
     } catch {}
-    if (exato) break
   }
-
-  const destino = exato || ativo || qualquer
   if (!destino) {
     const alvoTxt = adName || codigo
     return new NextResponse(
