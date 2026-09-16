@@ -8,9 +8,15 @@ import {
   CONFIG_KEY, parseWppConfig, comandoPermitido, camposDe, mesmoNumero, WppCommand, WppGroup, WppNumber,
   EVOLUTION_URL, EVOLUTION_INSTANCE, EVOLUTION_APIKEY, SITE_URL,
 } from '@/lib/whatsapp'
+import { CHAVE_TRANSCRICAO, CMD_START, CMD_STOP, ehAudio, transcreverAudio } from '@/lib/whatsapp-transcricao'
 import {
-  CMD_START, CMD_STOP, gruposAtivos, ligarTranscricao, desligarTranscricao, ehAudio, transcreverAudio, enviarTexto,
-} from '@/lib/whatsapp-transcricao'
+  CHAVE_RESUMO, CMD_RESUMO_START, CMD_RESUMO_STOP, CMD_RESUMO_AGORA,
+  textoParaResumo, registrarMensagem, responderResumoAgora,
+} from '@/lib/whatsapp-resumo'
+import { ligarNoGrupo, desligarNoGrupo, grupoLigado, enviarTexto } from '@/lib/whatsapp-grupos'
+
+// Funções de grupo ligadas por comando (fora do /relatorio configurável).
+const COMANDOS_GRUPO = [CMD_START, CMD_STOP, CMD_RESUMO_START, CMD_RESUMO_STOP, CMD_RESUMO_AGORA]
 
 // 300: a transcrição de áudio roda depois da resposta (after) e pode levar minutos.
 export const maxDuration = 300
@@ -354,39 +360,65 @@ export async function POST(request: NextRequest) {
       .from('configuracoes').select('valor').eq('chave', CONFIG_KEY).maybeSingle()
     const config = parseWppConfig(cfgRow?.valor)
 
-    // —— Transcrição de áudios (/start-transcript, /stop-transcript) ——
-    // Vem ANTES da checagem de grupo liberado: é uma função à parte do
-    // relatório e funciona em qualquer grupo em que o bot esteja.
-    if (isGroup && (texto === CMD_START || texto === CMD_STOP)) {
+    // —— Transcrição e resumo de grupo (/start-transcript, /start-resumo...) ——
+    // Vem ANTES da checagem de grupo liberado: são funções à parte do
+    // relatório e funcionam em qualquer grupo em que o bot esteja.
+    if (isGroup && COMANDOS_GRUPO.includes(texto)) {
       if (!EVOLUTION_APIKEY) return NextResponse.json({ error: 'apikey ausente' }, { status: 500 })
       const autor: string = data?.key?.participantAlt || data?.key?.participant || data?.participant || ''
-      // Quem pode ligar: número cadastrado na aba /whatsapp, ou qualquer um num
+      // Quem pode usar: número cadastrado na aba /whatsapp, ou qualquer um num
       // grupo já liberado pro bot (ou com o bot ainda em modo setup).
       const numeroOk = !!config.numbers?.some((n) => n.enabled && !!autor && mesmoNumero(n.number, autor))
       const setupMode = (config.groups?.length ?? 0) === 0
       const grupoOk = setupMode || !!config.groups?.some((g) => g.enabled && g.jid === remoteJid)
       if (!numeroOk && !grupoOk) {
-        await enviarTexto(remoteJid, '🔒 Sem permissão pra ligar a transcrição aqui. Cadastre seu número (ou este grupo) na aba WhatsApp do The Track.')
-        return NextResponse.json({ ignored: 'transcricao-sem-permissao', autor })
+        await enviarTexto(remoteJid, '🔒 Sem permissão pra usar esse comando aqui. Cadastre seu número (ou este grupo) na aba WhatsApp do The Track.')
+        return NextResponse.json({ ignored: 'comando-grupo-sem-permissao', autor })
       }
+      const quem = data?.pushName
       if (texto === CMD_START) {
-        const novo = await ligarTranscricao(remoteJid, data?.pushName)
-        await enviarTexto(remoteJid, novo
+        await enviarTexto(remoteJid, await ligarNoGrupo(CHAVE_TRANSCRICAO, remoteJid, quem)
           ? '🎙️ Transcrição *ligada*. Todo áudio novo neste grupo vai virar texto.\nPra desligar: /stop-transcript'
           : '🎙️ A transcrição já está ligada neste grupo.')
-      } else {
-        const saiu = await desligarTranscricao(remoteJid)
-        await enviarTexto(remoteJid, saiu ? '🔇 Transcrição *desligada* neste grupo.' : '🔇 A transcrição já estava desligada.')
+      } else if (texto === CMD_STOP) {
+        await enviarTexto(remoteJid, await desligarNoGrupo(CHAVE_TRANSCRICAO, remoteJid)
+          ? '🔇 Transcrição *desligada* neste grupo.' : '🔇 A transcrição já estava desligada.')
+      } else if (texto === CMD_RESUMO_START) {
+        await enviarTexto(remoteJid, await ligarNoGrupo(CHAVE_RESUMO, remoteJid, quem)
+          ? '📝 Resumo *ligado*. A partir de agora guardo as mensagens deste grupo e mando o resumo do dia anterior todo dia às 8h.\n/resumo gera o de hoje na hora · /stop-resumo desliga'
+          : '📝 O resumo já está ligado neste grupo.')
+      } else if (texto === CMD_RESUMO_STOP) {
+        await enviarTexto(remoteJid, await desligarNoGrupo(CHAVE_RESUMO, remoteJid)
+          ? '📝 Resumo *desligado* neste grupo. Paro de guardar as mensagens.' : '📝 O resumo já estava desligado.')
+      } else if (texto === CMD_RESUMO_AGORA) {
+        if (!(await grupoLigado(CHAVE_RESUMO, remoteJid))) {
+          await enviarTexto(remoteJid, '📝 O resumo não está ligado neste grupo. Mande /start-resumo primeiro — ele só resume o que chegar depois disso.')
+        } else {
+          await enviarTexto(remoteJid, '📝 Gerando o resumo de hoje...')
+          after(() => responderResumoAgora(remoteJid))
+        }
       }
-      return NextResponse.json({ ok: true, transcricao: texto, grupo: remoteJid })
+      return NextResponse.json({ ok: true, comando: texto, grupo: remoteJid })
     }
 
-    if (isGroup && ehAudio(data?.message)) {
-      const ativos = await gruposAtivos()
-      if (!ativos.some((g) => g.jid === remoteJid)) return NextResponse.json({ ignored: 'audio-sem-transcricao' })
-      // Responde o webhook na hora; o Whisper roda depois (pode levar minutos).
-      after(() => transcreverAudio(data))
-      return NextResponse.json({ ok: true, transcrevendo: remoteJid })
+    if (isGroup) {
+      // Guarda a mensagem pro resumo (só grava se o resumo estiver ligado).
+      // Áudio entra depois, já transcrito, pelo transcreverAudio.
+      const paraResumo = textoParaResumo(data?.message)
+      if (paraResumo) {
+        await registrarMensagem(remoteJid, data?.pushName ?? null, paraResumo.texto, paraResumo.tipo, data?.messageTimestamp)
+      }
+
+      if (ehAudio(data?.message)) {
+        if (!(await grupoLigado(CHAVE_TRANSCRICAO, remoteJid))) {
+          // Sem transcrição, o resumo ao menos sabe que houve um áudio.
+          await registrarMensagem(remoteJid, data?.pushName ?? null, '[áudio não transcrito]', 'midia', data?.messageTimestamp)
+          return NextResponse.json({ ignored: 'audio-sem-transcricao' })
+        }
+        // Responde o webhook na hora; o Whisper roda depois (pode levar minutos).
+        after(() => transcreverAudio(data))
+        return NextResponse.json({ ok: true, transcrevendo: remoteJid })
+      }
     }
 
     // Resolve o "alvo" (grupo ou número) e checa se pode responder.
