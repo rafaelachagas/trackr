@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getDashboardData } from '@/app/actions/dashboard'
 import { formatarMoeda, spRangeISO, extrairCriativo } from '@/lib/utils'
@@ -8,8 +8,12 @@ import {
   CONFIG_KEY, parseWppConfig, comandoPermitido, camposDe, mesmoNumero, WppCommand, WppGroup, WppNumber,
   EVOLUTION_URL, EVOLUTION_INSTANCE, EVOLUTION_APIKEY, SITE_URL,
 } from '@/lib/whatsapp'
+import {
+  CMD_START, CMD_STOP, gruposAtivos, ligarTranscricao, desligarTranscricao, ehAudio, transcreverAudio, enviarTexto,
+} from '@/lib/whatsapp-transcricao'
 
-export const maxDuration = 60
+// 300: a transcrição de áudio roda depois da resposta (after) e pode levar minutos.
+export const maxDuration = 300
 const TZ = 'America/Sao_Paulo'
 
 // Piso de gasto (7d) pra um criativo entrar no Top: prova que teve volume real.
@@ -349,6 +353,41 @@ export async function POST(request: NextRequest) {
     const { data: cfgRow } = await supabaseAdmin
       .from('configuracoes').select('valor').eq('chave', CONFIG_KEY).maybeSingle()
     const config = parseWppConfig(cfgRow?.valor)
+
+    // —— Transcrição de áudios (/start-transcript, /stop-transcript) ——
+    // Vem ANTES da checagem de grupo liberado: é uma função à parte do
+    // relatório e funciona em qualquer grupo em que o bot esteja.
+    if (isGroup && (texto === CMD_START || texto === CMD_STOP)) {
+      if (!EVOLUTION_APIKEY) return NextResponse.json({ error: 'apikey ausente' }, { status: 500 })
+      const autor: string = data?.key?.participantAlt || data?.key?.participant || data?.participant || ''
+      // Quem pode ligar: número cadastrado na aba /whatsapp, ou qualquer um num
+      // grupo já liberado pro bot (ou com o bot ainda em modo setup).
+      const numeroOk = !!config.numbers?.some((n) => n.enabled && !!autor && mesmoNumero(n.number, autor))
+      const setupMode = (config.groups?.length ?? 0) === 0
+      const grupoOk = setupMode || !!config.groups?.some((g) => g.enabled && g.jid === remoteJid)
+      if (!numeroOk && !grupoOk) {
+        await enviarTexto(remoteJid, '🔒 Sem permissão pra ligar a transcrição aqui. Cadastre seu número (ou este grupo) na aba WhatsApp do The Track.')
+        return NextResponse.json({ ignored: 'transcricao-sem-permissao', autor })
+      }
+      if (texto === CMD_START) {
+        const novo = await ligarTranscricao(remoteJid, data?.pushName)
+        await enviarTexto(remoteJid, novo
+          ? '🎙️ Transcrição *ligada*. Todo áudio novo neste grupo vai virar texto.\nPra desligar: /stop-transcript'
+          : '🎙️ A transcrição já está ligada neste grupo.')
+      } else {
+        const saiu = await desligarTranscricao(remoteJid)
+        await enviarTexto(remoteJid, saiu ? '🔇 Transcrição *desligada* neste grupo.' : '🔇 A transcrição já estava desligada.')
+      }
+      return NextResponse.json({ ok: true, transcricao: texto, grupo: remoteJid })
+    }
+
+    if (isGroup && ehAudio(data?.message)) {
+      const ativos = await gruposAtivos()
+      if (!ativos.some((g) => g.jid === remoteJid)) return NextResponse.json({ ignored: 'audio-sem-transcricao' })
+      // Responde o webhook na hora; o Whisper roda depois (pode levar minutos).
+      after(() => transcreverAudio(data))
+      return NextResponse.json({ ok: true, transcrevendo: remoteJid })
+    }
 
     // Resolve o "alvo" (grupo ou número) e checa se pode responder.
     let alvo: WppGroup | WppNumber | undefined
