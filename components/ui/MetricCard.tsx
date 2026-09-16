@@ -17,6 +17,10 @@ export default function MetricCard({ titulo, valor, valorBadge, subtitulo, tende
   const { isPrivate } = useDashboard()
   const [showTooltip, setShowTooltip] = useState(false)
 
+  // Valor negativo (prejuizo) sempre em vermelho, mesmo nos cards "verdes" —
+  // Lucro pintado de verde com -R$ 60,63 le como se estivesse tudo bem.
+  const negativo = /-\s*\d/.test(valor)
+
   return (
     <div className="bg-card border border-border p-5 rounded-[10px] shadow-sm relative">
       <div className="flex items-center gap-1.5 mb-1">
@@ -44,7 +48,7 @@ export default function MetricCard({ titulo, valor, valorBadge, subtitulo, tende
         )}
       </div>
       <div className="flex items-baseline gap-2">
-        <h3 className={`text-2xl font-black tracking-tighter ${verde ? 'text-emerald-400' : 'text-foreground'} ${isPrivate ? 'blur-md select-none opacity-50' : ''}`}>
+        <h3 className={`text-2xl font-black tracking-tighter ${negativo ? 'text-rose-400' : verde ? 'text-emerald-400' : 'text-foreground'} ${isPrivate ? 'blur-md select-none opacity-50' : ''}`}>
           {isPrivate ? '••••••' : valor}
         </h3>
         {valorBadge && (
