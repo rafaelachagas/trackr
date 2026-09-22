@@ -32,6 +32,13 @@ function fetchTimeout(url: string, opts: RequestInit, ms: number): Promise<Respo
   return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t))
 }
 
+// As rotas /api agora pedem sessão. O webhook roda no servidor (sem cookie),
+// então as chamadas internas vão com o mesmo segredo do cron.
+function headerInterno(): Record<string, string> {
+  const s = process.env.CRON_SECRET
+  return s ? { authorization: `Bearer ${s}` } : {}
+}
+
 function extrairTexto(msg: any): string {
   return (msg?.conversation ?? msg?.extendedTextMessage?.text ?? '').trim()
 }
@@ -137,14 +144,14 @@ function makeLoader() {
     },
     async perfV2() {
       if (!perf) {
-        try { perf = await (await fetchTimeout(`${SITE_URL}/api/performance-v2`, { cache: 'no-store' }, 25000)).json() }
+        try { perf = await (await fetchTimeout(`${SITE_URL}/api/performance-v2`, { cache: 'no-store', headers: headerInterno() }, 25000)).json() }
         catch { perf = { criativos: [] } }
       }
       return perf
     },
     async breakdown() {
       if (!brk) {
-        try { brk = await (await fetchTimeout(`${SITE_URL}/api/dashboard/vendas-breakdown?d_inicio=${hoje}&d_fim=${hoje}`, { cache: 'no-store' }, 25000)).json() }
+        try { brk = await (await fetchTimeout(`${SITE_URL}/api/dashboard/vendas-breakdown?d_inicio=${hoje}&d_fim=${hoje}`, { cache: 'no-store', headers: headerInterno() }, 25000)).json() }
         catch { brk = {} }
       }
       return brk

@@ -3,7 +3,36 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PUBLIC_ROUTES = ['/login', '/cadastro', '/reset-senha', '/convite', '/p/']
 
+// ————————————————————————————————————————————————————————————————
+// /api TAMBÉM pede login (set/2026). Antes o matcher excluía /api inteiro:
+// qualquer pessoa com a URL lia faturamento, criativos e disparava render na
+// VPS. As exceções abaixo são só o que NÃO PODE ter sessão:
+//   - webhook da Hotmart e da Evolution (quem chama é o serviço, não o navegador)
+//   - páginas públicas por token (/p/afazeres) e o MCP (token na própria URL)
+//   - callback de OAuth da Meta / signout
+// Cron da Vercel entra pelo CRON_SECRET (ela manda no header Authorization).
+// ————————————————————————————————————————————————————————————————
+const API_PUBLICA_PREFIXO = ['/api/webhooks/', '/api/public/', '/api/mcp/', '/api/auth/']
+const API_PUBLICA_EXATA = ['/api/whatsapp']
+
+function apiPublica(pathname: string): boolean {
+  return API_PUBLICA_EXATA.includes(pathname)
+    || API_PUBLICA_PREFIXO.some((p) => pathname.startsWith(p))
+}
+
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const isApi = pathname.startsWith('/api/')
+
+  if (isApi) {
+    if (apiPublica(pathname)) return NextResponse.next()
+    // Cron da Vercel (e chamadas internas do servidor): sem cookie, com segredo.
+    const secret = process.env.CRON_SECRET
+    if (secret && request.headers.get('authorization') === `Bearer ${secret}`) {
+      return NextResponse.next()
+    }
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -26,10 +55,12 @@ export async function middleware(request: NextRequest) {
   // Atualiza a sessão (obrigatório para o @supabase/ssr funcionar)
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
   const isPublic = PUBLIC_ROUTES.some(r => pathname.startsWith(r))
 
-  // Não autenticado tentando acessar rota protegida → login
+  // Não autenticado: API responde 401 (o front sabe tratar); página vai pro login.
+  if (!user && isApi) {
+    return NextResponse.json({ error: 'não autorizado' }, { status: 401 })
+  }
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
@@ -48,6 +79,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 }
