@@ -1627,6 +1627,37 @@ def camouflage_status():
 # cada palavra falada; as marcações do roteiro são ancoradas nesses tempos, e
 # cada trecho de b-roll ocupa o intervalo entre uma marcação e a seguinte.
 
+# ————————————————————————————————————————————————————————————
+# TEMPLATES DE EDICAO — o "jeito" do video, num lugar so. O front manda
+# template="produzido" e a montagem usa estes valores no lugar dos fixos.
+# Template novo = entrada nova aqui (e o rotulo em lib/criativos-templates.ts).
+#   zoom            : quanto o b-roll aproxima ao longo do trecho (0 = parado)
+#   transicao       : como cada b-roll entra (corte | fade | flash)
+#   intervalo_broll : (min, max) segundos por b-roll — marca o ritmo do corte
+#   legenda_estilo  : palavra | destaque | bloco
+#   legenda_destaque: cor da palavra em destaque
+# ————————————————————————————————————————————————————————————
+TEMPLATES = {
+    "ugc_cru": {
+        "zoom": "nenhum", "transicao": "corte", "intervalo_broll": (2.0, 3.5),
+        "legenda_estilo": "palavra", "legenda_destaque": "#FFFF00",
+    },
+    "produzido": {
+        "zoom": "in", "transicao": "fade", "intervalo_broll": (3.0, 5.0),
+        "legenda_estilo": "destaque", "legenda_destaque": "#FF4500",
+    },
+    "vsl_agressivo": {
+        "zoom": "in", "transicao": "flash", "intervalo_broll": (1.5, 2.5),
+        "legenda_estilo": "bloco", "legenda_destaque": "#FFFFFF",
+    },
+}
+TEMPLATE_PADRAO = "ugc_cru"
+
+
+def _template(nome):
+    return TEMPLATES.get(str(nome or ""), TEMPLATES[TEMPLATE_PADRAO])
+
+
 RE_MARCA_CLIPE = re.compile(r"\$([\w-]+)")
 RE_MARCA_PASTA = re.compile(r"\[broll:\s*([\w-]+)(?:\s*x(\d+))?\s*\]", re.I)
 
@@ -1932,6 +1963,8 @@ def _projeto_automatico(body, baixar, tmp, tempos):
 
     # 3. Marcações do roteiro viram trechos com início e fim.
     plano = _plano_do_roteiro(body.get("roteiro") or "", palavras)
+    tpl = _template(body.get("template"))
+    ritmo_min, ritmo_max = tpl["intervalo_broll"]
     usados = {}
     trechos = []
     for i, p in enumerate(plano):
@@ -1953,7 +1986,15 @@ def _projeto_automatico(body, baixar, tmp, tempos):
                 vistos = usados.setdefault(p["alvo"], set())
                 novos = [c for c in disp if c not in vistos] or disp
                 random.shuffle(novos)
-                escolhidos = novos[: p["n"]]
+                # Ritmo do template: um trecho de 12s com [broll: pasta] vira
+                # varios clipes curtos no vsl_agressivo e poucos longos no
+                # produzido. Quando o roteiro pede "xN" explicito, manda o N.
+                quantos = p["n"]
+                if quantos <= 1:
+                    quantos = max(1, min(int(round((fim - ini) / ritmo_max)), len(novos)))
+                    while quantos > 1 and (fim - ini) / quantos < ritmo_min:
+                        quantos -= 1
+                escolhidos = novos[:quantos]
                 vistos.update(escolhidos)
         if not escolhidos:
             continue
@@ -1981,13 +2022,15 @@ def _projeto_automatico(body, baixar, tmp, tempos):
     for i, tr in enumerate(trechos):
         tr["origem"] = round(_melhor_trecho(baixar(tr["caminho"]), tr["dur"], tmp, i), 2)
         tr["id"] = "t%d" % i
-        tr["zoom"] = "nenhum"
-        tr["transicao"] = "corte"
+        tr["zoom"] = tpl["zoom"]
+        # O primeiro trecho entra sempre em corte seco: fade/flash no segundo
+        # zero come o hook, que e onde o criativo ganha ou perde a pessoa.
+        tr["transicao"] = "corte" if i == 0 else tpl["transicao"]
         tr["ini"] = round(tr.pop("ini"), 3)
         tr.pop("dur", None)
     tempos["analise"] = round(time.time() - t0, 1)
 
-    estilo = str(body.get("estilo") or "palavra")
+    estilo = str(body.get("estilo") or tpl["legenda_estilo"])
     return {
         "versao": 1,
         "criado_em": int(time.time()),
@@ -1997,7 +2040,8 @@ def _projeto_automatico(body, baixar, tmp, tempos):
         "locucao_path": loc_path,
         "fonte_path": body.get("fonte_path") or None,
         "roteiro": body.get("roteiro") or "",
-        "legenda": {"estilo": estilo},
+        "template": str(body.get("template") or TEMPLATE_PADRAO),
+        "legenda": {"estilo": estilo, "destaque": tpl["legenda_destaque"]},
         "palavras": [{"t": p["t"], "ini": round(p["ini"], 3), "fim": round(p["fim"], 3)}
                      for p in palavras],
         "trechos": trechos,

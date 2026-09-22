@@ -21,7 +21,7 @@ const FORMATOS: Record<string, { w: number; h: number }> = {
 
 export async function POST(req: Request) {
   try {
-    const { roteiro, locucaoPath, formato, estilo, fontePath } = await req.json()
+    const { roteiro, locucaoPath, formato, estilo, fontePath, template } = await req.json()
     if (!roteiro?.trim()) return NextResponse.json({ error: 'sem roteiro' }, { status: 400 })
     if (!locucaoPath) return NextResponse.json({ error: 'sem locução' }, { status: 400 })
     if (!TRANSCRITOR_URL || !TRANSCRITOR_APIKEY) {
@@ -63,6 +63,7 @@ export async function POST(req: Request) {
           output_path: outputPath,
           roteiro,
           estilo: estilo || 'palavra',
+          template: template || 'ugc_cru',
           largura: fmt.w,
           altura: fmt.h,
           fonte_path: fontePath || null,

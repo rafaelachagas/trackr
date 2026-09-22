@@ -6,6 +6,7 @@ import {
   FileText, Sparkles, Check, AlertTriangle, ChevronLeft, Wand2, Film, Plus, Clock, Download, Search,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { TEMPLATES, TEMPLATE_PADRAO, ESTILO_DO_TEMPLATE, type TemplateId } from '@/lib/criativos-templates'
 
 // Gerador de Criativos Automáticos — a base: de onde vem a voz, de onde vêm as
 // imagens de apoio, qual fonte a legenda usa e de onde sai o roteiro. A
@@ -107,6 +108,7 @@ export default function CreativeGeneratorPage() {
   const [vozEscolhida, setVozEscolhida] = useState('')
   const [formato, setFormato] = useState<FormatoId>('9:16')
   const [estilo, setEstilo] = useState<EstiloId>('palavra')
+  const [template, setTemplate] = useState<TemplateId>(TEMPLATE_PADRAO)
 
   // Locução em PT-BR fica perto de 160 palavras por minuto. Serve pra avisar
   // que o roteiro passou do tamanho de um criativo antes de gastar TTS.
@@ -237,12 +239,25 @@ export default function CreativeGeneratorPage() {
 
   async function montar() {
     setMontando(true); setErro(null); setVideoPronto(null)
-    setFaseMontagem('Enviando pro servidor de vídeo...')
     try {
+      // Voz por API: gera o MP3 no ElevenLabs primeiro; daí pra frente é igual
+      // ao áudio enviado à mão (a montagem só conhece um caminho no Storage).
+      let locucaoPath = locucao?.caminho
+      if (origemVoz === 'api') {
+        setFaseMontagem('Gerando a locução no ElevenLabs...')
+        const v = await fetch('/api/creative-generator/tts', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ texto: roteiro, vozId: vozEscolhida }),
+        }).then(json)
+        if (v.error) throw new Error(v.error)
+        locucaoPath = v.caminho
+      }
+
+      setFaseMontagem('Enviando pro servidor de vídeo...')
       const j = await fetch('/api/creative-generator/assemble', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          roteiro, locucaoPath: locucao?.caminho, formato, estilo,
+          roteiro, locucaoPath, formato, estilo, template,
           fontePath: fonteEscolhida || fontes[0]?.caminho || null,
         }),
       }).then(json)
@@ -532,6 +547,30 @@ export default function CreativeGeneratorPage() {
           {/* Formato e legenda: decisões de projeto, não de exportação — a
               proporção muda o enquadramento dos b-rolls e o corpo da legenda. */}
           <div className="rounded-xl border border-border bg-white/[0.02] p-4 space-y-4">
+            <div>
+              <p className="text-xs font-semibold text-foreground mb-2">Template de edição</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {TEMPLATES.map((t) => {
+                  const ativo = template === t.id
+                  return (
+                    <button key={t.id}
+                      onClick={() => { setTemplate(t.id); setEstilo(ESTILO_DO_TEMPLATE[t.id]) }}
+                      className={`rounded-lg border px-3 py-2.5 text-left transition ${
+                        ativo ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-border hover:border-fuchsia-500/40'
+                      }`}>
+                      <span className="block text-xs font-bold text-foreground">{t.nome}</span>
+                      <span className="block text-[10px] text-muted-foreground leading-snug mt-0.5">{t.desc}</span>
+                      <span className="block text-[10px] text-fuchsia-300/80 mt-1">{t.ritmo}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                O template define o ritmo dos cortes, o zoom e a entrada de cada b-roll. A legenda
+                abaixo já vem no estilo dele — troque se quiser.
+              </p>
+            </div>
+
             <div>
               <p className="text-xs font-semibold text-foreground mb-2">Formato</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
