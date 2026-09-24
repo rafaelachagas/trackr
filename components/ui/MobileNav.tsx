@@ -67,10 +67,16 @@ export default function MobileNav() {
 
   return (
     <div className="md:hidden">
-      {/* Barra do topo */}
+      {/* Barra do topo. O paddingTop reserva a faixa do relógio/notch: no
+          navegador o valor é 0; no app instalado (tela cheia) é o que impede a
+          barra de subir por cima da hora. */}
       <div
         className="flex items-center justify-between px-4 h-14 sticky top-0 z-40"
-        style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
+        style={{
+          backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)',
+          paddingTop: 'env(safe-area-inset-top)',
+          height: 'calc(3.5rem + env(safe-area-inset-top))',
+        }}
       >
         <div className="flex items-center gap-2">
           <BrandLogo size={24} wordmarkSize={16} />
@@ -105,7 +111,11 @@ export default function MobileNav() {
           {/* Header do menu */}
           <div
             className="flex items-center justify-between px-4 h-14 flex-shrink-0"
-            style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
+            style={{
+              backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)',
+              paddingTop: 'env(safe-area-inset-top)',
+              height: 'calc(3.5rem + env(safe-area-inset-top))',
+            }}
           >
             <div className="flex items-center gap-2">
               <BrandLogo size={24} wordmarkSize={16} />
