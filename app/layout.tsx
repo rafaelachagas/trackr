@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
@@ -33,6 +33,24 @@ const uberMove = localFont({
 export const metadata: Metadata = {
   title: "The Track",
   description: "Painel de Gestão de Tráfego Pago - Hotmart + Meta Ads + VTurb",
+  // PWA: o manifesto vem de app/manifest.ts. O bloco appleWebApp é o que faz o
+  // iPhone abrir em tela cheia (sem barra do Safari) quando o app é adicionado
+  // à tela de início — e é nesse modo que a Apple entrega notificação push.
+  manifest: "/manifest.webmanifest",
+  applicationName: "The Track",
+  appleWebApp: { capable: true, title: "The Track", statusBarStyle: "black-translucent" },
+  icons: {
+    icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0b1114",
+  // viewportFit: o app instalado ocupa a tela toda, inclusive atrás do notch.
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

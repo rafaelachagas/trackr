@@ -7,6 +7,9 @@ import { AcaoOtimizacao } from '@/types'
 import { getProdutos, addProduto, deleteProduto } from '@/app/actions/produtos'
 import { Sparkles } from 'lucide-react'
 import ConfigIA from '@/components/inteligencia/ConfigIA'
+import ConectorClaude from '@/components/settings/ConectorClaude'
+import { Plug } from 'lucide-react'
+import AtivarNotificacoes from '@/components/ui/AtivarNotificacoes'
 
 interface Produto { id: string; nome_produto: string; tipo: 'front' | 'upsell'; ativo: boolean }
 
@@ -145,6 +148,8 @@ export default function ConfiguracoesPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
+
+        <AtivarNotificacoes />
 
         {/* CRITÉRIO DE ROAS */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-lg">
@@ -305,6 +310,20 @@ export default function ConfiguracoesPage() {
             </div>
           </div>
           <ConfigIA />
+        </div>
+
+        {/* CONECTOR CLAUDE (MCP) */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center border border-primary/30">
+              <Plug className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Conectar ao Claude</h2>
+              <p className="text-xs text-muted-foreground">Converse com o Claude sobre faturamento, gasto, ROAS e criativos da The Track</p>
+            </div>
+          </div>
+          <ConectorClaude />
         </div>
 
       </div>

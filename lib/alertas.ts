@@ -4,6 +4,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { broadcastAlerta } from '@/lib/whatsapp-send'
+import { enviarPush } from '@/lib/push'
 
 export type TipoAlerta = 'fadiga' | 'anomalia_gasto' | 'concorrente_removido' | 'concorrente_novo' | 'pagina_mudou' | 'pagina_url' | 'concorrente_escala'
 export type Severidade = 'info' | 'atencao' | 'critico'
@@ -35,6 +36,11 @@ export async function registrarAlerta(params: {
   const { data: existe } = await supabaseAdmin
     .from('alertas_log').select('id').eq('org_id', orgId).eq('tipo', tipo).eq('chave', chave).maybeSingle()
   if (existe) return { novo: false, enviado: false }
+
+  // Mesmo alerta, dois caminhos: WhatsApp (quem não instalou o app) e push
+  // (quem instalou). O push nunca derruba o alerta se falhar.
+  enviarPush({ titulo, mensagem, url: '/overview', tag: `${tipo}:${chave}` })
+    .catch((e) => console.error('[alertas] push', e))
 
   let enviado = false
   if (enviarWhats) {
