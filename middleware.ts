@@ -78,7 +78,10 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Arquivos estáticos ficam FORA do middleware. O iPhone busca o ícone e o
+  // manifesto do PWA sem sessão: protegidos, eles voltavam como redirect pro
+  // login e o app era instalado com ícone em branco.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|.*\.(?:png|jpg|jpeg|gif|webp|svg|ico|txt|xml|webmanifest)$).*)',
   ],
 }
