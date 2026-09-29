@@ -11,6 +11,7 @@ import {
   LogOut,
   ShoppingBag,
   ShoppingCart,
+  Megaphone,
   PlusCircle,
   Film,
   Database,
@@ -44,6 +45,7 @@ import { BrandIcon } from '@/components/ui/BrandLogo'
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/sales', label: 'Vendas', icon: ShoppingCart },
+  { href: '/campaigns', label: 'Campanhas', icon: Megaphone },
   // Criativos e Lançamento (cadastro MANUAL) ocultos — hoje criativos e
   // lançamentos são puxados automaticamente. As páginas seguem acessíveis por
   // URL, só saíram do menu.
