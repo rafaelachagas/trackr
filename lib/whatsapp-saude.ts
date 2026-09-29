@@ -38,6 +38,34 @@ const TZ = 'America/Sao_Paulo'
 // Criativo só entra no painel se gastou pelo menos isso hoje (tira resto de centavos).
 const GASTO_MIN_HOJE = 5
 
+// —— Sugestão de orçamento (intraday) ——
+// Meta fixa do Isaías: ROAS líquido acima de 2. Cruza o ROAS do DIA (acumulado)
+// com o da ÚLTIMA HORA (diferença pro painel anterior):
+//   dia ≥ meta e hora ≥ meta (ou hora sem sinal) → +20%
+//   dia ≥ meta mas a hora caiu                   → manter
+//   dia < meta mas a hora voltou pra meta        → manter (recuperando)
+//   dia < meta e hora < meta (ou sem sinal)      → −20%
+// Abaixo de GASTO_MIN_DECISAO no dia não sugere nada: 1 venda a mais ou a menos
+// muda o ROAS inteiro. Hora com menos de GASTO_MIN_HORA de gasto não conta como
+// sinal (pouco dinheiro pra dizer se a hora foi boa ou ruim).
+const ROAS_META = 2
+const GASTO_MIN_DECISAO = 150
+const GASTO_MIN_HORA = 40
+
+type Sugestao = 'subir' | 'manter' | 'reduzir' | 'aguardar'
+const SUGESTAO_TXT: Record<Sugestao, string> = {
+  subir: '⬆️ *+20% orçamento*',
+  manter: '➡️ *Manter*',
+  reduzir: '⬇️ *−20% orçamento*',
+  aguardar: '⏳ Aguardar (pouco gasto pra decidir)',
+}
+
+function sugerir(roasDia: number, gastoDia: number, roasHora: number | null): Sugestao {
+  if (gastoDia < GASTO_MIN_DECISAO) return 'aguardar'
+  if (roasDia >= ROAS_META) return roasHora != null && roasHora < ROAS_META ? 'manter' : 'subir'
+  return roasHora != null && roasHora >= ROAS_META ? 'manter' : 'reduzir'
+}
+
 type CriativoHoje = {
   chave: string
   criativo: string
@@ -194,6 +222,19 @@ export async function montarSaude(gravar: boolean): Promise<string> {
   const totRoas = totG > 0 ? totR / totG : null
   const totL = totR - totG
 
+  // Última hora e sugestão de cada criativo (calculadas antes pra ir no resumo do topo).
+  const analise = new Map<string, { dG: number; dR: number; dV: number; novo: boolean; sug: Sugestao }>()
+  for (const c of ativos) {
+    const b = base?.porChave[c.chave]
+    const dG = c.gasto_hoje - (b?.gasto ?? 0)
+    const dR = c.receita_hoje - (b?.receita ?? 0)
+    const dV = (c.vendas_hoje ?? 0) - (b?.vendas ?? 0)
+    const roasHora = base && b && dG >= GASTO_MIN_HORA ? dR / dG : null
+    const roasDia = c.gasto_hoje > 0 ? c.receita_hoje / c.gasto_hoje : 0
+    analise.set(c.chave, { dG, dR, dV, novo: !!base && !b, sug: sugerir(roasDia, c.gasto_hoje, roasHora) })
+  }
+  const contaSug = (s: Sugestao) => [...analise.values()].filter((a) => a.sug === s).length
+
   const linhas: string[] = []
   linhas.push(`⏱️ *Saúde dos criativos e VSL — ${hora}*`)
   linhas.push(`_Hoje até agora (líquido)_`)
@@ -209,6 +250,9 @@ export async function montarSaude(gravar: boolean): Promise<string> {
       dR += c.receita_hoje - (b?.receita ?? 0)
     }
     linhas.push(`🕐 Desde ${base.hora}: +${fmtCurto(dG)} gasto · +${fmtCurto(dR)} receita${dG > 0 ? ` (ROAS ${roasFmt(dR / dG)})` : ''}`)
+  }
+  if (ativos.length > 0) {
+    linhas.push(`💡 Meta ROAS ${ROAS_META}x: ⬆️ ${contaSug('subir')} subir · ➡️ ${contaSug('manter')} manter · ⬇️ ${contaSug('reduzir')} reduzir · ⏳ ${contaSug('aguardar')} aguardar`)
   }
 
   for (const v of vslRes.vsls) {
@@ -241,19 +285,19 @@ export async function montarSaude(gravar: boolean): Promise<string> {
     linhas.push(`${farol(c.roas_hoje, c.gasto_hoje, c.receita_hoje, roasMin)} *${nomeCurto(c)}*`)
     linhas.push(`ROAS hoje *${roasFmt(c.roas_hoje)}* (7d ${roasFmt(c.roas_7d)}) · ${vendas} ${vendas === 1 ? 'venda' : 'vendas'}`)
     linhas.push(`${fmtCurto(c.gasto_hoje)} → ${fmtCurto(c.receita_hoje)} · ${sinal(lucro)}${fmtCurto(Math.abs(lucro))}`)
+    const a = analise.get(c.chave)!
     if (base) {
-      const b = base.porChave[c.chave]
-      const dG = c.gasto_hoje - (b?.gasto ?? 0)
-      const dR = c.receita_hoje - (b?.receita ?? 0)
-      const dV = vendas - (b?.vendas ?? 0)
-      if (!b) linhas.push(`🆕 começou a gastar depois das ${base.hora}`)
-      else if (dG >= 1 || dR > 0) linhas.push(`↳ desde ${base.hora}: +${fmtCurto(dG)} gasto · +${fmtCurto(dR)} receita (${dV} ${dV === 1 ? 'venda' : 'vendas'})`)
+      const roasH = a.dG >= 1 ? ` · ROAS ${roasFmt(a.dR / a.dG)}` : ''
+      if (a.novo) linhas.push(`🆕 começou a gastar depois das ${base.hora}`)
+      else if (a.dG >= 1 || a.dR > 0) linhas.push(`↳ desde ${base.hora}: +${fmtCurto(a.dG)} gasto · +${fmtCurto(a.dR)} receita (${a.dV} ${a.dV === 1 ? 'venda' : 'vendas'})${roasH}`)
       else linhas.push(`↳ desde ${base.hora}: parado`)
     }
+    linhas.push(`💡 ${SUGESTAO_TXT[a.sug]}`)
   }
 
   linhas.push('')
   linhas.push(`🟢 ROAS ≥ ${roasMin.toFixed(2)}x · 🟡 entre 1x e ${roasMin.toFixed(2)}x · 🔴 prejuízo · ⚪ cedo pra dizer`)
+  linhas.push(`💡 Sugestão = ROAS do dia × ROAS da última hora contra a meta de ${ROAS_META}x. Venda da Hotmart pode chegar com atraso — confira a tendência de 2–3 horas antes de mexer. Em campanha com vários criativos, o orçamento é da campanha inteira.`)
   if (!syncOk) linhas.push('⚠️ Não consegui atualizar o gasto da Meta agora — o gasto pode estar atrasado.')
 
   if (gravar) {
