@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase-server'
-import { alterarCampanha, type Alteracao } from '@/lib/meta-campanhas'
+import { alterarObjeto, type Alteracao } from '@/lib/meta-campanhas'
 
-// Liga/pausa ou muda o orçamento de uma campanha na Meta. Exige sessão (o
+// Liga/pausa ou muda o orçamento de uma campanha, conjunto ou anúncio na Meta
+// (body.nivel). Exige sessão (o
 // middleware já barra /api sem login; aqui pego o e-mail pro histórico).
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (body?.acao !== 'status' && body?.acao !== 'orcamento') return NextResponse.json({ error: 'ação inválida' }, { status: 400 })
 
   try {
-    return NextResponse.json(await alterarCampanha(id, body, user.email ?? null))
+    return NextResponse.json(await alterarObjeto(id, body, user.email ?? null))
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })
   }

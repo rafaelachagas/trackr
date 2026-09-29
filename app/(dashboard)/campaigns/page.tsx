@@ -3,38 +3,69 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
 import { formatarMoeda } from '@/lib/utils'
-import { Pencil, RefreshCw, Search, History, ChevronDown, AlertTriangle, X, Check } from 'lucide-react'
-import SeletorPeriodoVturb, { rangeDoPreset, type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
+import { Pencil, RefreshCw, History, ChevronDown, AlertTriangle, X, Check, Archive, FolderOpen, LayoutGrid, RectangleVertical, CircleCheck, Info } from 'lucide-react'
 import FacebookIcon from '@/components/ui/FacebookIcon'
-import type { CampanhaLinha, LogCampanha } from '@/lib/meta-campanhas'
+import SeletorPeriodoVturb, { rangeDoPreset, type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
+import type { LinhaMeta, LogCampanha, Nivel } from '@/lib/meta-campanhas'
 
-type FiltroStatus = 'ativas' | 'com_gasto' | 'pausadas' | 'todas'
-type SortKey = 'gasto' | 'receita' | 'vendas' | 'upsells' | 'roas' | 'lucro' | 'cpa' | 'orcamento' | 'nome'
+type FiltroStatus = 'qualquer' | 'ativas' | 'pausadas' | 'com_gasto'
+type SortKey = 'nome' | 'orcamento' | 'atualizado' | 'vendas' | 'upsells' | 'cpa' | 'gasto' | 'receita' | 'lucro' | 'roas' | 'margem' | 'roi' | 'ic' | 'cpi' | 'cpc' | 'ctr'
+type Dados = { linhas: LinhaMeta[]; semCampanha: { vendas: number; receita: number }; produtos: string[]; atualizado_em: string; log: LogCampanha[] }
+type NivelSel = 'conta' | 'campanha' | 'conjunto'
+
+const ABAS: { nivel: Nivel; label: string; singular: string; plural: string; de: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { nivel: 'conta', label: 'Contas', singular: 'Conta', plural: 'contas', de: 'da Conta', icon: Archive },
+  { nivel: 'campanha', label: 'Campanhas', singular: 'Campanha', plural: 'campanhas', de: 'da Campanha', icon: FolderOpen },
+  { nivel: 'conjunto', label: 'Conjuntos', singular: 'Conjunto', plural: 'conjuntos', de: 'do Conjunto', icon: LayoutGrid },
+  { nivel: 'anuncio', label: 'Anúncios', singular: 'Anúncio', plural: 'anúncios', de: 'do Anúncio', icon: RectangleVertical },
+]
 
 // Mudança pendente de confirmação (toggle ou orçamento).
 type Pendente =
-  | { tipo: 'status'; c: CampanhaLinha; para: 'ACTIVE' | 'PAUSED' }
-  | { tipo: 'orcamento'; c: CampanhaLinha; para: number }
+  | { tipo: 'status'; l: LinhaMeta; para: 'ACTIVE' | 'PAUSED' }
+  | { tipo: 'orcamento'; l: LinhaMeta; para: number }
 
-const roas = (c: CampanhaLinha) => (c.gasto > 0 ? c.receita / c.gasto : null)
-const cpa = (c: CampanhaLinha) => (c.vendas > 0 ? c.gasto / c.vendas : null)
+// —— Métricas derivadas ——
+const lucro = (l: LinhaMeta) => l.receita - l.gasto
+const roas = (l: LinhaMeta) => (l.gasto > 0 ? l.receita / l.gasto : null)
+const cpa = (l: LinhaMeta) => (l.vendas > 0 ? l.gasto / l.vendas : null)
+const margem = (l: LinhaMeta) => (l.receita > 0 ? (lucro(l) / l.receita) * 100 : null)
+const roi = (l: LinhaMeta) => (l.gasto > 0 ? (lucro(l) / l.gasto) * 100 : null)
+const cpi = (l: LinhaMeta) => (l.ic > 0 ? l.gasto / l.ic : null)
+const cpc = (l: LinhaMeta) => (l.cliques > 0 ? l.gasto / l.cliques : null)
+const ctr = (l: LinhaMeta) => (l.impressoes > 0 ? (l.cliques / l.impressoes) * 100 : null)
+
 const fmtMoedaConta = (v: number, moeda: string) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: moeda || 'BRL' }).format(v)
+const pctFmt = (v: number | null) => (v == null ? 'N/A' : `${v.toFixed(2).replace('.', ',')}%`)
 
-export default function CampanhasPage() {
+function tempoRelativo(iso: string | null, agora: number): string {
+  if (!iso) return 'N/A'
+  const s = Math.max(0, (agora - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'agora mesmo'
+  if (s < 3600) return `há ${Math.floor(s / 60)} min`
+  if (s < 86400) return `há ${Math.floor(s / 3600)} h`
+  const d = Math.floor(s / 86400)
+  return d === 1 ? 'há 1 dia' : `há ${d} dias`
+}
+
+export default function MetaPage() {
   const { isPrivate } = useDashboard()
+  const [aba, setAba] = useState<Nivel>('campanha')
   const [range, setRange] = useState<RangePeriodo>(() => rangeDoPreset('Hoje'))
-  const [campanhas, setCampanhas] = useState<CampanhaLinha[]>([])
-  const [semCampanha, setSemCampanha] = useState({ vendas: 0, receita: 0 })
-  const [log, setLog] = useState<LogCampanha[]>([])
-  const [loading, setLoading] = useState(true)
+  const [produto, setProduto] = useState('')
+  const [cache, setCache] = useState<Record<string, Dados>>({})
+  const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [agora, setAgora] = useState(() => Date.now())
 
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('ativas')
   const [conta, setConta] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('gasto')
   const [sortDesc, setSortDesc] = useState(true)
+  // Marcar linhas numa aba filtra as abas de baixo (como na Utmify).
+  const [sel, setSel] = useState<Record<NivelSel, Set<string>>>({ conta: new Set(), campanha: new Set(), conjunto: new Set() })
 
   const [editando, setEditando] = useState<string | null>(null)
   const [valorEdit, setValorEdit] = useState('')
@@ -43,48 +74,72 @@ export default function CampanhasPage() {
   const [aviso, setAviso] = useState<{ ok: boolean; msg: string } | null>(null)
   const [verLog, setVerLog] = useState(false)
 
-  const carregar = useCallback(() => {
-    if (!range.ini || !range.fim) return
+  const chaveCache = `${aba}|${range.ini}|${range.fim}|${produto}`
+  const dados = cache[chaveCache]
+
+  const buscar = useCallback((chave: string, nivel: Nivel, r: RangePeriodo, prod: string) => {
     setLoading(true)
     setErro(null)
-    fetch(`/api/campanhas?${new URLSearchParams({ d_inicio: range.ini, d_fim: range.fim })}`, { cache: 'no-store' })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({ error: 'Resposta inválida do servidor' }))
-        if (!r.ok) throw new Error(j.error || `Erro ${r.status}`)
-        setCampanhas(j.campanhas ?? [])
-        setSemCampanha(j.semCampanha ?? { vendas: 0, receita: 0 })
-        setLog(j.log ?? [])
+    const params = new URLSearchParams({ nivel, d_inicio: r.ini, d_fim: r.fim })
+    if (prod) params.set('produto', prod)
+    fetch(`/api/campanhas?${params}`, { cache: 'no-store' })
+      .then(async (res) => {
+        const j = await res.json().catch(() => ({ error: 'Resposta inválida do servidor' }))
+        if (!res.ok) throw new Error(j.error || `Erro ${res.status}`)
+        setCache((c) => ({ ...c, [chave]: j }))
       })
       .catch((e) => setErro(e.message))
       .finally(() => setLoading(false))
-  }, [range])
+  }, [])
 
-  useEffect(() => { carregar() }, [carregar])
+  // Cada aba/período/produto é buscado uma vez e fica em cache até "Atualizar".
+  useEffect(() => {
+    if (!range.ini || !range.fim || cache[chaveCache]) return
+    buscar(chaveCache, aba, range, produto)
+  }, [chaveCache, aba, range, produto, cache, buscar])
 
+  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 30000); return () => clearInterval(t) }, [])
+
+  function atualizar() {
+    // As outras abas ficam velhas também: limpa o cache e recarrega a atual.
+    setCache({})
+    buscar(chaveCache, aba, range, produto)
+  }
+
+  const linhas = useMemo(() => dados?.linhas ?? [], [dados])
   const contas = useMemo(() => {
     const m = new Map<string, string>()
-    for (const c of campanhas) m.set(c.conta_id, c.conta_nome)
+    for (const l of linhas) m.set(l.conta_id, l.conta_nome)
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]))
-  }, [campanhas])
+  }, [linhas])
 
   const visiveis = useMemo(() => {
     const q = busca.trim().toLowerCase()
-    const lista = campanhas.filter((c) => {
-      if (conta && c.conta_id !== conta) return false
-      if (q && !c.nome.toLowerCase().includes(q)) return false
-      if (filtroStatus === 'ativas') return c.status === 'ACTIVE'
-      if (filtroStatus === 'pausadas') return c.status !== 'ACTIVE'
-      if (filtroStatus === 'com_gasto') return c.gasto >= 0.01 || c.receita > 0
+    const lista = linhas.filter((l) => {
+      if (conta && l.conta_id !== conta) return false
+      if (sel.conta.size && aba !== 'conta' && !sel.conta.has(l.conta_id)) return false
+      if (sel.campanha.size && (aba === 'conjunto' || aba === 'anuncio') && !sel.campanha.has(l.campanha_id ?? '')) return false
+      if (sel.conjunto.size && aba === 'anuncio' && !sel.conjunto.has(l.conjunto_id ?? '')) return false
+      if (q && !l.nome.toLowerCase().includes(q)) return false
+      if (filtroStatus === 'ativas') return l.status === 'ACTIVE'
+      if (filtroStatus === 'pausadas') return l.status !== 'ACTIVE'
+      if (filtroStatus === 'com_gasto') return l.gasto >= 0.01 || l.receita > 0
       return true
     })
-    const val = (c: CampanhaLinha): number | string => {
+    const val = (l: LinhaMeta): number | string => {
       switch (sortKey) {
-        case 'nome': return c.nome.toLowerCase()
-        case 'roas': return roas(c) ?? -1
-        case 'cpa': return cpa(c) ?? Infinity
-        case 'lucro': return c.receita - c.gasto
-        case 'orcamento': return c.orcamento ?? -1
-        default: return c[sortKey]
+        case 'nome': return l.nome.toLowerCase()
+        case 'orcamento': return l.orcamento ?? -1
+        case 'atualizado': return l.atualizado_em ? new Date(l.atualizado_em).getTime() : 0
+        case 'cpa': return cpa(l) ?? Infinity
+        case 'cpi': return cpi(l) ?? Infinity
+        case 'cpc': return cpc(l) ?? Infinity
+        case 'lucro': return lucro(l)
+        case 'roas': return roas(l) ?? -1
+        case 'margem': return margem(l) ?? -Infinity
+        case 'roi': return roi(l) ?? -Infinity
+        case 'ctr': return ctr(l) ?? -1
+        default: return l[sortKey]
       }
     }
     return [...lista].sort((a, b) => {
@@ -92,51 +147,80 @@ export default function CampanhasPage() {
       const cmp = typeof va === 'string' ? va.localeCompare(vb as string) : (va as number) - (vb as number)
       return sortDesc ? -cmp : cmp
     })
-  }, [campanhas, busca, filtroStatus, conta, sortKey, sortDesc])
+  }, [linhas, busca, filtroStatus, conta, sortKey, sortDesc, sel, aba])
 
-  const tot = useMemo(() => {
-    const g = visiveis.reduce((a, c) => a + c.gasto, 0)
-    const r = visiveis.reduce((a, c) => a + c.receita, 0)
-    const v = visiveis.reduce((a, c) => a + c.vendas, 0)
-    const u = visiveis.reduce((a, c) => a + c.upsells, 0)
-    const ru = visiveis.reduce((a, c) => a + c.receita_upsell, 0)
-    const orc = visiveis.filter((c) => c.orcamento_tipo === 'diario' && c.moeda === 'BRL' && c.status === 'ACTIVE').reduce((a, c) => a + (c.orcamento ?? 0), 0)
-    return { g, r, v, u, ru, orc, roas: g > 0 ? r / g : null, cpa: v > 0 ? g / v : null, lucro: r - g }
-  }, [visiveis])
+  // Total como uma "linha" pra reusar as mesmas fórmulas.
+  const total: LinhaMeta = useMemo(() => {
+    const t = { gasto: 0, impressoes: 0, cliques: 0, ic: 0, vendas: 0, upsells: 0, receita: 0, receita_upsell: 0, orcamento: 0 }
+    for (const l of visiveis) {
+      t.gasto += l.gasto; t.impressoes += l.impressoes; t.cliques += l.cliques; t.ic += l.ic
+      t.vendas += l.vendas; t.upsells += l.upsells; t.receita += l.receita; t.receita_upsell += l.receita_upsell
+      if (l.orcamento_tipo === 'diario' && l.moeda === 'BRL' && l.status === 'ACTIVE') t.orcamento += l.orcamento ?? 0
+    }
+    return {
+      id: 'total', nivel: aba, nome: '', conta_id: '', conta_nome: '', moeda: 'BRL', campanha_id: null, campanha_nome: null,
+      conjunto_id: null, conjunto_nome: null, fase: null, status: '', status_efetivo: '', orcamento_tipo: 'diario', atualizado_em: null, ...t,
+    }
+  }, [visiveis, aba])
 
   function ordenar(k: SortKey) {
     if (k === sortKey) setSortDesc((d) => !d)
-    else { setSortKey(k); setSortDesc(k !== 'nome' && k !== 'cpa') }
+    else { setSortKey(k); setSortDesc(!['nome', 'cpa', 'cpi', 'cpc'].includes(k)) }
   }
 
-  function abrirEdicao(c: CampanhaLinha) {
-    setEditando(c.id)
-    setValorEdit(c.orcamento != null ? String(c.orcamento).replace('.', ',') : '')
+  const selecionaveis = aba !== 'anuncio'
+  function alternarSel(l: LinhaMeta) {
+    if (!selecionaveis) return
+    const n = aba as NivelSel
+    setSel((s) => {
+      const novo = new Set(s[n])
+      if (novo.has(l.id)) novo.delete(l.id); else novo.add(l.id)
+      return { ...s, [n]: novo }
+    })
+  }
+  const todosMarcados = selecionaveis && visiveis.length > 0 && visiveis.every((l) => sel[aba as NivelSel].has(l.id))
+  function alternarTodos() {
+    if (!selecionaveis) return
+    const n = aba as NivelSel
+    setSel((s) => ({ ...s, [n]: todosMarcados ? new Set<string>() : new Set(visiveis.map((l) => l.id)) }))
   }
 
-  function pedirOrcamento(c: CampanhaLinha) {
+  function abrirEdicao(l: LinhaMeta) {
+    setEditando(l.id)
+    setValorEdit(l.orcamento != null ? String(l.orcamento).replace('.', ',') : '')
+  }
+
+  function pedirOrcamento(l: LinhaMeta) {
     const v = parseFloat(valorEdit.replace(/\./g, '').replace(',', '.'))
     if (!(v > 0)) { setAviso({ ok: false, msg: 'Digite um orçamento válido.' }); return }
-    if (c.orcamento != null && Math.abs(v - c.orcamento) < 0.005) { setEditando(null); return }
-    setPendente({ tipo: 'orcamento', c, para: Math.round(v * 100) / 100 })
+    if (l.orcamento != null && Math.abs(v - l.orcamento) < 0.005) { setEditando(null); return }
+    setPendente({ tipo: 'orcamento', l, para: Math.round(v * 100) / 100 })
   }
 
   async function confirmar() {
     if (!pendente) return
     setSalvando(true)
-    const { c } = pendente
-    const body = pendente.tipo === 'status' ? { acao: 'status', status: pendente.para } : { acao: 'orcamento', valor: pendente.para }
+    const { l } = pendente
+    const body = pendente.tipo === 'status'
+      ? { acao: 'status', nivel: l.nivel, status: pendente.para }
+      : { acao: 'orcamento', nivel: l.nivel, valor: pendente.para }
     try {
-      const r = await fetch(`/api/campanhas/${c.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const r = await fetch(`/api/campanhas/${l.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || `Erro ${r.status}`)
-      setCampanhas((lista) => lista.map((x) => x.id !== c.id ? x
-        : pendente.tipo === 'status' ? { ...x, status: pendente.para, status_efetivo: pendente.para }
-        : { ...x, orcamento: pendente.para }))
-      if (j.log) setLog((l) => [j.log, ...l])
+      const agoraIso = new Date().toISOString()
+      setCache((c) => {
+        const d = c[chaveCache]
+        if (!d) return c
+        const linhasNovas = d.linhas.map((x) => x.id !== l.id ? x
+          : pendente.tipo === 'status' ? { ...x, status: pendente.para, status_efetivo: pendente.para, atualizado_em: agoraIso }
+          : { ...x, orcamento: pendente.para, atualizado_em: agoraIso })
+        // Só a aba atual fica: pausar um pai muda o status efetivo dos filhos nas outras.
+        return { [chaveCache]: { ...d, linhas: linhasNovas, log: j.log ? [j.log, ...d.log] : d.log } }
+      })
       setAviso({ ok: true, msg: pendente.tipo === 'status'
-        ? `${pendente.para === 'ACTIVE' ? 'Ativada' : 'Pausada'}: ${c.nome}`
-        : `Orçamento atualizado: ${c.nome} → ${fmtMoedaConta(pendente.para, c.moeda)}` })
+        ? `${pendente.para === 'ACTIVE' ? 'Ativado' : 'Pausado'}: ${l.nome}`
+        : `Orçamento atualizado: ${l.nome} → ${fmtMoedaConta(pendente.para, l.moeda)}` })
       setEditando(null)
     } catch (e) {
       setAviso({ ok: false, msg: `A Meta recusou: ${e instanceof Error ? e.message : e}` })
@@ -153,158 +237,207 @@ export default function CampanhasPage() {
   }, [aviso])
 
   const priv = (n: React.ReactNode) => (isPrivate ? '••' : n)
-  const brl = (v: number | null) => (v == null ? '—' : priv(formatarMoeda(v)))
-  const roasFmt = (r: number | null) => (r == null ? '—' : `${r.toFixed(2)}x`)
+  const brl = (v: number | null) => (v == null ? 'N/A' : priv(formatarMoeda(v)))
+  const roasFmt = (r: number | null) => (r == null ? 'N/A' : `${r.toFixed(2)}x`)
   const corRoas = (r: number | null) => r == null ? 'text-muted-foreground' : r >= 2 ? 'text-emerald-400' : r >= 1 ? 'text-amber-300' : 'text-rose-400'
+  const corSinal = (v: number | null) => v == null ? 'text-muted-foreground' : v >= 0 ? 'text-emerald-400' : 'text-rose-400'
+
+  const abaInfo = ABAS.find((a) => a.nivel === aba)!
+  const semCampanha = dados?.semCampanha ?? { vendas: 0, receita: 0 }
+  const log = dados?.log ?? []
+  const totalSel = sel.conta.size + sel.campanha.size + sel.conjunto.size
 
   return (
-    <div className="pt-9 pb-12 space-y-6 max-w-[1400px] mx-auto w-full text-foreground px-4 sm:px-6 lg:px-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <FacebookIcon className="w-5 h-5 text-primary" />
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Meta</h1>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">Gasto ao vivo da Meta · só vendas aprovadas (líquido), pela atribuição do sck · mudanças vão direto pra Meta</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={carregar} disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border border-border text-foreground/90 hover:bg-accent/60 transition disabled:opacity-50">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
-          </button>
-          <SeletorPeriodoVturb range={range} onChange={setRange} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Resumo label="Gasto" valor={brl(tot.g)} sub={`${visiveis.length} campanhas`} cor="text-amber-400" />
-        <Resumo label="Faturamento" valor={brl(tot.r)} sub={isPrivate ? '••' : `${tot.v} front · ${tot.u} upsell${tot.v > 0 ? ` (${((tot.u / tot.v) * 100).toFixed(0)}%)` : ''} · upsell ${formatarMoeda(tot.ru)}`} cor="text-sky-400" />
-        <Resumo label="ROAS" valor={roasFmt(tot.roas)} sub={`CPA ${tot.cpa == null ? '—' : isPrivate ? '••' : formatarMoeda(tot.cpa)}`} cor={corRoas(tot.roas)} />
-        <Resumo label="Lucro" valor={brl(tot.lucro)} sub={tot.orc > 0 ? `orçamento diário ativo ${isPrivate ? '••' : formatarMoeda(tot.orc)}` : ' '} cor={tot.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'} />
+    <div className="pt-9 pb-12 space-y-5 max-w-[1600px] mx-auto w-full text-foreground px-4 sm:px-6 lg:px-8">
+      <div className="flex items-center gap-2">
+        <FacebookIcon className="w-5 h-5 text-primary" />
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Meta</h1>
       </div>
 
       <div className="rounded-2xl overflow-hidden bg-card border border-border">
-        <div className="flex flex-wrap items-end gap-3 px-5 py-4 border-b border-border">
-          <label className="flex-1 min-w-[200px]">
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Nome da campanha</span>
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Filtrar por nome"
-                className="w-full pl-8 pr-3 py-2 rounded-lg bg-background border border-border text-sm outline-none focus:border-primary" />
-            </div>
+        {/* Abas */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-background/40 border-b border-border">
+          {ABAS.map(({ nivel, label, icon: Icon }) => {
+            const ativa = aba === nivel
+            const marcados = nivel !== 'anuncio' ? sel[nivel].size : 0
+            return (
+              <button key={nivel} onClick={() => { setAba(nivel); setEditando(null) }}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition border-b-2 ${ativa ? 'bg-card text-primary border-primary' : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-accent/40'}`}>
+                <Icon className="w-4 h-4" /> {label}
+                {marcados > 0 && <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary">{marcados} selec.</span>}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Barra de ações */}
+        <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-b border-border">
+          {semCampanha.vendas === 0 ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              <CircleCheck className="w-3.5 h-3.5" /> Todas as vendas trackeadas
+            </span>
+          ) : (
+            <span title="Vendas de anúncio cujo sck não bate com nenhuma campanha"
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+              <AlertTriangle className="w-3.5 h-3.5" /> {priv(semCampanha.vendas)} venda(s) sem campanha · {brl(semCampanha.receita)}
+            </span>
+          )}
+          {totalSel > 0 && (
+            <button onClick={() => setSel({ conta: new Set(), campanha: new Set(), conjunto: new Set() })}
+              className="text-[11px] text-muted-foreground hover:text-foreground underline">limpar seleção</button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">Atualizado {dados ? tempoRelativo(dados.atualizado_em, agora) : '…'}</span>
+            <button onClick={atualizar} disabled={loading}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 transition disabled:opacity-60">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+            </button>
+          </div>
+        </div>
+
+        {/* Filtros */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 px-5 py-4 border-b border-border">
+          <label>
+            <span className="block text-[11px] text-muted-foreground mb-1">Nome {abaInfo.de}</span>
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Filtrar por nome"
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm outline-none focus:border-primary" />
           </label>
-          <Select label="Status" value={filtroStatus} onChange={(v) => setFiltroStatus(v as FiltroStatus)}
-            opcoes={[['ativas', 'Ativas'], ['com_gasto', 'Com gasto no período'], ['pausadas', 'Pausadas'], ['todas', 'Todas']]} />
-          <Select label="Conta de anúncio" value={conta} onChange={setConta}
-            opcoes={[['', 'Todas'], ...contas.map(([id, nome]) => [id, nome] as [string, string])]} />
+          <Select label={`Status ${abaInfo.de}`} value={filtroStatus} onChange={(v) => setFiltroStatus(v as FiltroStatus)}
+            opcoes={[['qualquer', 'Qualquer'], ['ativas', 'Ativos'], ['pausadas', 'Pausados'], ['com_gasto', 'Com gasto no período']]} />
+          <div>
+            <span className="block text-[11px] text-muted-foreground mb-1">Período de Visualização</span>
+            <SeletorPeriodoVturb range={range} onChange={setRange} />
+          </div>
+          <Select label="Conta de Anúncio" value={conta} onChange={setConta}
+            opcoes={[['', 'Qualquer'], ...contas.map(([id, nome]) => [id, nome] as [string, string])]} />
+          <Select label="Produto" value={produto} onChange={setProduto}
+            opcoes={[['', 'Qualquer'], ...(dados?.produtos ?? []).map((p) => [p, p] as [string, string])]} />
         </div>
 
         {erro ? (
           <div className="flex items-center gap-2 text-rose-400 text-sm px-5 py-10 justify-center"><AlertTriangle className="w-4 h-4" /> {erro}</div>
-        ) : loading && campanhas.length === 0 ? (
+        ) : !dados ? (
           <div className="flex items-center justify-center py-24">
             <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
           </div>
-        ) : visiveis.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground text-sm">Nenhuma campanha com esses filtros.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[1150px]">
+            <table className="w-full text-[13px] min-w-[1900px]">
               <thead>
-                <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  <th className="text-left px-4 py-3 w-[70px]">Status</th>
-                  <Th k="nome" atual={sortKey} desc={sortDesc} onClick={ordenar} left>Campanha</Th>
-                  <Th k="orcamento" atual={sortKey} desc={sortDesc} onClick={ordenar}>Orçamento</Th>
-                  <Th k="vendas" atual={sortKey} desc={sortDesc} onClick={ordenar}>Vendas</Th>
-                  <Th k="upsells" atual={sortKey} desc={sortDesc} onClick={ordenar}>Upsell</Th>
-                  <Th k="cpa" atual={sortKey} desc={sortDesc} onClick={ordenar}>CPA</Th>
-                  <Th k="gasto" atual={sortKey} desc={sortDesc} onClick={ordenar}>Gasto</Th>
-                  <Th k="receita" atual={sortKey} desc={sortDesc} onClick={ordenar}>Faturamento</Th>
-                  <Th k="roas" atual={sortKey} desc={sortDesc} onClick={ordenar}>ROAS</Th>
-                  <Th k="lucro" atual={sortKey} desc={sortDesc} onClick={ordenar}>Lucro</Th>
+                <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-background/40">
+                  <th className="px-3 py-3 w-[36px]">
+                    {selecionaveis && <input type="checkbox" checked={todosMarcados} onChange={alternarTodos} className="accent-[#2E90FA]" />}
+                  </th>
+                  <th className="text-left px-3 py-3 w-[70px]">Status</th>
+                  <Th k="nome" s={[sortKey, sortDesc]} on={ordenar} left>{abaInfo.singular}</Th>
+                  <Th k="orcamento" s={[sortKey, sortDesc]} on={ordenar}>Orçamento</Th>
+                  <Th k="atualizado" s={[sortKey, sortDesc]} on={ordenar} dica="Última alteração feita na Meta (status, orçamento, edição)">Últ. atualização</Th>
+                  <Th k="vendas" s={[sortKey, sortDesc]} on={ordenar} dica="Vendas front aprovadas">Vendas</Th>
+                  <Th k="upsells" s={[sortKey, sortDesc]} on={ordenar} dica="Upsells aprovados (herdam o anúncio do front pelo e-mail)">Upsell</Th>
+                  <Th k="cpa" s={[sortKey, sortDesc]} on={ordenar} dica="Gastos ÷ vendas front">CPA</Th>
+                  <Th k="gasto" s={[sortKey, sortDesc]} on={ordenar}>Gastos</Th>
+                  <Th k="receita" s={[sortKey, sortDesc]} on={ordenar} dica="Líquido, front + upsell, só vendas aprovadas">Faturamento</Th>
+                  <Th k="lucro" s={[sortKey, sortDesc]} on={ordenar} dica="Faturamento − gastos">Lucro</Th>
+                  <Th k="roas" s={[sortKey, sortDesc]} on={ordenar} dica="Faturamento ÷ gastos">ROAS</Th>
+                  <Th k="margem" s={[sortKey, sortDesc]} on={ordenar} dica="Lucro ÷ faturamento">Margem</Th>
+                  <Th k="roi" s={[sortKey, sortDesc]} on={ordenar} dica="Lucro ÷ gastos">ROI</Th>
+                  <Th k="ic" s={[sortKey, sortDesc]} on={ordenar} dica="Initiate checkout (pixel)">IC</Th>
+                  <Th k="cpi" s={[sortKey, sortDesc]} on={ordenar} dica="Custo por initiate checkout">CPI</Th>
+                  <Th k="cpc" s={[sortKey, sortDesc]} on={ordenar} dica="Custo por clique no link">CPC</Th>
+                  <Th k="ctr" s={[sortKey, sortDesc]} on={ordenar} dica="Cliques no link ÷ impressões">CTR</Th>
                 </tr>
               </thead>
               <tbody>
-                {visiveis.map((c) => {
-                  const r = roas(c)
-                  const lucro = c.receita - c.gasto
-                  const ligada = c.status === 'ACTIVE'
-                  const efetivoDiferente = ligada && c.status_efetivo !== 'ACTIVE'
+                {visiveis.length === 0 && (
+                  <tr><td colSpan={18} className="text-center py-16 text-muted-foreground text-sm">Nada com esses filtros.</td></tr>
+                )}
+                {visiveis.map((l) => {
+                  const r = roas(l)
+                  const ligado = l.status === 'ACTIVE'
+                  const efetivoDiferente = ligado && l.status_efetivo !== 'ACTIVE'
+                  const marcado = selecionaveis && sel[aba as NivelSel].has(l.id)
+                  const temNumero = l.gasto > 0 || l.receita > 0
                   return (
-                    <tr key={c.id} className="border-t border-border hover:bg-accent/20 align-middle">
-                      <td className="px-4 py-3">
-                        <Toggle ligado={ligada} onClick={() => setPendente({ tipo: 'status', c, para: ligada ? 'PAUSED' : 'ACTIVE' })} />
+                    <tr key={l.id} className={`border-t border-border hover:bg-accent/20 align-middle ${marcado ? 'bg-primary/5' : ''}`}>
+                      <td className="px-3 py-3 text-center">
+                        {selecionaveis && <input type="checkbox" checked={marcado} onChange={() => alternarSel(l)} className="accent-[#2E90FA]" />}
                       </td>
-                      <td className="px-4 py-3 max-w-[380px]">
-                        <div className="font-semibold break-words leading-snug">{c.nome}</div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">
-                          {c.conta_nome}{c.moeda !== 'BRL' ? ` · ${c.moeda}` : ''}
-                          {efetivoDiferente && <span className="ml-2 text-amber-300">{c.status_efetivo.replace(/_/g, ' ').toLowerCase()}</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {c.orcamento_tipo === 'conjunto' ? (
-                          <span className="text-[11px] text-muted-foreground" title="Orçamento nos conjuntos (ABO) — edite pelo gerenciador">nos conjuntos</span>
-                        ) : editando === c.id ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => setValorEdit(String(Math.round((c.orcamento ?? 0) * 0.8 * 100) / 100).replace('.', ','))}
-                              className="text-[10px] font-bold px-1.5 py-1 rounded border border-border hover:bg-accent/60">−20%</button>
-                            <input autoFocus value={valorEdit} onChange={(e) => setValorEdit(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') pedirOrcamento(c); if (e.key === 'Escape') setEditando(null) }}
-                              className="w-24 px-2 py-1 rounded-md bg-background border border-primary text-right text-sm tabular-nums outline-none" />
-                            <button onClick={() => setValorEdit(String(Math.round((c.orcamento ?? 0) * 1.2 * 100) / 100).replace('.', ','))}
-                              className="text-[10px] font-bold px-1.5 py-1 rounded border border-border hover:bg-accent/60">+20%</button>
-                            <button onClick={() => pedirOrcamento(c)} className="p-1 rounded text-emerald-400 hover:bg-accent/60" title="Salvar"><Check className="w-4 h-4" /></button>
-                            <button onClick={() => setEditando(null)} className="p-1 rounded text-muted-foreground hover:bg-accent/60" title="Cancelar"><X className="w-4 h-4" /></button>
-                          </div>
+                      <td className="px-3 py-3">
+                        {aba === 'conta' ? (
+                          <span className={`text-[11px] font-semibold ${ligado ? 'text-emerald-400' : 'text-rose-400'}`}>{ligado ? 'Ativa' : 'Desativada'}</span>
                         ) : (
-                          <button onClick={() => abrirEdicao(c)} className="group inline-flex items-center gap-1.5 justify-end">
-                            <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-40 group-hover:opacity-100 transition" />
-                            <span className="text-left">
-                              <span className="block tabular-nums font-semibold">{c.orcamento != null ? priv(fmtMoedaConta(c.orcamento, c.moeda)) : '—'}</span>
-                              <span className="block text-[10px] text-muted-foreground text-right">{c.orcamento_tipo === 'diario' ? 'Diário' : 'Vitalício'}</span>
-                            </span>
-                          </button>
+                          <Toggle ligado={ligado} onClick={() => setPendente({ tipo: 'status', l, para: ligado ? 'PAUSED' : 'ACTIVE' })} />
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums">{priv(c.vendas)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {c.upsells > 0 ? (
+                      <td className="px-3 py-3 max-w-[340px]">
+                        <div className="font-semibold break-words leading-snug">{l.nome}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5 break-words">
+                          {aba === 'anuncio' && l.conjunto_nome ? `${l.conjunto_nome} · ` : ''}
+                          {aba === 'conjunto' && l.campanha_nome ? `${l.campanha_nome} · ` : ''}
+                          {aba !== 'conta' && l.conta_nome}{l.moeda !== 'BRL' ? ` · ${l.moeda}` : ''}
+                          {efetivoDiferente && <span className="ml-2 text-amber-300">{l.status_efetivo.replace(/_/g, ' ').toLowerCase()}</span>}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <Orcamento l={l} editando={editando === l.id} valor={valorEdit} setValor={setValorEdit}
+                          onAbrir={() => abrirEdicao(l)} onSalvar={() => pedirOrcamento(l)} onCancelar={() => setEditando(null)} priv={priv} />
+                      </td>
+                      <td className="px-3 py-3 text-right text-muted-foreground whitespace-nowrap" title={l.atualizado_em ? new Date(l.atualizado_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : ''}>
+                        {tempoRelativo(l.atualizado_em, agora)}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">{priv(l.vendas)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {l.upsells > 0 ? (
                           <>
-                            <div className="text-cyan-400 font-semibold leading-tight">{priv(c.upsells)}{c.vendas > 0 && <span className="text-[10px] text-muted-foreground font-normal"> · {((c.upsells / c.vendas) * 100).toFixed(0)}%</span>}</div>
-                            <div className="text-[10px] text-muted-foreground leading-tight">{brl(c.receita_upsell)}</div>
+                            <div className="text-cyan-400 font-semibold leading-tight">{priv(l.upsells)}{l.vendas > 0 && <span className="text-[10px] text-muted-foreground font-normal"> · {((l.upsells / l.vendas) * 100).toFixed(0)}%</span>}</div>
+                            <div className="text-[10px] text-muted-foreground leading-tight">{brl(l.receita_upsell)}</div>
                           </>
                         ) : <span className="text-muted-foreground">0</span>}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums">{brl(cpa(c))}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{brl(c.gasto)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{brl(c.receita)}</td>
-                      <td className={`px-4 py-3 text-right tabular-nums font-bold ${corRoas(r)}`}>{roasFmt(r)}</td>
-                      <td className={`px-4 py-3 text-right tabular-nums font-semibold ${lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{c.gasto > 0 || c.receita > 0 ? brl(lucro) : '—'}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{brl(cpa(l))}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{brl(l.gasto)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{brl(l.receita)}</td>
+                      <td className={`px-3 py-3 text-right tabular-nums font-semibold ${temNumero ? corSinal(lucro(l)) : 'text-muted-foreground'}`}>{temNumero ? brl(lucro(l)) : 'N/A'}</td>
+                      <td className={`px-3 py-3 text-right tabular-nums font-bold ${corRoas(r)}`}>{roasFmt(r)}</td>
+                      <td className={`px-3 py-3 text-right tabular-nums ${corSinal(margem(l))}`}>{priv(pctFmt(margem(l)))}</td>
+                      <td className={`px-3 py-3 text-right tabular-nums ${corSinal(roi(l))}`}>{priv(pctFmt(roi(l)))}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{priv(l.ic)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{brl(cpi(l))}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{brl(cpc(l))}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{pctFmt(ctr(l))}</td>
                     </tr>
                   )
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-border bg-accent/20 font-bold text-[12px]">
-                  <td className="px-4 py-3 text-muted-foreground">—</td>
-                  <td className="px-4 py-3 uppercase tracking-wider">{visiveis.length} campanhas</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{tot.orc > 0 ? brl(tot.orc) : '—'}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{priv(tot.v)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-cyan-400">{priv(tot.u)}{tot.v > 0 && !isPrivate ? <span className="text-[10px] text-muted-foreground font-normal"> · {((tot.u / tot.v) * 100).toFixed(0)}%</span> : null}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{brl(tot.cpa)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{brl(tot.g)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{brl(tot.r)}</td>
-                  <td className={`px-4 py-3 text-right tabular-nums ${corRoas(tot.roas)}`}>{roasFmt(tot.roas)}</td>
-                  <td className={`px-4 py-3 text-right tabular-nums ${tot.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{brl(tot.lucro)}</td>
+                <tr className="border-t-2 border-border bg-background/40 font-bold text-[12px]">
+                  <td className="px-3 py-3 text-muted-foreground text-center">N/A</td>
+                  <td className="px-3 py-3 text-muted-foreground">N/A</td>
+                  <td className="px-3 py-3 uppercase tracking-wider">{visiveis.length} {abaInfo.plural}</td>
+                  <td className="px-3 py-3 text-right tabular-nums" title="Soma dos orçamentos diários ativos em BRL">{total.orcamento ? brl(total.orcamento) : 'N/A'}</td>
+                  <td className="px-3 py-3 text-right text-muted-foreground">N/A</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{priv(total.vendas)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums text-cyan-400">{priv(total.upsells)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{brl(cpa(total))}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{brl(total.gasto)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{brl(total.receita)}</td>
+                  <td className={`px-3 py-3 text-right tabular-nums ${corSinal(lucro(total))}`}>{brl(lucro(total))}</td>
+                  <td className={`px-3 py-3 text-right tabular-nums ${corRoas(roas(total))}`}>{roasFmt(roas(total))}</td>
+                  <td className={`px-3 py-3 text-right tabular-nums ${corSinal(margem(total))}`}>{priv(pctFmt(margem(total)))}</td>
+                  <td className={`px-3 py-3 text-right tabular-nums ${corSinal(roi(total))}`}>{priv(pctFmt(roi(total)))}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{priv(total.ic)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{brl(cpi(total))}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{brl(cpc(total))}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{pctFmt(ctr(total))}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
         )}
-        {semCampanha.vendas > 0 && (
-          <div className="px-5 py-2.5 border-t border-border text-[11px] text-muted-foreground">
-            {priv(semCampanha.vendas)} venda(s) de anúncio ({brl(semCampanha.receita)}) não casaram com nenhuma campanha — o nome no sck não bate com nenhuma campanha listada.
+        {(aba === 'conjunto' || aba === 'anuncio') && dados && (
+          <div className="px-5 py-2.5 border-t border-border text-[11px] text-muted-foreground flex items-start gap-1.5">
+            <Info className="w-3.5 h-3.5 mt-px shrink-0" />
+            Aqui aparecem os {abaInfo.plural} rodando e os pausados que gastaram no período. Venda de campanha que não gastou no período (ex.: upsell de um front de outro dia) conta só nas abas Campanhas e Contas.
           </div>
         )}
       </div>
@@ -320,15 +453,16 @@ export default function CampanhasPage() {
           <div className="border-t border-border divide-y divide-border">
             {log.length === 0 ? (
               <div className="px-5 py-6 text-sm text-muted-foreground">Nenhuma alteração feita pelo painel ainda.</div>
-            ) : log.map((l, i) => (
+            ) : log.map((x, i) => (
               <div key={i} className="px-5 py-2.5 text-sm flex flex-wrap gap-x-3 gap-y-0.5">
-                <span className="text-muted-foreground tabular-nums">{new Date(l.em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                <span className="font-semibold break-words">{l.campanha}</span>
+                <span className="text-muted-foreground tabular-nums">{new Date(x.em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                {x.nivel && x.nivel !== 'campanha' && <span className="text-[10px] uppercase tracking-wider text-muted-foreground self-center">{x.nivel}</span>}
+                <span className="font-semibold break-words">{x.campanha}</span>
                 <span className="text-muted-foreground">
-                  {l.acao === 'status'
-                    ? (l.para === 'ACTIVE' ? 'ativou' : 'pausou')
-                    : `orçamento ${typeof l.de === 'number' ? formatarMoeda(l.de) : '—'} → ${formatarMoeda(Number(l.para))}`}
-                  {l.por ? ` · ${l.por}` : ''}
+                  {x.acao === 'status'
+                    ? (x.para === 'ACTIVE' ? 'ativou' : 'pausou')
+                    : `orçamento ${typeof x.de === 'number' ? formatarMoeda(x.de) : '—'} → ${formatarMoeda(Number(x.para))}`}
+                  {x.por ? ` · ${x.por}` : ''}
                 </span>
               </div>
             ))}
@@ -349,22 +483,58 @@ export default function CampanhasPage() {
   )
 }
 
+function Orcamento({ l, editando, valor, setValor, onAbrir, onSalvar, onCancelar, priv }: {
+  l: LinhaMeta; editando: boolean; valor: string; setValor: (v: string) => void
+  onAbrir: () => void; onSalvar: () => void; onCancelar: () => void; priv: (n: React.ReactNode) => React.ReactNode
+}) {
+  if (l.nivel === 'conta' || l.nivel === 'anuncio' || l.orcamento_tipo == null) return <span className="text-muted-foreground">N/A</span>
+  if (l.orcamento_tipo === 'conjuntos') return <span className="text-[11px] text-muted-foreground" title="Orçamento nos conjuntos (ABO) — edite na aba Conjuntos">nos conjuntos</span>
+  if (l.orcamento_tipo === 'campanha') return <span className="text-[11px] text-muted-foreground" title="Orçamento na campanha (CBO) — edite na aba Campanhas">na campanha</span>
+  if (editando) {
+    const base = l.orcamento ?? 0
+    const ajustar = (f: number) => setValor(String(Math.round(base * f * 100) / 100).replace('.', ','))
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <button onClick={() => ajustar(0.8)} className="text-[10px] font-bold px-1.5 py-1 rounded border border-border hover:bg-accent/60">−20%</button>
+        <input autoFocus value={valor} onChange={(e) => setValor(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') onSalvar(); if (e.key === 'Escape') onCancelar() }}
+          className="w-24 px-2 py-1 rounded-md bg-background border border-primary text-right text-sm tabular-nums outline-none" />
+        <button onClick={() => ajustar(1.2)} className="text-[10px] font-bold px-1.5 py-1 rounded border border-border hover:bg-accent/60">+20%</button>
+        <button onClick={onSalvar} className="p-1 rounded text-emerald-400 hover:bg-accent/60" title="Salvar"><Check className="w-4 h-4" /></button>
+        <button onClick={onCancelar} className="p-1 rounded text-muted-foreground hover:bg-accent/60" title="Cancelar"><X className="w-4 h-4" /></button>
+      </div>
+    )
+  }
+  return (
+    <button onClick={onAbrir} className="group inline-flex items-center gap-1.5 justify-end">
+      <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-40 group-hover:opacity-100 transition" />
+      <span className="text-left">
+        <span className="block tabular-nums font-semibold">{l.orcamento != null ? priv(fmtMoedaConta(l.orcamento, l.moeda)) : 'N/A'}</span>
+        <span className="block text-[10px] text-muted-foreground text-right">{l.orcamento_tipo === 'diario' ? 'Diário' : 'Vitalício'}</span>
+      </span>
+    </button>
+  )
+}
+
 function Confirmacao({ pendente, salvando, onCancelar, onConfirmar }: { pendente: Pendente; salvando: boolean; onCancelar: () => void; onConfirmar: () => void }) {
-  const { c } = pendente
+  const { l } = pendente
+  const oQue = l.nivel === 'anuncio' ? 'anúncio' : l.nivel === 'conjunto' ? 'conjunto' : 'campanha'
+  const fem = l.nivel === 'campanha'
   let titulo: string
   let detalhe: React.ReactNode
   let alerta: string | null = null
   if (pendente.tipo === 'status') {
-    titulo = pendente.para === 'PAUSED' ? 'Pausar campanha?' : 'Ativar campanha?'
-    detalhe = <>A campanha vai ser <b>{pendente.para === 'PAUSED' ? 'pausada' : 'ativada'}</b> na Meta agora.</>
+    const pausar = pendente.para === 'PAUSED'
+    titulo = `${pausar ? 'Pausar' : 'Ativar'} ${oQue}?`
+    detalhe = <>{fem ? 'A' : 'O'} {oQue} vai ser <b>{pausar ? (fem ? 'pausada' : 'pausado') : (fem ? 'ativada' : 'ativado')}</b> na Meta agora.</>
   } else {
-    const de = c.orcamento ?? 0
+    const de = l.orcamento ?? 0
     const varPct = de > 0 ? ((pendente.para - de) / de) * 100 : null
     titulo = 'Alterar orçamento?'
     detalhe = (
       <>
-        {c.orcamento_tipo === 'diario' ? 'Orçamento diário' : 'Orçamento vitalício'}:{' '}
-        <b className="tabular-nums">{fmtMoedaConta(de, c.moeda)}</b> → <b className="tabular-nums">{fmtMoedaConta(pendente.para, c.moeda)}</b>
+        {l.orcamento_tipo === 'diario' ? 'Orçamento diário' : 'Orçamento vitalício'}:{' '}
+        <b className="tabular-nums">{fmtMoedaConta(de, l.moeda)}</b> → <b className="tabular-nums">{fmtMoedaConta(pendente.para, l.moeda)}</b>
         {varPct != null && <span className={varPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}> ({varPct >= 0 ? '+' : ''}{varPct.toFixed(0)}%)</span>}
       </>
     )
@@ -374,8 +544,8 @@ function Confirmacao({ pendente, salvando, onCancelar, onConfirmar }: { pendente
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onCancelar}>
       <div className="w-full max-w-md rounded-2xl bg-card border border-border p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-lg font-bold">{titulo}</h3>
-        <p className="text-sm font-semibold mt-3 break-words">{c.nome}</p>
-        <p className="text-xs text-muted-foreground">{c.conta_nome}</p>
+        <p className="text-sm font-semibold mt-3 break-words">{l.nome}</p>
+        <p className="text-xs text-muted-foreground">{l.conta_nome}</p>
         <p className="text-sm mt-3">{detalhe}</p>
         {alerta && <p className="text-xs text-amber-300 mt-3 flex items-start gap-1.5"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{alerta}</p>}
         <div className="flex justify-end gap-2 mt-5">
@@ -399,12 +569,12 @@ function Toggle({ ligado, onClick }: { ligado: boolean; onClick: () => void }) {
   )
 }
 
-function Th({ k, atual, desc, onClick, left, children }: { k: SortKey; atual: SortKey; desc: boolean; onClick: (k: SortKey) => void; left?: boolean; children: React.ReactNode }) {
-  const ativo = k === atual
+function Th({ k, s, on, left, dica, children }: { k: SortKey; s: [SortKey, boolean]; on: (k: SortKey) => void; left?: boolean; dica?: string; children: React.ReactNode }) {
+  const ativo = k === s[0]
   return (
-    <th className={`px-4 py-3 ${left ? 'text-left' : 'text-right'}`}>
-      <button onClick={() => onClick(k)} className={`uppercase tracking-widest font-bold ${ativo ? 'text-primary' : 'hover:text-foreground'}`}>
-        {children}{ativo ? (desc ? ' ↓' : ' ↑') : ''}
+    <th className={`px-3 py-3 whitespace-nowrap ${left ? 'text-left' : 'text-right'}`}>
+      <button onClick={() => on(k)} title={dica} className={`inline-flex items-center gap-1 uppercase tracking-widest font-bold ${ativo ? 'text-primary' : 'hover:text-foreground'}`}>
+        {children}{dica && <Info className="w-3 h-3 opacity-60" />}{ativo ? (s[1] ? ' ↓' : ' ↑') : ''}
       </button>
     </th>
   )
@@ -412,22 +582,12 @@ function Th({ k, atual, desc, onClick, left, children }: { k: SortKey; atual: So
 
 function Select({ label, value, onChange, opcoes }: { label: string; value: string; onChange: (v: string) => void; opcoes: [string, string][] }) {
   return (
-    <label className="min-w-[170px]">
-      <span className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">{label}</span>
+    <label>
+      <span className="block text-[11px] text-muted-foreground mb-1">{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm outline-none focus:border-primary">
         {opcoes.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>
     </label>
-  )
-}
-
-function Resumo({ label, valor, sub, cor }: { label: string; valor: React.ReactNode; sub: React.ReactNode; cor: string }) {
-  return (
-    <div className="bg-card border border-border rounded-2xl p-4">
-      <div className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{label}</div>
-      <div className={`text-2xl font-bold tabular-nums ${cor}`}>{valor}</div>
-      <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>
-    </div>
   )
 }
