@@ -11,7 +11,6 @@ import {
   LogOut,
   ShoppingBag,
   ShoppingCart,
-  Megaphone,
   PlusCircle,
   Film,
   Database,
@@ -38,6 +37,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
+import FacebookIcon from '@/components/ui/FacebookIcon'
 import { useEditorDashboard } from '@/context/EditorDashboardContext'
 import { CATALOGO_METRICAS, type BlocoId, type CategoriaBloco } from '@/lib/metricas-overview'
 import { BrandIcon } from '@/components/ui/BrandLogo'
@@ -45,7 +45,7 @@ import { BrandIcon } from '@/components/ui/BrandLogo'
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/sales', label: 'Vendas', icon: ShoppingCart },
-  { href: '/campaigns', label: 'Campanhas', icon: Megaphone },
+  { href: '/campaigns', label: 'Meta', icon: FacebookIcon },
   // Criativos e Lançamento (cadastro MANUAL) ocultos — hoje criativos e
   // lançamentos são puxados automaticamente. As páginas seguem acessíveis por
   // URL, só saíram do menu.

@@ -3,8 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDashboard } from '@/context/DashboardContext'
 import { formatarMoeda } from '@/lib/utils'
-import { Megaphone, Pencil, RefreshCw, Search, History, ChevronDown, AlertTriangle, X, Check } from 'lucide-react'
+import { Pencil, RefreshCw, Search, History, ChevronDown, AlertTriangle, X, Check } from 'lucide-react'
 import SeletorPeriodoVturb, { rangeDoPreset, type RangePeriodo } from '@/components/ui/SeletorPeriodoVturb'
+import FacebookIcon from '@/components/ui/FacebookIcon'
 import type { CampanhaLinha, LogCampanha } from '@/lib/meta-campanhas'
 
 type FiltroStatus = 'ativas' | 'com_gasto' | 'pausadas' | 'todas'
@@ -161,8 +162,8 @@ export default function CampanhasPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <Megaphone className="w-5 h-5 text-primary" />
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Campanhas</h1>
+            <FacebookIcon className="w-5 h-5 text-primary" />
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Meta</h1>
           </div>
           <p className="text-xs text-muted-foreground mt-1">Gasto ao vivo da Meta · só vendas aprovadas (líquido), pela atribuição do sck · mudanças vão direto pra Meta</p>
         </div>

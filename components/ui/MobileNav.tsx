@@ -5,19 +5,20 @@ import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, TrendingUp, Settings, Zap, RefreshCw, LogOut,
-  ShoppingBag, ShoppingCart, Megaphone, PlusCircle, Film, Database, DollarSign,
+  ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
   Wrench, Binoculars, Search, Video, MonitorPlay, Brain, FolderSearch, Wand2, Bell,
   Filter as FilterIcon, FileText, Clapperboard, ListTodo, Tags, AudioLines,
 } from 'lucide-react'
 import { useDashboard } from '@/context/DashboardContext'
+import FacebookIcon from '@/components/ui/FacebookIcon'
 import { useAuth } from '@/hooks/useAuth'
 import BrandLogo from '@/components/ui/BrandLogo'
 
 const navigation = [
   { href: '/overview', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/sales', label: 'Vendas', icon: ShoppingCart },
-  { href: '/campaigns', label: 'Campanhas', icon: Megaphone },
+  { href: '/campaigns', label: 'Meta', icon: FacebookIcon },
   // Criativos e Lançamento (cadastro manual) ocultos — puxados automaticamente.
   { href: '/sales-creatives', label: 'Vendas × Criativos', icon: Trophy },
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
