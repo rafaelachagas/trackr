@@ -162,7 +162,7 @@ export default function CampanhasPage() {
             <Megaphone className="w-5 h-5 text-primary" />
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Campanhas</h1>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Gasto ao vivo da Meta · vendas líquidas pela atribuição do sck · mudanças vão direto pra Meta</p>
+          <p className="text-xs text-muted-foreground mt-1">Gasto ao vivo da Meta · só vendas aprovadas (líquido), pela atribuição do sck · mudanças vão direto pra Meta</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={carregar} disabled={loading}

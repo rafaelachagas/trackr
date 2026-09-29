@@ -154,6 +154,9 @@ async function fetchAll<T>(build: (from: number, to: number) => any): Promise<T[
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
+    // ?so_aprovadas=1 → só status 'approved' (sem reclamada/reembolso/chargeback).
+    // Usado pela saúde horária do WhatsApp; a tabela do framework segue com STATUS_RECEITA.
+    const statusReceita = searchParams.get('so_aprovadas') === '1' ? ['approved'] : STATUS_RECEITA
     const agora = toZonedTime(new Date(), TIMEZONE)
 
     // FORMATO FRAMEWORK: janelas de DIAS FECHADOS terminando ONTEM. HOJE (dia
@@ -220,7 +223,7 @@ export async function GET(request: Request) {
         supabaseAdmin
           .from('vendas')
           .select('criativo, sck, fase, campanha, valor, valor_liquido, data, tipo')
-          .in('status', STATUS_RECEITA)
+          .in('status', statusReceita)
           .not('transaction_id', 'like', 'manual_%')
           .not('criativo', 'is', null)
           .gte('data', `${d7}T00:00:00`)

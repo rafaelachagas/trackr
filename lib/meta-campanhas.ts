@@ -19,8 +19,9 @@ const META = 'https://graph.facebook.com/v25.0'
 const LOG_CHAVE = 'campanhas_log'
 const LOG_MAX = 500
 
-// Mesmos status que contam como venda no performance-v2.
-const STATUS_RECEITA = ['approved', 'reclamada', 'refunded', 'chargeback']
+// Só vendas APROVADAS (pedido do Isaías): reclamada/reembolso/chargeback ficam
+// fora, diferente da tabela do framework (performance-v2), que conta as quatro.
+const STATUS_RECEITA = ['approved']
 
 export type OrcamentoTipo = 'diario' | 'vitalicio' | 'conjunto'
 

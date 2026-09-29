@@ -201,7 +201,7 @@ export async function montarSaude(gravar: boolean): Promise<string> {
   // 2) ROAS de hoje por criativo + VSLs (em paralelo, os dois depois da sync:
   // o play rate real da VSL usa as LP views da Meta).
   const [r, vslRes] = await Promise.all([
-    fetchTimeout(`${SITE_URL}/api/performance-v2`, { cache: 'no-store', headers: headerInterno() }, 60000),
+    fetchTimeout(`${SITE_URL}/api/performance-v2?so_aprovadas=1`, { cache: 'no-store', headers: headerInterno() }, 60000),
     buscarVsls(dia),
   ])
   const perf = await r.json()
@@ -237,7 +237,7 @@ export async function montarSaude(gravar: boolean): Promise<string> {
 
   const linhas: string[] = []
   linhas.push(`⏱️ *Saúde dos criativos e VSL — ${hora}*`)
-  linhas.push(`_Hoje até agora (líquido)_`)
+  linhas.push(`_Hoje até agora · líquido · só vendas aprovadas_`)
   linhas.push('')
   linhas.push(`💸 Gasto ${fmt(totG)} · 💰 Receita ${fmt(totR)}`)
   linhas.push(`📊 ROAS *${roasFmt(totRoas)}* · ${totL >= 0 ? '✅' : '❌'} Lucro ${sinal(totL)}${fmt(Math.abs(totL))} · 🛒 ${totV} vendas`)
