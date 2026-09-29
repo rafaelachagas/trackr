@@ -14,7 +14,7 @@ import {
   textoParaResumo, registrarMensagem, responderResumoAgora,
 } from '@/lib/whatsapp-resumo'
 import {
-  CHAVE_SAUDE, CMD_SAUDE_START, CMD_SAUDE_STOP, CMD_SAUDE_AGORA, HORA_INICIO, HORA_FIM, DONO_SAUDE, responderSaudeAgora,
+  CHAVE_SAUDE, CMD_SAUDE_START, CMD_SAUDE_STOP, CMD_SAUDE_AGORA, DONO_SAUDE, responderSaudeAgora,
 } from '@/lib/whatsapp-saude'
 import { ligarNoGrupo, desligarNoGrupo, grupoLigado, enviarTexto } from '@/lib/whatsapp-grupos'
 
@@ -439,7 +439,7 @@ export async function POST(request: NextRequest) {
       if (!EVOLUTION_APIKEY) return NextResponse.json({ error: 'apikey ausente' }, { status: 500 })
       if (texto === CMD_SAUDE_START) {
         await enviarTexto(DONO_SAUDE, await ligarNoGrupo(CHAVE_SAUDE, DONO_SAUDE, data?.pushName)
-          ? `⏱️ Saúde dos criativos *ligada*. Te mando o ROAS de hoje de cada criativo toda hora cheia, das ${HORA_INICIO}h às ${HORA_FIM}h.\n/saude manda agora · /stop-saude desliga`
+          ? `⏱️ Saúde dos criativos *ligada*. Te mando o ROAS de hoje de cada criativo toda hora cheia, 24h por dia, todo dia.\n/saude manda agora · /stop-saude desliga`
           : '⏱️ A saúde dos criativos já está ligada.')
       } else if (texto === CMD_SAUDE_STOP) {
         await enviarTexto(DONO_SAUDE, await desligarNoGrupo(CHAVE_SAUDE, DONO_SAUDE)

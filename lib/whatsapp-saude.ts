@@ -35,11 +35,6 @@ export const DONO_SAUDE = '5547991273266'
 const CHAVE_SNAPSHOT = 'whatsapp_saude_snapshot'
 const TZ = 'America/Sao_Paulo'
 
-// Janela de envio automático (hora de SP). Fora dela o cron não faz nada —
-// de madrugada o gasto é pequeno e ninguém mexe em verba.
-export const HORA_INICIO = 8
-export const HORA_FIM = 23
-
 // Criativo só entra no painel se gastou pelo menos isso hoje (tira resto de centavos).
 const GASTO_MIN_HOJE = 5
 
@@ -282,9 +277,8 @@ export async function responderSaudeAgora(): Promise<void> {
 }
 
 /** Cron de hora em hora: manda o painel no privado do dono, se ligado. */
-export async function enviarSaudeHoraria(forcar = false): Promise<{ status: string; grupos?: { grupo: string; status: string }[] }> {
-  const horaSP = toZonedTime(new Date(), TZ).getHours()
-  if (!forcar && (horaSP < HORA_INICIO || horaSP > HORA_FIM)) return { status: `fora da janela (${horaSP}h)` }
+// Roda 24h por dia, todo dia (pedido do Isaías) — sem janela de horário.
+export async function enviarSaudeHoraria(): Promise<{ status: string; grupos?: { grupo: string; status: string }[] }> {
 
   // Mesmo que alguém grave outro destino na config, só o dono recebe.
   const grupos = (await gruposLigados(CHAVE_SAUDE)).filter((g) => g.jid === DONO_SAUDE)
