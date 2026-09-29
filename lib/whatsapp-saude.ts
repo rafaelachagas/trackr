@@ -6,6 +6,10 @@
 //   /stop-saude  → desliga
 //   /saude       → manda o painel agora
 //
+// Depois do total do dia vem a saúde de cada VSL ativa (tabela vsls), com os
+// números de HOJE da VTurb via /api/vturb/vsl-stats (views, play rate, retenção
+// no pitch, conversão). VTurb fora do ar não derruba o painel — só some o bloco.
+//
 // Fonte: /api/performance-v2 (colunas de TEMPO REAL: gasto_hoje/receita_hoje/roas_hoje).
 // Antes de ler, força uma sync curta da Meta (dias=1) — o sync diário só roda de
 // madrugada, então sem isso o gasto de hoje ficaria parado.
@@ -51,10 +55,24 @@ type CriativoHoje = {
   roas_7d: number | null
 }
 
+type VslHoje = {
+  id: string
+  nome: string
+  views: number
+  plays: number
+  playRate: number
+  retencaoPitch: number
+  retencao1Min: number
+  conversoes: number
+  taxaConversao: number
+  playRateReal: number | null
+}
+
 type Snapshot = {
   dia: string
   hora: string
   porChave: Record<string, { gasto: number; receita: number; vendas: number }>
+  porVsl?: Record<string, { views: number; plays: number; conversoes: number }>
 }
 
 function headerInterno(): Record<string, string> {
@@ -78,6 +96,42 @@ function farol(roas: number | null, gasto: number, receita: number, roasMin: num
 function nomeCurto(c: CriativoHoje): string {
   const nome = c.ad_name.length > 42 ? `${c.ad_name.slice(0, 41)}…` : c.ad_name
   return c.fase ? `${nome} · ${c.fase}` : nome
+}
+
+const num = (v: number) => Math.round(v).toLocaleString('pt-BR')
+const pct = (v: number | null) => (v == null ? '—' : `${v.toFixed(1).replace('.', ',')}%`)
+
+// Números de HOJE de cada VSL ativa. Falha de uma VSL não derruba as outras.
+async function buscarVsls(dia: string): Promise<{ vsls: VslHoje[]; erro: boolean }> {
+  const { data } = await supabaseAdmin.from('vsls').select('id, nome').eq('ativo', true)
+  let erro = false
+  const vsls = await Promise.all((data ?? []).map(async (v): Promise<VslHoje | null> => {
+    try {
+      const r = await fetchTimeout(
+        `${SITE_URL}/api/vturb/vsl-stats?vsl_id=${v.id}&d_inicio=${dia}&d_fim=${dia}`,
+        { cache: 'no-store', headers: headerInterno() }, 50000)
+      const j = await r.json()
+      if (!r.ok || !j?.ok) throw new Error(j?.error || String(r.status))
+      const t = j.vturb ?? {}
+      return {
+        id: v.id,
+        nome: v.nome,
+        views: Number(t.visualizacoesUnicas) || 0,
+        plays: Number(t.playsUnicos) || 0,
+        playRate: Number(t.playRateVturb) || 0,
+        retencaoPitch: Number(t.retencaoPitch) || 0,
+        retencao1Min: Number(t.retencao1Min) || 0,
+        conversoes: Number(t.conversoes) || 0,
+        taxaConversao: Number(t.taxaConversao) || 0,
+        playRateReal: j.real?.playRateReal ?? null,
+      }
+    } catch (e) {
+      console.error('[whatsapp/saude] vsl', v.nome, e)
+      erro = true
+      return null
+    }
+  }))
+  return { vsls: vsls.filter((v): v is VslHoje => v != null), erro }
 }
 
 async function lerSnapshot(): Promise<Snapshot | null> {
@@ -121,8 +175,12 @@ export async function montarSaude(gravar: boolean): Promise<string> {
     syncOk = false
   }
 
-  // 2) ROAS de hoje por criativo.
-  const r = await fetchTimeout(`${SITE_URL}/api/performance-v2`, { cache: 'no-store', headers: headerInterno() }, 60000)
+  // 2) ROAS de hoje por criativo + VSLs (em paralelo, os dois depois da sync:
+  // o play rate real da VSL usa as LP views da Meta).
+  const [r, vslRes] = await Promise.all([
+    fetchTimeout(`${SITE_URL}/api/performance-v2`, { cache: 'no-store', headers: headerInterno() }, 60000),
+    buscarVsls(dia),
+  ])
   const perf = await r.json()
   if (!r.ok || !Array.isArray(perf?.criativos)) throw new Error(perf?.error || `performance-v2 respondeu ${r.status}`)
   const roasMin: number = Number(perf.roasMinimo) || 1
@@ -142,7 +200,7 @@ export async function montarSaude(gravar: boolean): Promise<string> {
   const totL = totR - totG
 
   const linhas: string[] = []
-  linhas.push(`⏱️ *Saúde dos criativos — ${hora}*`)
+  linhas.push(`⏱️ *Saúde dos criativos e VSL — ${hora}*`)
   linhas.push(`_Hoje até agora (líquido)_`)
   linhas.push('')
   linhas.push(`💸 Gasto ${fmt(totG)} · 💰 Receita ${fmt(totR)}`)
@@ -157,6 +215,24 @@ export async function montarSaude(gravar: boolean): Promise<string> {
     }
     linhas.push(`🕐 Desde ${base.hora}: +${fmtCurto(dG)} gasto · +${fmtCurto(dR)} receita${dG > 0 ? ` (ROAS ${roasFmt(dR / dG)})` : ''}`)
   }
+
+  for (const v of vslRes.vsls) {
+    linhas.push('')
+    linhas.push(`🎬 *${v.nome}* (VTurb, hoje)`)
+    linhas.push(`👀 ${num(v.views)} views · ▶️ ${num(v.plays)} plays · Play rate ${pct(v.playRate)}${v.playRateReal != null ? ` (real ${pct(v.playRateReal)})` : ''}`)
+    linhas.push(`🎯 Retenção 1 min ${pct(v.retencao1Min)} · no pitch ${pct(v.retencaoPitch)}`)
+    linhas.push(`🛒 ${num(v.conversoes)} ${v.conversoes === 1 ? 'conversão' : 'conversões'} · ${pct(v.taxaConversao)} dos plays`)
+    const b = base?.porVsl?.[v.id]
+    if (base && b) {
+      const dViews = v.views - b.views
+      const dPlays = v.plays - b.plays
+      const dConv = v.conversoes - b.conversoes
+      const prHora = dViews > 0 ? ` · play rate ${pct((dPlays / dViews) * 100)}` : ''
+      const convHora = dPlays > 0 ? ` · conv. ${pct((dConv / dPlays) * 100)}` : ''
+      linhas.push(`↳ desde ${base.hora}: +${num(dViews)} views · +${num(dPlays)} plays · +${num(dConv)} conv.${prHora}${convHora}`)
+    }
+  }
+  if (vslRes.erro) linhas.push('⚠️ Não consegui ler a VTurb de alguma VSL agora.')
 
   if (ativos.length === 0) {
     linhas.push('')
@@ -188,7 +264,9 @@ export async function montarSaude(gravar: boolean): Promise<string> {
   if (gravar) {
     const porChave: Snapshot['porChave'] = {}
     for (const c of todos) porChave[c.chave] = { gasto: c.gasto_hoje, receita: c.receita_hoje, vendas: c.vendas_hoje ?? 0 }
-    await salvarSnapshot({ dia, hora, porChave })
+    const porVsl: NonNullable<Snapshot['porVsl']> = {}
+    for (const v of vslRes.vsls) porVsl[v.id] = { views: v.views, plays: v.plays, conversoes: v.conversoes }
+    await salvarSnapshot({ dia, hora, porChave, porVsl })
   }
 
   return linhas.join('\n')
