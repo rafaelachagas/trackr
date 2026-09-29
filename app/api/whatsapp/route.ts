@@ -13,10 +13,15 @@ import {
   CHAVE_RESUMO, CMD_RESUMO_START, CMD_RESUMO_STOP, CMD_RESUMO_AGORA,
   textoParaResumo, registrarMensagem, responderResumoAgora,
 } from '@/lib/whatsapp-resumo'
+import {
+  CHAVE_SAUDE, CMD_SAUDE_START, CMD_SAUDE_STOP, CMD_SAUDE_AGORA, HORA_INICIO, HORA_FIM, DONO_SAUDE, responderSaudeAgora,
+} from '@/lib/whatsapp-saude'
 import { ligarNoGrupo, desligarNoGrupo, grupoLigado, enviarTexto } from '@/lib/whatsapp-grupos'
 
 // Funções de grupo ligadas por comando (fora do /relatorio configurável).
 const COMANDOS_GRUPO = [CMD_START, CMD_STOP, CMD_RESUMO_START, CMD_RESUMO_STOP, CMD_RESUMO_AGORA]
+// Saúde dos criativos: só no PRIVADO e só do dono (lib/whatsapp-saude).
+const COMANDOS_SAUDE = [CMD_SAUDE_START, CMD_SAUDE_STOP, CMD_SAUDE_AGORA]
 
 // 300: a transcrição de áudio roda depois da resposta (after) e pode levar minutos.
 export const maxDuration = 300
@@ -426,6 +431,24 @@ export async function POST(request: NextRequest) {
         after(() => transcreverAudio(data))
         return NextResponse.json({ ok: true, transcrevendo: remoteJid })
       }
+    }
+
+    // —— Saúde dos criativos (/start-saude, /saude...) — só no privado do dono ——
+    if (isDM && COMANDOS_SAUDE.includes(texto)) {
+      if (!mesmoNumero(DONO_SAUDE, remoteJid)) return NextResponse.json({ ignored: 'saude-nao-dono' })
+      if (!EVOLUTION_APIKEY) return NextResponse.json({ error: 'apikey ausente' }, { status: 500 })
+      if (texto === CMD_SAUDE_START) {
+        await enviarTexto(DONO_SAUDE, await ligarNoGrupo(CHAVE_SAUDE, DONO_SAUDE, data?.pushName)
+          ? `⏱️ Saúde dos criativos *ligada*. Te mando o ROAS de hoje de cada criativo toda hora cheia, das ${HORA_INICIO}h às ${HORA_FIM}h.\n/saude manda agora · /stop-saude desliga`
+          : '⏱️ A saúde dos criativos já está ligada.')
+      } else if (texto === CMD_SAUDE_STOP) {
+        await enviarTexto(DONO_SAUDE, await desligarNoGrupo(CHAVE_SAUDE, DONO_SAUDE)
+          ? '⏱️ Saúde dos criativos *desligada*.' : '⏱️ A saúde dos criativos já estava desligada.')
+      } else {
+        await enviarTexto(DONO_SAUDE, '⏱️ Atualizando o gasto da Meta e montando o painel...')
+        after(() => responderSaudeAgora())
+      }
+      return NextResponse.json({ ok: true, comando: texto })
     }
 
     // Resolve o "alvo" (grupo ou número) e checa se pode responder.

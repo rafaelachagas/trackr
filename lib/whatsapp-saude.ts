@@ -1,0 +1,226 @@
+// Saúde dos criativos de hora em hora pelo bot do WhatsApp (teste de intraday).
+// Vai SÓ no PRIVADO do Isaías (DONO_SAUDE) — nunca em grupo, nem pra outro número.
+// Os comandos abaixo só funcionam mandados por ele, no privado com o bot:
+//
+//   /start-saude → passa a receber, toda hora cheia, o ROAS de HOJE de cada criativo
+//   /stop-saude  → desliga
+//   /saude       → manda o painel agora
+//
+// Fonte: /api/performance-v2 (colunas de TEMPO REAL: gasto_hoje/receita_hoje/roas_hoje).
+// Antes de ler, força uma sync curta da Meta (dias=1) — o sync diário só roda de
+// madrugada, então sem isso o gasto de hoje ficaria parado.
+//
+// "Última hora" = diferença pro painel anterior, guardado em configuracoes
+// (CHAVE_SNAPSHOT). Primeiro painel do dia não tem comparação.
+
+import { toZonedTime } from 'date-fns-tz'
+import { format } from 'date-fns'
+import { supabaseAdmin } from '@/lib/supabase'
+import { formatarMoeda } from '@/lib/utils'
+import { SITE_URL } from '@/lib/whatsapp'
+import { gruposLigados, enviarTexto, fetchTimeout } from '@/lib/whatsapp-grupos'
+
+export const CHAVE_SAUDE = 'whatsapp_saude'
+export const CMD_SAUDE_START = '/start-saude'
+export const CMD_SAUDE_STOP = '/stop-saude'
+export const CMD_SAUDE_AGORA = '/saude'
+
+// Único destino permitido. A lista ligada (CHAVE_SAUDE) só guarda este número.
+export const DONO_SAUDE = '5547991273266'
+
+const CHAVE_SNAPSHOT = 'whatsapp_saude_snapshot'
+const TZ = 'America/Sao_Paulo'
+
+// Janela de envio automático (hora de SP). Fora dela o cron não faz nada —
+// de madrugada o gasto é pequeno e ninguém mexe em verba.
+export const HORA_INICIO = 8
+export const HORA_FIM = 23
+
+// Criativo só entra no painel se gastou pelo menos isso hoje (tira resto de centavos).
+const GASTO_MIN_HOJE = 5
+
+type CriativoHoje = {
+  chave: string
+  criativo: string
+  ad_name: string
+  fase: string | null
+  gasto_hoje: number
+  receita_hoje: number
+  vendas_hoje?: number
+  roas_hoje: number | null
+  roas_7d: number | null
+}
+
+type Snapshot = {
+  dia: string
+  hora: string
+  porChave: Record<string, { gasto: number; receita: number; vendas: number }>
+}
+
+function headerInterno(): Record<string, string> {
+  const s = process.env.CRON_SECRET
+  return s ? { authorization: `Bearer ${s}` } : {}
+}
+
+const fmt = (v: number) => formatarMoeda(v)
+const fmtCurto = (v: number) => formatarMoeda(v).replace(/,\d{2}$/, '')
+const roasFmt = (r: number | null) => (r == null ? '—' : `${r.toFixed(2)}x`)
+const sinal = (v: number) => (v >= 0 ? '+' : '−')
+
+function farol(roas: number | null, gasto: number, receita: number, roasMin: number): string {
+  if (receita <= 0) return gasto >= 50 ? '🔴' : '⚪'   // gastou pouco e não vendeu ainda: cedo pra julgar
+  if (roas == null) return '⚪'
+  if (roas >= roasMin && roas >= 1) return '🟢'
+  if (roas >= 1) return '🟡'
+  return '🔴'
+}
+
+function nomeCurto(c: CriativoHoje): string {
+  const nome = c.ad_name.length > 42 ? `${c.ad_name.slice(0, 41)}…` : c.ad_name
+  return c.fase ? `${nome} · ${c.fase}` : nome
+}
+
+async function lerSnapshot(): Promise<Snapshot | null> {
+  const { data } = await supabaseAdmin
+    .from('configuracoes').select('valor').eq('chave', CHAVE_SNAPSHOT).maybeSingle()
+  try {
+    const v = typeof data?.valor === 'string' ? JSON.parse(data.valor) : data?.valor
+    return v?.dia ? v : null
+  } catch {
+    return null
+  }
+}
+
+async function salvarSnapshot(snap: Snapshot) {
+  // configuracoes.org_id é NOT NULL: inserir chave nova sem ele falha calado.
+  const { data: org } = await supabaseAdmin
+    .from('organizations').select('id').order('created_at', { ascending: true }).limit(1).single()
+  const { error } = await supabaseAdmin.from('configuracoes').upsert(
+    { chave: CHAVE_SNAPSHOT, valor: JSON.stringify(snap), org_id: org?.id, updated_at: new Date().toISOString() },
+    { onConflict: 'chave' },
+  )
+  if (error) console.error('[whatsapp/saude] não salvou snapshot:', error.message)
+}
+
+/**
+ * Monta o painel. `gravar` = salva como base da próxima comparação (o cron grava;
+ * o /saude manual não, senão bagunça a "última hora" do cron seguinte).
+ */
+export async function montarSaude(gravar: boolean): Promise<string> {
+  const agora = toZonedTime(new Date(), TZ)
+  const dia = format(agora, 'yyyy-MM-dd')
+  const hora = format(agora, 'HH:mm')
+
+  // 1) Gasto de hoje fresco. dias=1 cobre ontem+hoje: na Vercel (UTC) depois das
+  // 21h de SP o "hoje" UTC já é amanhã, e dias=0 perderia o dia de SP.
+  let syncOk = true
+  try {
+    const r = await fetchTimeout(`${SITE_URL}/api/meta/sync?dias=1`, { method: 'POST', cache: 'no-store', headers: headerInterno() }, 120000)
+    syncOk = r.ok
+  } catch {
+    syncOk = false
+  }
+
+  // 2) ROAS de hoje por criativo.
+  const r = await fetchTimeout(`${SITE_URL}/api/performance-v2`, { cache: 'no-store', headers: headerInterno() }, 60000)
+  const perf = await r.json()
+  if (!r.ok || !Array.isArray(perf?.criativos)) throw new Error(perf?.error || `performance-v2 respondeu ${r.status}`)
+  const roasMin: number = Number(perf.roasMinimo) || 1
+
+  const todos: CriativoHoje[] = perf.criativos
+  const ativos = todos
+    .filter((c) => c.gasto_hoje >= GASTO_MIN_HOJE || c.receita_hoje > 0)
+    .sort((a, b) => b.gasto_hoje - a.gasto_hoje)
+
+  const anterior = await lerSnapshot()
+  const base = anterior && anterior.dia === dia ? anterior : null
+
+  const totG = ativos.reduce((a, c) => a + c.gasto_hoje, 0)
+  const totR = ativos.reduce((a, c) => a + c.receita_hoje, 0)
+  const totV = ativos.reduce((a, c) => a + (c.vendas_hoje ?? 0), 0)
+  const totRoas = totG > 0 ? totR / totG : null
+  const totL = totR - totG
+
+  const linhas: string[] = []
+  linhas.push(`⏱️ *Saúde dos criativos — ${hora}*`)
+  linhas.push(`_Hoje até agora (líquido)_`)
+  linhas.push('')
+  linhas.push(`💸 Gasto ${fmt(totG)} · 💰 Receita ${fmt(totR)}`)
+  linhas.push(`📊 ROAS *${roasFmt(totRoas)}* · ${totL >= 0 ? '✅' : '❌'} Lucro ${sinal(totL)}${fmt(Math.abs(totL))} · 🛒 ${totV} vendas`)
+
+  if (base) {
+    let dG = 0, dR = 0
+    for (const c of ativos) {
+      const b = base.porChave[c.chave]
+      dG += c.gasto_hoje - (b?.gasto ?? 0)
+      dR += c.receita_hoje - (b?.receita ?? 0)
+    }
+    linhas.push(`🕐 Desde ${base.hora}: +${fmtCurto(dG)} gasto · +${fmtCurto(dR)} receita${dG > 0 ? ` (ROAS ${roasFmt(dR / dG)})` : ''}`)
+  }
+
+  if (ativos.length === 0) {
+    linhas.push('')
+    linhas.push('Nenhum criativo gastou hoje ainda.')
+  }
+
+  for (const c of ativos) {
+    const lucro = c.receita_hoje - c.gasto_hoje
+    const vendas = c.vendas_hoje ?? 0
+    linhas.push('')
+    linhas.push(`${farol(c.roas_hoje, c.gasto_hoje, c.receita_hoje, roasMin)} *${nomeCurto(c)}*`)
+    linhas.push(`ROAS hoje *${roasFmt(c.roas_hoje)}* (7d ${roasFmt(c.roas_7d)}) · ${vendas} ${vendas === 1 ? 'venda' : 'vendas'}`)
+    linhas.push(`${fmtCurto(c.gasto_hoje)} → ${fmtCurto(c.receita_hoje)} · ${sinal(lucro)}${fmtCurto(Math.abs(lucro))}`)
+    if (base) {
+      const b = base.porChave[c.chave]
+      const dG = c.gasto_hoje - (b?.gasto ?? 0)
+      const dR = c.receita_hoje - (b?.receita ?? 0)
+      const dV = vendas - (b?.vendas ?? 0)
+      if (!b) linhas.push(`🆕 começou a gastar depois das ${base.hora}`)
+      else if (dG >= 1 || dR > 0) linhas.push(`↳ desde ${base.hora}: +${fmtCurto(dG)} gasto · +${fmtCurto(dR)} receita (${dV} ${dV === 1 ? 'venda' : 'vendas'})`)
+      else linhas.push(`↳ desde ${base.hora}: parado`)
+    }
+  }
+
+  linhas.push('')
+  linhas.push(`🟢 ROAS ≥ ${roasMin.toFixed(2)}x · 🟡 entre 1x e ${roasMin.toFixed(2)}x · 🔴 prejuízo · ⚪ cedo pra dizer`)
+  if (!syncOk) linhas.push('⚠️ Não consegui atualizar o gasto da Meta agora — o gasto pode estar atrasado.')
+
+  if (gravar) {
+    const porChave: Snapshot['porChave'] = {}
+    for (const c of todos) porChave[c.chave] = { gasto: c.gasto_hoje, receita: c.receita_hoje, vendas: c.vendas_hoje ?? 0 }
+    await salvarSnapshot({ dia, hora, porChave })
+  }
+
+  return linhas.join('\n')
+}
+
+/** /saude — painel na hora, sem mexer na base do cron. */
+export async function responderSaudeAgora(): Promise<void> {
+  try {
+    await enviarTexto(DONO_SAUDE, await montarSaude(false))
+  } catch (e) {
+    await enviarTexto(DONO_SAUDE, `⏱️ Não consegui montar o painel: ${e instanceof Error ? e.message : e}`).catch(() => {})
+  }
+}
+
+/** Cron de hora em hora: manda o painel no privado do dono, se ligado. */
+export async function enviarSaudeHoraria(forcar = false): Promise<{ status: string; grupos?: { grupo: string; status: string }[] }> {
+  const horaSP = toZonedTime(new Date(), TZ).getHours()
+  if (!forcar && (horaSP < HORA_INICIO || horaSP > HORA_FIM)) return { status: `fora da janela (${horaSP}h)` }
+
+  // Mesmo que alguém grave outro destino na config, só o dono recebe.
+  const grupos = (await gruposLigados(CHAVE_SAUDE)).filter((g) => g.jid === DONO_SAUDE)
+  if (grupos.length === 0) return { status: 'desligado' }
+
+  const texto = await montarSaude(true)
+  const out: { grupo: string; status: string }[] = []
+  for (const g of grupos) {
+    try {
+      await enviarTexto(g.jid, texto)
+      out.push({ grupo: g.jid, status: 'enviado' })
+    } catch (e) {
+      out.push({ grupo: g.jid, status: `erro: ${e instanceof Error ? e.message : e}` })
+    }
+  }
+  return { status: 'ok', grupos: out }
+}

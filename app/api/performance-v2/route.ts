@@ -133,6 +133,7 @@ export interface CriativoV2 {
   // NÃO entra na ação (que continua sendo 7d/3d/1d fechados).
   gasto_hoje: number
   receita_hoje: number
+  vendas_hoje: number
   roas_hoje: number | null
   acao: AcaoOtimizacao
 }
@@ -347,6 +348,7 @@ export async function GET(request: Request) {
         roas_1d: roas1d,
         gasto_hoje: gastoHoje,
         receita_hoje: receitaHoje,
+        vendas_hoje: vendHoje.length,
         roas_hoje: roasHoje,
         acao: aplicarRegras(roas7d, roas3d, roas1d, ROAS_MINIMO, regras),
       })

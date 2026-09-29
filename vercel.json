@@ -8,6 +8,7 @@
     { "path": "/api/alertas/cron", "schedule": "0 8 * * *" },
     { "path": "/api/whatsapp/resumo-cron", "schedule": "0 11 * * *" },
     { "path": "/api/conteudo/cron", "schedule": "0 9 * * *" },
-    { "path": "/api/rastreador/vigia", "schedule": "30 * * * *" }
+    { "path": "/api/rastreador/vigia", "schedule": "30 * * * *" },
+    { "path": "/api/whatsapp/saude-cron", "schedule": "2 * * * *" }
   ]
 }
