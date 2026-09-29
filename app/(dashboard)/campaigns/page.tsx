@@ -8,7 +8,7 @@ import SeletorPeriodoVturb, { rangeDoPreset, type RangePeriodo } from '@/compone
 import type { CampanhaLinha, LogCampanha } from '@/lib/meta-campanhas'
 
 type FiltroStatus = 'ativas' | 'com_gasto' | 'pausadas' | 'todas'
-type SortKey = 'gasto' | 'receita' | 'vendas' | 'roas' | 'lucro' | 'cpa' | 'orcamento' | 'nome'
+type SortKey = 'gasto' | 'receita' | 'vendas' | 'upsells' | 'roas' | 'lucro' | 'cpa' | 'orcamento' | 'nome'
 
 // Mudança pendente de confirmação (toggle ou orçamento).
 type Pendente =
@@ -97,8 +97,10 @@ export default function CampanhasPage() {
     const g = visiveis.reduce((a, c) => a + c.gasto, 0)
     const r = visiveis.reduce((a, c) => a + c.receita, 0)
     const v = visiveis.reduce((a, c) => a + c.vendas, 0)
+    const u = visiveis.reduce((a, c) => a + c.upsells, 0)
+    const ru = visiveis.reduce((a, c) => a + c.receita_upsell, 0)
     const orc = visiveis.filter((c) => c.orcamento_tipo === 'diario' && c.moeda === 'BRL' && c.status === 'ACTIVE').reduce((a, c) => a + (c.orcamento ?? 0), 0)
-    return { g, r, v, orc, roas: g > 0 ? r / g : null, cpa: v > 0 ? g / v : null, lucro: r - g }
+    return { g, r, v, u, ru, orc, roas: g > 0 ? r / g : null, cpa: v > 0 ? g / v : null, lucro: r - g }
   }, [visiveis])
 
   function ordenar(k: SortKey) {
@@ -175,7 +177,7 @@ export default function CampanhasPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Resumo label="Gasto" valor={brl(tot.g)} sub={`${visiveis.length} campanhas`} cor="text-amber-400" />
-        <Resumo label="Faturamento" valor={brl(tot.r)} sub={`${priv(tot.v)} vendas front`} cor="text-sky-400" />
+        <Resumo label="Faturamento" valor={brl(tot.r)} sub={isPrivate ? '••' : `${tot.v} front · ${tot.u} upsell${tot.v > 0 ? ` (${((tot.u / tot.v) * 100).toFixed(0)}%)` : ''} · upsell ${formatarMoeda(tot.ru)}`} cor="text-sky-400" />
         <Resumo label="ROAS" valor={roasFmt(tot.roas)} sub={`CPA ${tot.cpa == null ? '—' : isPrivate ? '••' : formatarMoeda(tot.cpa)}`} cor={corRoas(tot.roas)} />
         <Resumo label="Lucro" valor={brl(tot.lucro)} sub={tot.orc > 0 ? `orçamento diário ativo ${isPrivate ? '••' : formatarMoeda(tot.orc)}` : ' '} cor={tot.lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'} />
       </div>
@@ -206,13 +208,14 @@ export default function CampanhasPage() {
           <div className="text-center py-20 text-muted-foreground text-sm">Nenhuma campanha com esses filtros.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[1050px]">
+            <table className="w-full text-sm min-w-[1150px]">
               <thead>
                 <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                   <th className="text-left px-4 py-3 w-[70px]">Status</th>
                   <Th k="nome" atual={sortKey} desc={sortDesc} onClick={ordenar} left>Campanha</Th>
                   <Th k="orcamento" atual={sortKey} desc={sortDesc} onClick={ordenar}>Orçamento</Th>
                   <Th k="vendas" atual={sortKey} desc={sortDesc} onClick={ordenar}>Vendas</Th>
+                  <Th k="upsells" atual={sortKey} desc={sortDesc} onClick={ordenar}>Upsell</Th>
                   <Th k="cpa" atual={sortKey} desc={sortDesc} onClick={ordenar}>CPA</Th>
                   <Th k="gasto" atual={sortKey} desc={sortDesc} onClick={ordenar}>Gasto</Th>
                   <Th k="receita" atual={sortKey} desc={sortDesc} onClick={ordenar}>Faturamento</Th>
@@ -264,6 +267,14 @@ export default function CampanhasPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">{priv(c.vendas)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {c.upsells > 0 ? (
+                          <>
+                            <div className="text-cyan-400 font-semibold leading-tight">{priv(c.upsells)}{c.vendas > 0 && <span className="text-[10px] text-muted-foreground font-normal"> · {((c.upsells / c.vendas) * 100).toFixed(0)}%</span>}</div>
+                            <div className="text-[10px] text-muted-foreground leading-tight">{brl(c.receita_upsell)}</div>
+                          </>
+                        ) : <span className="text-muted-foreground">0</span>}
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums">{brl(cpa(c))}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{brl(c.gasto)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{brl(c.receita)}</td>
@@ -279,6 +290,7 @@ export default function CampanhasPage() {
                   <td className="px-4 py-3 uppercase tracking-wider">{visiveis.length} campanhas</td>
                   <td className="px-4 py-3 text-right tabular-nums">{tot.orc > 0 ? brl(tot.orc) : '—'}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{priv(tot.v)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-cyan-400">{priv(tot.u)}{tot.v > 0 && !isPrivate ? <span className="text-[10px] text-muted-foreground font-normal"> · {((tot.u / tot.v) * 100).toFixed(0)}%</span> : null}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{brl(tot.cpa)}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{brl(tot.g)}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{brl(tot.r)}</td>

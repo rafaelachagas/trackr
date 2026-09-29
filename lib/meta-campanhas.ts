@@ -38,7 +38,9 @@ export interface CampanhaLinha {
   orcamento: number | null                 // na MOEDA DA CONTA (não convertido)
   gasto: number                            // em BRL
   vendas: number                           // vendas FRONT
+  upsells: number                          // vendas de UPSELL (herdam o sck do front por e-mail)
   receita: number                          // líquida, front + upsell
+  receita_upsell: number                   // parte da receita que veio de upsell
 }
 
 export interface MetaCfg { token: string; contas: string[]; configMap: Record<string, string> }
@@ -159,7 +161,9 @@ export async function listarCampanhas(ini: string, fim: string): Promise<{ campa
         orcamento: daily ?? life,
         gasto: (gastoPorCamp.get(k.id) ?? 0) * fator,
         vendas: 0,
+        upsells: 0,
         receita: 0,
+        receita_upsell: 0,
       }
       linhas.push(l)
       const tk = campanhaToken(k.name)
@@ -176,7 +180,11 @@ export async function listarCampanhas(ini: string, fim: string): Promise<{ campa
     const alvo = porToken.get(tk)
     const liq = Number(v.valor_liquido ?? v.valor) || 0
     const front = v.tipo !== 'upsell' ? 1 : 0
-    if (alvo) { alvo.receita += liq; alvo.vendas += front }
+    if (alvo) {
+      alvo.receita += liq
+      alvo.vendas += front
+      if (!front) { alvo.upsells++; alvo.receita_upsell += liq }
+    }
     else { semCampanha.receita += liq; semCampanha.vendas += front }
   }
 
