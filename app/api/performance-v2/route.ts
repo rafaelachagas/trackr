@@ -72,16 +72,34 @@ async function fetchAdsAtivos(accountId: string, accessToken: string): Promise<{
   return out
 }
 
-// Conjunto das chaves código|fase|flags que estão ATIVAS agora (todas as contas).
-async function buscarChavesAtivas(accessToken: string, adAccountIds: string[]): Promise<Set<string>> {
-  const listas = await Promise.all(adAccountIds.map(id => fetchAdsAtivos(id, accessToken)))
+// Nome da conta de anúncio (pra mostrar de qual conta é cada linha).
+async function nomeDaConta(accountId: string, accessToken: string): Promise<string | null> {
+  const acct = accountId.startsWith('act_') ? accountId : `act_${accountId}`
+  try {
+    const j = await (await fetch(`${META_API_BASE}/${acct}?fields=name&access_token=${accessToken}`)).json()
+    return j?.name ?? null
+  } catch {
+    return null
+  }
+}
+
+// Chaves código|fase|flags|campanha que estão ATIVAS agora (todas as contas),
+// com o nome da conta de cada uma.
+async function buscarChavesAtivas(accessToken: string, adAccountIds: string[]): Promise<{ keys: Set<string>; contas: Map<string, string> }> {
+  const listas = await Promise.all(adAccountIds.map(async (id) => {
+    const [ads, nome] = await Promise.all([fetchAdsAtivos(id, accessToken), nomeDaConta(id, accessToken)])
+    return { ads, nome }
+  }))
   const keys = new Set<string>()
-  for (const ads of listas) for (const ad of ads) {
+  const contas = new Map<string, string>()
+  for (const { ads, nome } of listas) for (const ad of ads) {
     const cod = extrairCriativo(ad.name)   // mesma extração usada no sync p/ gastos.criativo
     if (!cod) continue
-    keys.add(chaveDoAnuncio(cod, ad.campaign, ad.name))
+    const k = chaveDoAnuncio(cod, ad.campaign, ad.name)
+    keys.add(k)
+    if (nome && !contas.has(k)) contas.set(k, nome)
   }
-  return keys
+  return { keys, contas }
 }
 
 type RegraFramework = { p7: boolean; p3: boolean; p1: boolean; acao: AcaoOtimizacao }
@@ -119,6 +137,7 @@ export interface CriativoV2 {
   campaign_name: string | null
   fase: string | null
   chave: string        // código|fase|flags|campanha — usado pra listar as vendas (prova real)
+  conta_nome: string | null  // conta de anúncio (null se a Meta não respondeu)
   // Headline = janela de 7 DIAS FECHADOS (terminando ONTEM). Hoje fica de fora.
   gasto_7d: number
   receita_7d: number
@@ -202,12 +221,11 @@ export async function GET(request: Request) {
     // Chaves ATIVAS na Meta (só o que está rodando). Em paralelo com gastos/vendas.
     // Se a Meta falhar ou não estiver configurada → null (não filtra, mostra tudo,
     // sinaliza no front) em vez de esvaziar a tabela ou esconder anúncio bom.
-    const buscarAtivos: Promise<{ keys: Set<string> | null }> =
+    const buscarAtivos: Promise<{ keys: Set<string> | null; contas: Map<string, string> }> =
       accessToken && adAccountIds.length > 0
         ? buscarChavesAtivas(accessToken, adAccountIds)
-            .then(keys => ({ keys }))
-            .catch(err => { console.error('[performance-v2] ativos', err); return { keys: null } })
-        : Promise.resolve({ keys: null })
+            .catch(err => { console.error('[performance-v2] ativos', err); return { keys: null, contas: new Map<string, string>() } })
+        : Promise.resolve({ keys: null, contas: new Map<string, string>() })
 
     const [gastos, vendas, ativosRes] = await Promise.all([
       fetchAll<GastoRow>((from, to) =>
@@ -340,6 +358,7 @@ export async function GET(request: Request) {
         campaign_name: e.campaign_name,
         fase: e.fase ?? detectarFaseCampaign(e.campaign_name),
         chave,
+        conta_nome: ativosRes.contas.get(chave) ?? null,
         gasto_7d: gasto7d,
         receita_7d: receita7d,
         lucro_7d: receita7d - gasto7d,
