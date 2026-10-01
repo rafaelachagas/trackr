@@ -23,6 +23,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { formatarMoeda } from '@/lib/utils'
 import { SITE_URL } from '@/lib/whatsapp'
 import { gruposLigados, enviarTexto, fetchTimeout } from '@/lib/whatsapp-grupos'
+import { verificarAlertasMeta } from '@/lib/whatsapp-alertas-meta'
 
 export const CHAVE_SAUDE = 'whatsapp_saude'
 export const CMD_SAUDE_START = '/start-saude'
@@ -386,10 +387,16 @@ export async function enviarSaudeHoraria(): Promise<{ status: string; grupos?: {
   const grupos = (await gruposLigados(CHAVE_SAUDE)).filter((g) => g.jid === DONO_SAUDE)
   if (grupos.length === 0) return { status: 'desligado' }
 
+  // Alertas da Meta (reprovação, conta desativada/pagamento) vão numa mensagem
+  // própria, antes do painel, e só quando há novidade. Erro aqui não segura o painel.
+  let alerta: string | null = null
+  try { alerta = await verificarAlertasMeta() } catch (e) { console.error('[whatsapp/saude] alertas', e) }
+
   const texto = await montarSaude(true)
   const out: { grupo: string; status: string }[] = []
   for (const g of grupos) {
     try {
+      if (alerta) await enviarTexto(g.jid, alerta)
       await enviarTexto(g.jid, texto)
       out.push({ grupo: g.jid, status: 'enviado' })
     } catch (e) {
