@@ -33,6 +33,13 @@ export const CMD_SAUDE_AGORA = '/saude'
 export const DONO_SAUDE = '5547991273266'
 
 const CHAVE_SNAPSHOT = 'whatsapp_saude_snapshot'
+
+// A mensagem é dividida POR CONTA de anúncio, a principal primeiro.
+const CONTA_PRINCIPAL = 'CA 01 RAFA'
+// Qual VSL é de qual conta: { [vsl_id]: nome da conta }. VSL fora do mapa vai
+// pra principal. Ex.: a VSL V2 (página de teste) roda na CA01 - Enseada Traffic.
+const CHAVE_VSL_CONTA = 'whatsapp_saude_vsl_conta'
+const SEM_CONTA = 'Outras contas'
 const TZ = 'America/Sao_Paulo'
 
 // Criativo só entra no painel se gastou pelo menos isso hoje (tira resto de centavos).
@@ -83,6 +90,7 @@ type CriativoHoje = {
 type VslHoje = {
   id: string
   nome: string
+  conta: string
   views: number
   plays: number
   playRate: number
@@ -137,7 +145,12 @@ const pct = (v: number | null) => (v == null ? '—' : `${v.toFixed(1).replace('
 
 // Números de HOJE de cada VSL ativa. Falha de uma VSL não derruba as outras.
 async function buscarVsls(dia: string): Promise<{ vsls: VslHoje[]; erro: boolean }> {
-  const { data } = await supabaseAdmin.from('vsls').select('id, nome').eq('ativo', true)
+  const [{ data }, { data: mapa }] = await Promise.all([
+    supabaseAdmin.from('vsls').select('id, nome').eq('ativo', true),
+    supabaseAdmin.from('configuracoes').select('valor').eq('chave', CHAVE_VSL_CONTA).maybeSingle(),
+  ])
+  let contaDaVsl: Record<string, string> = {}
+  try { contaDaVsl = typeof mapa?.valor === 'string' ? JSON.parse(mapa.valor) : (mapa?.valor ?? {}) } catch {}
   let erro = false
   const vsls = await Promise.all((data ?? []).map(async (v): Promise<VslHoje | null> => {
     try {
@@ -150,6 +163,7 @@ async function buscarVsls(dia: string): Promise<{ vsls: VslHoje[]; erro: boolean
       return {
         id: v.id,
         nome: v.nome,
+        conta: contaDaVsl[v.id] ?? CONTA_PRINCIPAL,
         views: Number(t.visualizacoesUnicas) || 0,
         plays: Number(t.playsUnicos) || 0,
         playRate: Number(t.playRateVturb) || 0,
@@ -229,7 +243,6 @@ export async function montarSaude(gravar: boolean): Promise<string> {
 
   const totG = ativos.reduce((a, c) => a + c.gasto_hoje, 0)
   const totR = ativos.reduce((a, c) => a + c.receita_hoje, 0)
-  const totV = ativos.reduce((a, c) => a + (c.vendas_hoje ?? 0), 0)
   const totRoas = totG > 0 ? totR / totG : null
   const totL = totR - totG
 
@@ -253,75 +266,95 @@ export async function montarSaude(gravar: boolean): Promise<string> {
     const r = rotulo(c)
     rotulos.set(c.chave, (contagem.get(r) ?? 0) > 1 ? `${r} (${campanhaCurta(c.campaign_name)})` : r)
   }
-  // Conta de anúncio só aparece quando há mais de uma conta no painel.
-  const variasContas = new Set(ativos.map((c) => c.conta_nome).filter(Boolean)).size > 1
+
+  // —— Seções por conta: principal primeiro, depois as outras por gasto ——
+  const contaDe = (c: CriativoHoje) => c.conta_nome || SEM_CONTA
+  const nomesContas = new Set<string>([...ativos.map(contaDe), ...vslRes.vsls.map((v) => v.conta)])
+  const gastoConta = (n: string) => ativos.filter((c) => contaDe(c) === n).reduce((a, c) => a + c.gasto_hoje, 0)
+  const ordemContas = [...nomesContas].sort((a, b) =>
+    (a === CONTA_PRINCIPAL ? -1 : b === CONTA_PRINCIPAL ? 1 : 0)
+    || (a === SEM_CONTA ? 1 : b === SEM_CONTA ? -1 : 0)
+    || gastoConta(b) - gastoConta(a))
 
   const linhas: string[] = []
   linhas.push(`⏱️ *${hora}* · hoje, só vendas aprovadas`)
-  linhas.push('')
-  linhas.push(`💰 *${fmtCurto(totG)} → ${fmtCurto(totR)}*`)
-  linhas.push(`📊 ROAS *${roasFmt(totRoas)}* · lucro *${sinal(totL)}${fmtCurto(Math.abs(totL))}* · ${vendasTxt(totV)}`)
-  if (base) {
-    let dG = 0, dR = 0
-    for (const a of analise.values()) { dG += a.dG; dR += a.dR }
-    linhas.push(`🕐 Desde ${base.hora}: ${fmtCurto(dG)} → ${fmtCurto(dR)}${dG >= 1 ? ` · *${roasFmt(dR / dG)}*` : ''}`)
+  if (ordemContas.length > 1) {
+    linhas.push(`Total: ${fmtCurto(totG)} → ${fmtCurto(totR)} · *${roasFmt(totRoas)}* · ${sinal(totL)}${fmtCurto(Math.abs(totL))}`)
   }
 
-  for (const v of vslRes.vsls) {
+  for (const conta of ordemContas) {
+    const doConta = ativos.filter((c) => contaDe(c) === conta)
+    const g = doConta.reduce((a, c) => a + c.gasto_hoje, 0)
+    const r = doConta.reduce((a, c) => a + c.receita_hoje, 0)
+    const v = doConta.reduce((a, c) => a + (c.vendas_hoje ?? 0), 0)
+
     linhas.push('')
-    linhas.push(`🎬 *${v.nome}*`)
-    linhas.push(`${num(v.views)} views · play ${pct(v.playRate)} · 1 min ${pct(v.retencao1Min)} · pitch ${pct(v.retencaoPitch)}`)
-    linhas.push(`${num(v.conversoes)} ${v.conversoes === 1 ? 'conversão' : 'conversões'} · ${pct(v.taxaConversao)} dos plays`)
-    const b = base?.porVsl?.[v.id]
-    if (base && b) {
-      const dViews = v.views - b.views
-      const dPlays = v.plays - b.plays
-      const dConv = v.conversoes - b.conversoes
-      const prHora = dViews > 0 ? ` · play ${pct((dPlays / dViews) * 100)}` : ''
-      const convHora = dPlays > 0 ? ` · conv ${pct((dConv / dPlays) * 100)}` : ''
-      linhas.push(`_desde ${base.hora}: +${num(dViews)} views · +${num(dConv)} conv${prHora}${convHora}_`)
+    linhas.push('━━━━━━━━━━━━━━━━━━')
+    linhas.push(`🏦 *${conta}*${conta === CONTA_PRINCIPAL ? ' (principal)' : ''}`)
+    linhas.push('')
+    linhas.push(`💰 *${fmtCurto(g)} → ${fmtCurto(r)}*`)
+    linhas.push(`📊 ROAS *${roasFmt(g > 0 ? r / g : null)}* · lucro *${sinal(r - g)}${fmtCurto(Math.abs(r - g))}* · ${vendasTxt(v)}`)
+    if (base) {
+      let dG = 0, dR = 0
+      for (const c of doConta) { const a = analise.get(c.chave)!; dG += a.dG; dR += a.dR }
+      linhas.push(`🕐 Desde ${base.hora}: ${fmtCurto(dG)} → ${fmtCurto(dR)}${dG >= 1 ? ` · *${roasFmt(dR / dG)}*` : ''}`)
     }
-  }
-  if (vslRes.erro) linhas.push('⚠️ Não consegui ler a VTurb de alguma VSL agora.')
 
-  if (ativos.length === 0) {
-    linhas.push('')
-    linhas.push('Nenhum criativo gastou hoje ainda.')
-  }
-
-  // Um bloco por sugestão; dentro, do maior gasto pro menor.
-  for (const { sug, titulo } of GRUPOS) {
-    const doGrupo = ativos.filter((c) => analise.get(c.chave)!.sug === sug)
-    if (doGrupo.length === 0) continue
-    linhas.push('')
-    linhas.push(`${titulo} (${doGrupo.length})`)
-    for (const c of doGrupo) {
-      const a = analise.get(c.chave)!
-      const conta = variasContas && c.conta_nome ? ` · _${c.conta_nome}_` : ''
+    for (const vs of vslRes.vsls.filter((x) => x.conta === conta)) {
       linhas.push('')
-      linhas.push(`${farol(c.roas_hoje, c.gasto_hoje, c.receita_hoje, roasMin)} *${rotulos.get(c.chave)}* — *${roasFmt(c.roas_hoje)}*${conta}`)
-      linhas.push(`${fmtCurto(c.gasto_hoje)} → ${fmtCurto(c.receita_hoje)} · ${vendasTxt(c.vendas_hoje ?? 0)} · 7d ${roasFmt(c.roas_7d)}`)
-      if (base) {
-        if (a.novo) linhas.push(`_começou depois das ${base.hora}_`)
-        else if (a.dG >= 1 || a.dR > 0) linhas.push(`_desde ${base.hora}: ${fmtCurto(a.dG)} → ${fmtCurto(a.dR)}${a.dG >= GASTO_MIN_HORA ? ` · ${roasFmt(a.dR / a.dG)}` : ''}_`)
-        else linhas.push(`_desde ${base.hora}: parado_`)
+      linhas.push(`🎬 *${vs.nome}*`)
+      linhas.push(`${num(vs.views)} views · play ${pct(vs.playRate)} · 1 min ${pct(vs.retencao1Min)} · pitch ${pct(vs.retencaoPitch)}`)
+      linhas.push(`${num(vs.conversoes)} ${vs.conversoes === 1 ? 'conversão' : 'conversões'} · ${pct(vs.taxaConversao)} dos plays`)
+      const b = base?.porVsl?.[vs.id]
+      if (base && b) {
+        const dViews = vs.views - b.views
+        const dPlays = vs.plays - b.plays
+        const dConv = vs.conversoes - b.conversoes
+        const prHora = dViews > 0 ? ` · play ${pct((dPlays / dViews) * 100)}` : ''
+        const convHora = dPlays > 0 ? ` · conv ${pct((dConv / dPlays) * 100)}` : ''
+        linhas.push(`_desde ${base.hora}: +${num(dViews)} views · +${num(dConv)} conv${prHora}${convHora}_`)
+      }
+    }
+
+    if (doConta.length === 0) {
+      linhas.push('')
+      linhas.push('Nenhum criativo gastou hoje ainda.')
+    }
+
+    // Um bloco por sugestão; dentro, do maior gasto pro menor.
+    for (const { sug, titulo } of GRUPOS) {
+      const doGrupo = doConta.filter((c) => analise.get(c.chave)!.sug === sug)
+      if (doGrupo.length === 0) continue
+      linhas.push('')
+      linhas.push(`${titulo} (${doGrupo.length})`)
+      for (const c of doGrupo) {
+        const a = analise.get(c.chave)!
+        linhas.push('')
+        linhas.push(`${farol(c.roas_hoje, c.gasto_hoje, c.receita_hoje, roasMin)} *${rotulos.get(c.chave)}* — *${roasFmt(c.roas_hoje)}*`)
+        linhas.push(`${fmtCurto(c.gasto_hoje)} → ${fmtCurto(c.receita_hoje)} · ${vendasTxt(c.vendas_hoje ?? 0)} · 7d ${roasFmt(c.roas_7d)}`)
+        if (base) {
+          if (a.novo) linhas.push(`_começou depois das ${base.hora}_`)
+          else if (a.dG >= 1 || a.dR > 0) linhas.push(`_desde ${base.hora}: ${fmtCurto(a.dG)} → ${fmtCurto(a.dR)}${a.dG >= GASTO_MIN_HORA ? ` · ${roasFmt(a.dR / a.dG)}` : ''}_`)
+          else linhas.push(`_desde ${base.hora}: parado_`)
+        }
+      }
+    }
+
+    // Aguardando: uma linha curta por criativo — ainda não dá pra decidir nada.
+    const aguardando = doConta.filter((c) => analise.get(c.chave)!.sug === 'aguardar')
+    if (aguardando.length > 0) {
+      linhas.push('')
+      linhas.push(`⏳ *AGUARDANDO* (${aguardando.length}) · menos de ${fmtCurto(GASTO_MIN_DECISAO)} no dia`)
+      for (const c of aguardando) {
+        const vendas = c.vendas_hoje ? ` · ${vendasTxt(c.vendas_hoje)}` : ''
+        linhas.push(`• ${rotulos.get(c.chave)}: ${fmtCurto(c.gasto_hoje)} → ${fmtCurto(c.receita_hoje)}${vendas}`)
       }
     }
   }
-
-  // Aguardando: uma linha curta por criativo — ainda não dá pra decidir nada.
-  const aguardando = ativos.filter((c) => analise.get(c.chave)!.sug === 'aguardar')
-  if (aguardando.length > 0) {
-    linhas.push('')
-    linhas.push(`⏳ *AGUARDANDO* (${aguardando.length}) · menos de ${fmtCurto(GASTO_MIN_DECISAO)} no dia`)
-    for (const c of aguardando) {
-      const conta = variasContas && c.conta_nome ? ` · _${c.conta_nome}_` : ''
-      const vendas = c.vendas_hoje ? ` · ${vendasTxt(c.vendas_hoje)}` : ''
-      linhas.push(`• ${rotulos.get(c.chave)}: ${fmtCurto(c.gasto_hoje)} → ${fmtCurto(c.receita_hoje)}${vendas}${conta}`)
-    }
-  }
+  if (vslRes.erro) { linhas.push(''); linhas.push('⚠️ Não consegui ler a VTurb de alguma VSL agora.') }
 
   linhas.push('')
+  linhas.push('━━━━━━━━━━━━━━━━━━')
   linhas.push(`_Meta ${ROAS_META}x · sugestão = ROAS do dia × última hora · confira 2–3 horas antes de mexer_`)
   if (!syncOk) linhas.push('⚠️ Não consegui atualizar o gasto da Meta agora — o gasto pode estar atrasado.')
 
