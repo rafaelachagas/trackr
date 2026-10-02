@@ -22,10 +22,21 @@ const SALDO_MINIMO_PREPAGO = 50       // R$ — abaixo disso avisa que o saldo e
 const DIAS_GUARDAR_REPROVADOS = 30    // ids de reprovados mais velhos que isso saem do estado
 const PRIMEIRA_VEZ_JANELA_H = 6       // na 1ª checagem, só avisa reprovado das últimas 6h
 
+// Formato antigo guardava só o updated_time (string); o novo guarda nome/conta pra
+// conseguir avisar quando o anúncio volta a ser aprovado.
+type Reprovado = string | { t: string; nome: string; conta: string; campanha?: string }
+
 type Estado = {
-  reprovados: Record<string, string>   // ad_id → updated_time
-  contas: Record<string, string[]>     // account_id → problemas (texto) da última checagem
+  reprovados: Record<string, Reprovado>  // ad_id → quando reprovou (+ nome/conta)
+  contas: Record<string, string[]>       // account_id → problemas (texto) da última checagem
 }
+
+const tempoReprovado = (r: Reprovado) => (typeof r === 'string' ? r : r.t)
+
+// Só ACTIVE prova que voltou: um reprovado com a campanha pausada aparece como
+// CAMPAIGN_PAUSED e não dá pra saber se foi aprovado. Esses seguem vigiados e
+// avisam se um dia ficarem ACTIVE. DELETED/ARCHIVED saem calados.
+const STATUS_SAI_CALADO = new Set(['DELETED', 'ARCHIVED'])
 
 // account_status da Meta → texto. 1 = ativa (sem problema).
 const STATUS_CONTA: Record<number, string> = {
@@ -151,10 +162,56 @@ export async function verificarAlertasMeta(): Promise<string | null> {
   for (const { conta, ads } of reprovadosPorConta) {
     for (const ad of ads) {
       const t = new Date(ad.updated_time).getTime()
-      if (t >= limiteGuardar) novoEstado.reprovados[ad.id] = ad.updated_time
-      const jaVisto = !!anterior?.reprovados[ad.id]
-      if (jaVisto) continue
+      const antes = anterior?.reprovados[ad.id]
+      const t0 = antes ? new Date(tempoReprovado(antes)).getTime() : t
+      if (t0 >= limiteGuardar) {
+        // mantém o horário da 1ª reprovação: updated_time muda quando pedem revisão
+        novoEstado.reprovados[ad.id] = {
+          t: antes ? tempoReprovado(antes) : ad.updated_time,
+          nome: ad.name,
+          conta: conta.name,
+          campanha: ad.campaign?.name,
+        }
+      }
+      if (antes) continue
       if (primeiraVez ? t >= limitePrimeira : t >= limiteGuardar) novosReprovados.push({ conta: conta.name, ad })
+    }
+  }
+
+  // Reprovados da checagem anterior que sumiram da lista: foram aprovados na
+  // revisão, apagados ou arquivados. Pergunta o status de cada um.
+  const voltaram: { conta: string; nome: string; campanha?: string }[] = []
+  const sumiram = Object.entries(anterior?.reprovados ?? {})
+    .filter(([id, r]) => !novoEstado.reprovados[id] && new Date(tempoReprovado(r)).getTime() >= limiteGuardar)
+    .map(([id]) => id)
+  const nomeConta = new Map(contas.map((c) => [String(c.account_id), c.name]))
+  for (let i = 0; i < sumiram.length; i += 50) {
+    const lote = sumiram.slice(i, i + 50)
+    let info: Record<string, any> = {}
+    try {
+      const r = await fetch(`${META}/?${new URLSearchParams({
+        ids: lote.join(','),
+        fields: 'name,effective_status,account_id,campaign{name}',
+        access_token: token,
+      })}`, { cache: 'no-store' })
+      const j = await r.json()
+      if (!j.error) info = j
+    } catch (e) {
+      console.error('[alertas-meta] status dos que sumiram', e)
+    }
+    for (const id of lote) {
+      const antes = anterior!.reprovados[id]
+      const a = info[id]
+      if (!a || STATUS_SAI_CALADO.has(a.effective_status)) continue  // apagado/arquivado/sem acesso
+      if (a.effective_status !== 'ACTIVE') {             // em revisão, pausado etc.: segue vigiando
+        novoEstado.reprovados[id] = antes
+        continue
+      }
+      voltaram.push({
+        conta: (typeof antes === 'object' && antes.conta) || nomeConta.get(String(a.account_id)) || 'Conta',
+        nome: a.name,
+        campanha: a.campaign?.name,
+      })
     }
   }
 
@@ -170,7 +227,7 @@ export async function verificarAlertasMeta(): Promise<string | null> {
   }
 
   await salvarEstado(novoEstado)
-  if (!novosReprovados.length && !contasNovas.length && !contasResolvidas.length) return null
+  if (!novosReprovados.length && !voltaram.length && !contasNovas.length && !contasResolvidas.length) return null
 
   const linhas: string[] = [`🚨 *Alertas da Meta* · ${format(toZonedTime(new Date(), TZ), 'HH:mm')}`]
 
@@ -190,6 +247,18 @@ export async function verificarAlertasMeta(): Promise<string | null> {
         linhas.push(`• ${rot} — ${hora}`)
         linhas.push(`  _${ad.name.slice(0, 60)}_`)
       }
+    }
+  }
+
+  if (voltaram.length) {
+    linhas.push('')
+    linhas.push(`✅ *APROVADOS DE NOVO* (${voltaram.length})`)
+    for (const v of voltaram) {
+      const cod = extrairCriativo(v.nome)?.toLowerCase()
+      const fase = faseToken(v.campanha ?? null)
+      const rot = cod ? `*${cod}${fase ? ` F${fase.slice(-1)}` : ''}*` : `*${v.nome.slice(0, 40)}*`
+      linhas.push(`• ${rot} — 🏦 ${v.conta} · já veiculando`)
+      linhas.push(`  _${v.nome.slice(0, 60)}_`)
     }
   }
 
