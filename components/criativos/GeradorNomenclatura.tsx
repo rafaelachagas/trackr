@@ -28,6 +28,7 @@ import { X, Copy, Check, ChevronDown, Loader2 } from 'lucide-react'
 
 const LP_PADRAO = 'https://lp.rafaelachagas.com.br/fpf-vsl-v1'
 const LP_STORAGE_KEY = 'gerador-nomenclatura-lp'
+const HPID_STORAGE_KEY = 'gerador-nomenclatura-hpid'
 
 type Fase = 'FASE01' | 'FASE02' | 'FASE03'
 const FASE_CFG: Record<Fase, { tipoDisplay: string; tipoSck: string; label: string | null; slug: string | null }> = {
@@ -120,6 +121,11 @@ export default function GeradorNomenclatura({ onClose, inline }: { onClose?: () 
     if (typeof window === 'undefined') return LP_PADRAO
     return localStorage.getItem(LP_STORAGE_KEY) || LP_PADRAO
   })
+  // hpid: hash da campanha, entra SEMPRE no fim do link (depois do sck).
+  const [hpid, setHpid] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    return localStorage.getItem(HPID_STORAGE_KEY) || ''
+  })
 
   // Contas da Meta (dropdown sob demanda).
   const [contas, setContas] = useState<ContaMeta[] | null>(null)
@@ -137,6 +143,14 @@ export default function GeradorNomenclatura({ onClose, inline }: { onClose?: () 
   useEffect(() => {
     if (typeof window !== 'undefined' && lp.trim()) localStorage.setItem(LP_STORAGE_KEY, lp.trim())
   }, [lp])
+
+  // O hpid muda a cada campanha nova, mas repete em todos os criativos dela —
+  // lembrar poupa colar de novo a cada link. Vazio apaga o lembrado.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (hpid.trim()) localStorage.setItem(HPID_STORAGE_KEY, hpid.trim())
+    else localStorage.removeItem(HPID_STORAGE_KEY)
+  }, [hpid])
 
   async function abrirContas() {
     setContasOpen(o => !o)
@@ -181,11 +195,14 @@ export default function GeradorNomenclatura({ onClose, inline }: { onClose?: () 
     const campDisplay = brackets + (cfg.label ? ` ${cfg.label} - ${adsUpper}` : ` ${adsUpper}`)
 
     const sck = `${campSck}|${cjSck}|${adName}`
+    // Aceita colar "&hpid=abc", "hpid=abc" ou só o hash — guarda só o valor.
+    const hash = hpid.trim().replace(/^[?&]?hpid=/i, '').trim()
     const link = `${(lp.trim() || LP_PADRAO).replace(/\?.*$/, '')}?sck=${sck}`
+      + (hash ? `&hpid=${hash}` : '')
 
     const tudo = `Campanha:\n${campDisplay}\n\nConjunto:\n${cjDisplay}\n\nCriativo:\n${adName}\n\nLink:\n${link}`
     return { campDisplay, cjDisplay, adName, sck, link, tudo }
-  }, [parsed, adCodes, fase, conjunto, mk, versao, lp])
+  }, [parsed, adCodes, fase, conjunto, mk, versao, lp, hpid])
 
   const conteudo = (
       <div className={inline ? 'bg-card border border-border rounded-2xl w-full max-w-xl' : 'relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto'}>
@@ -320,6 +337,21 @@ export default function GeradorNomenclatura({ onClose, inline }: { onClose?: () 
             </div>
             <input type="url" value={lp} onChange={e => setLp(e.target.value)} placeholder={LP_PADRAO} className={inputClass} />
             <p className="text-[10px] text-muted-foreground mt-1">Cole a LP deste criativo — fica lembrada pra próxima. O <span className="font-mono">?sck=</span> é adicionado sozinho.</p>
+          </div>
+
+          {/* hpid — hash da campanha, colado depois do sck */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">hpid (opcional)</label>
+              {hpid.trim() && (
+                <button type="button" onClick={() => setHpid('')} className="text-[10px] font-semibold text-primary hover:underline">limpar</button>
+              )}
+            </div>
+            <input type="text" value={hpid} onChange={e => setHpid(e.target.value)}
+              placeholder="&hpid=bcac60772aed9f50313be4b2301e248e" className={inputClass} />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Cole como vier (<span className="font-mono">&amp;hpid=hash</span> ou só o hash) — entra no fim do link, depois do sck. Fica lembrado pra próxima.
+            </p>
           </div>
 
           {/* Resultado */}
