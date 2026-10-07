@@ -118,6 +118,11 @@ export default function AudioCamouflagePage() {
   const [palavrasEfeito, setPalavrasEfeito] = useState('')
   // Décimos de segundo: negativo antecipa, positivo atrasa.
   const [ajusteEfeito, setAjusteEfeito] = useState(0)
+  // Finalização (as duas desligadas por padrão — só entram se o usuário ligar)
+  const [cauda, setCauda] = useState(false)
+  const [caudaMin, setCaudaMin] = useState(5)
+  const [editarMeta, setEditarMeta] = useState(false)
+  const [meta, setMeta] = useState({ title: '', artist: '', comment: '', date: '' })
   const [somEfeito, setSomEfeito] = useState<File | null>(null)
   // Capa "white" gerada por IA: vira a imagem de sobreposição (mesmo papel do
   // CTA enviado à mão). Um arquivo enviado manualmente tem prioridade.
@@ -243,6 +248,8 @@ export default function AudioCamouflagePage() {
                 money_sfx_volume: volDinheiro,
                 money_sfx_words: palavrasEfeito,
                 money_sfx_offset: ajusteEfeito,
+                tail_seconds: cauda ? caudaMin * 60 : 0,
+                metadata: editarMeta ? meta : {},
               },
             }),
           }).then(json)
@@ -530,6 +537,73 @@ export default function AudioCamouflagePage() {
                     </div>
                   )} />
               ))}
+            </div>
+
+            {/* FINALIZAÇÃO — opcional, só entra se o usuário ligar. */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                <Film className="w-3.5 h-3.5" /> FINALIZAÇÃO DO ARQUIVO
+              </p>
+
+              <div className={`rounded-xl border px-4 py-3 transition ${cauda ? 'border-amber-500/40 bg-amber-500/[0.06]' : 'border-border bg-white/[0.02]'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">Cauda preta no final</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Acrescenta tela preta e sem som depois do fim do vídeo. Não ajuda a passar na
+                      revisão — a Meta analisa o vídeo todo — e derruba a retenção, que conta na entrega.
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setCauda((v) => !v)}
+                    className={`shrink-0 w-11 h-6 rounded-full transition relative ${cauda ? 'bg-amber-500' : 'bg-muted'}`}>
+                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${cauda ? 'left-[22px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+                {cauda && (
+                  <div className="mt-3 pt-3 border-t border-amber-500/20">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] text-muted-foreground">Duração da cauda</span>
+                      <span className="text-[11px] font-bold text-foreground tabular-nums">{caudaMin} min</span>
+                    </div>
+                    <input type="range" min={1} max={15} step={1} value={caudaMin}
+                      onChange={(e) => setCaudaMin(Number(e.target.value))} className="w-full accent-amber-500" />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      O arquivo final fica {caudaMin} min mais longo (e um pouco maior).
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className={`rounded-xl border px-4 py-3 transition ${editarMeta ? 'border-primary/40 bg-primary/[0.06]' : 'border-border bg-white/[0.02]'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">Escrever metadados</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Os metadados do arquivo original já são apagados sempre. Ligue aqui pra gravar
+                      os seus no lugar; campo em branco não é gravado.
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setEditarMeta((v) => !v)}
+                    className={`shrink-0 w-11 h-6 rounded-full transition relative ${editarMeta ? 'bg-primary' : 'bg-muted'}`}>
+                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${editarMeta ? 'left-[22px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+                {editarMeta && (
+                  <div className="mt-3 pt-3 border-t border-primary/20 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {([
+                      ['title', 'Título'],
+                      ['artist', 'Autor'],
+                      ['date', 'Data (ex.: 2026)'],
+                      ['comment', 'Comentário'],
+                    ] as const).map(([campo, rotulo]) => (
+                      <input key={campo} value={meta[campo]} placeholder={rotulo}
+                        onChange={(e) => setMeta((m) => ({ ...m, [campo]: e.target.value }))}
+                        className="rounded-lg border border-border bg-black/20 px-3 py-2 text-xs text-foreground
+                                   placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/60" />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="rounded-xl border border-border bg-white/[0.02] px-4 py-3 flex items-start gap-2">

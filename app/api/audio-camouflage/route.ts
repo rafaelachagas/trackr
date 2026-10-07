@@ -27,6 +27,10 @@ type Opcoes = {
   money_sfx_volume: number
   money_sfx_words: string
   money_sfx_offset: number
+  // Cauda preta e muda no fim (segundos; 0 = desligado) e metadados escritos
+  // por cima dos originais (que sempre são apagados).
+  tail_seconds: number
+  metadata: Record<string, string>
 }
 
 const IMAGEM = /\.(jpe?g|png|webp|gif)$/i
@@ -89,6 +93,8 @@ export async function POST(req: Request) {
           money_sfx_volume: options?.money_sfx_volume,
           money_sfx_words: options?.money_sfx_words,
           money_sfx_offset: options?.money_sfx_offset,
+          tail_seconds: options?.tail_seconds,
+          metadata: options?.metadata,
         }),
         })
     } catch {

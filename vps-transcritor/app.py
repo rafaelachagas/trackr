@@ -1211,6 +1211,27 @@ CAMUFLAGEM_JOBS = {}
 CAMUFLAGEM_JOBS_LOCK = threading.Lock()
 
 
+# Campos de metadado que o usuario pode escrever. O arquivo sempre sai limpo
+# (-map_metadata -1); isto grava por cima, so o que foi pedido.
+METADATA_OK = {"title", "artist", "album", "comment", "description", "author",
+               "copyright", "genre", "date", "creation_time", "encoder", "language"}
+
+
+def _args_metadata(d):
+    args = []
+    for chave, valor in (d or {}).items():
+        c = str(chave or "").strip().lower()
+        if c not in METADATA_OK:
+            continue
+        v = str(valor if valor is not None else "").strip()[:200]
+        if not v:
+            continue
+        # Quebra de linha dentro de metadado quebra o container.
+        v = v.replace(chr(10), " ").replace(chr(13), " ")
+        args += ["-metadata", "%s=%s" % (c, v)]
+    return args
+
+
 def _job_set(jid, **campos):
     with CAMUFLAGEM_JOBS_LOCK:
         j = CAMUFLAGEM_JOBS.setdefault(jid, {})
@@ -1255,6 +1276,10 @@ def _camuflar(body):
     # Ajuste fino em décimos de segundo (-10 = 1s antes, +20 = 2s depois).
     money_ajuste = _clamp(body.get("money_sfx_offset"), -10, 20, 0) / 10.0
     sfx_path = body.get("sfx_path") or None
+    # Cauda preta e muda no fim (minutos -> segundos). 0 = desligada.
+    cauda = _clamp(body.get("tail_seconds"), 0, 900, 0)
+    # Metadados escritos no lugar dos originais (que sempre saem com -map_metadata -1).
+    metadados = body.get("metadata") if isinstance(body.get("metadata"), dict) else {}
 
     if not CAMUFLAGEM_LOCK.acquire(timeout=180):
         return ({"error": "processador ocupado — tente de novo em instantes"}, 503)
@@ -1496,13 +1521,27 @@ def _camuflar(body):
         if tem_audio and wa_idx is not None:
             achain.append("[%d:a]volume=0.9,aformat=channel_layouts=stereo[a1]" % wa_idx)
 
+        if cauda > 0 and kind == "video":
+            # tpad repete o ultimo quadro OU preenche com cor; aqui, preto.
+            # O audio ganha silencio do mesmo tamanho, senao o -shortest corta a
+            # cauda inteira de volta.
+            chain.append("[%s]tpad=stop_mode=add:stop_duration=%.2f:color=black[vcauda]" % (cur, cauda))
+            cur = "vcauda"
+            if tem_audio:
+                achain.append("[%s]apad=pad_dur=%.2f[acauda]" % (alab, cauda))
+                alab = "acauda"
+                if wa_idx is not None:
+                    achain.append("[a1]apad=pad_dur=%.2f[a1cauda]" % cauda)
+
         cmd += ["-filter_complex", ";".join(chain + achain), "-map", "[%s]" % cur]
         if tem_audio:
             cmd += ["-map", "[%s]" % alab]
             if wa_idx is not None:
-                cmd += ["-map", "[a1]", "-shortest"]
-        cmd += ["-map_metadata", "-1",
-                "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+                alt = "a1cauda" if (cauda > 0 and kind == "video") else "a1"
+                cmd += ["-map", "[%s]" % alt, "-shortest"]
+        cmd += ["-map_metadata", "-1"]
+        cmd += _args_metadata(metadados)
+        cmd += ["-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-pix_fmt", "yuv420p", "-threads", "1"]
         fps = _fps(entrada)
         if fps:
