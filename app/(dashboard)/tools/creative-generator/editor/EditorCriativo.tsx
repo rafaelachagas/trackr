@@ -62,6 +62,7 @@ export default function EditorCriativo({ id }: { id: string }) {
   // Picos da locução pra desenhar a onda. Sem ela, achar o "éééé" pra cortar
   // é ouvir o áudio inteiro. 600 colunas chegam pra qualquer criativo.
   const [picos, setPicos] = useState<number[] | null>(null)
+  const [ondaFalhou, setOndaFalhou] = useState(false)
   // Sem id na URL, em vez de beco sem saída: a lista do que existe.
   const [recentes, setRecentes] = useState<{ id: string; atualizado: string }[] | null>(null)
   // Catálogo de efeitos sonoros disponíveis (a biblioteca, não os usados aqui).
@@ -417,17 +418,39 @@ export default function EditorCriativo({ id }: { id: string }) {
     let vivo = true
     ;(async () => {
       try {
-        const buf = await fetch(urlLocucao).then((r) => r.arrayBuffer())
-        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-        const audio = await ctx.decodeAudioData(buf)
-        const dados0 = audio.getChannelData(0)
+        const resp = await fetch(urlLocucao)
+        // Guarda de memória: o navegador decodifica o áudio INTEIRO em PCM, e
+        // isso é ~46 MB por minuto em 48 kHz estéreo. Com locução longa a aba
+        // morria antes de desenhar qualquer coisa ("This page couldn't load").
+        const tamanho = Number(resp.headers.get('content-length') || 0)
+        if (tamanho > 60 * 1024 * 1024) {
+          if (vivo) setOndaFalhou(true)
+          return
+        }
+        const buf = await resp.arrayBuffer()
+        type ComWebkit = typeof window & { webkitAudioContext?: typeof AudioContext }
+        const Ctx = window.OfflineAudioContext
+          || (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext
         const colunas = 600
+        let dados0: Float32Array
+        if (Ctx) {
+          // 8 kHz e mono: o decodificador respeita a taxa do contexto, então
+          // isto é ~6x menos memória. Pra desenhar barrinha é mais que suficiente.
+          const ctx = new Ctx(1, 1, 8000)
+          const audio = await ctx.decodeAudioData(buf)
+          dados0 = audio.getChannelData(0)
+        } else {
+          const ctx = new (window.AudioContext || (window as ComWebkit).webkitAudioContext!)()
+          const audio = await ctx.decodeAudioData(buf)
+          dados0 = audio.getChannelData(0)
+          ctx.close()
+        }
         const porColuna = Math.floor(dados0.length / colunas) || 1
         const fora: number[] = []
         for (let c = 0; c < colunas; c++) {
           let pico = 0
-          const ini = c * porColuna
-          for (let i = ini; i < ini + porColuna && i < dados0.length; i += 8) {
+          const i0 = c * porColuna
+          for (let i = i0; i < i0 + porColuna && i < dados0.length; i += 4) {
             const v = Math.abs(dados0[i])
             if (v > pico) pico = v
           }
@@ -435,10 +458,9 @@ export default function EditorCriativo({ id }: { id: string }) {
         }
         const teto = Math.max(...fora) || 1
         if (vivo) setPicos(fora.map((v) => v / teto))
-        ctx.close()
       } catch {
         // Onda é conforto, não função: se o navegador não decodificar, segue sem.
-        if (vivo) setPicos(null)
+        if (vivo) setOndaFalhou(true)
       }
     })()
     return () => { vivo = false }
@@ -940,7 +962,9 @@ export default function EditorCriativo({ id }: { id: string }) {
                   ))}
                 </div>
               ) : (
-                <span className="absolute left-2 top-2 text-[10px] text-muted-foreground">carregando a onda...</span>
+                <span className="absolute left-2 top-2 text-[10px] text-muted-foreground">
+                  {ondaFalhou ? 'onda indisponível pra este áudio' : 'carregando a onda...'}
+                </span>
               )}
             </div>
 
