@@ -1678,15 +1678,20 @@ def camouflage_status():
 # ————————————————————————————————————————————————————————————
 TEMPLATES = {
     "ugc_cru": {
-        "zoom": "nenhum", "transicao": "corte", "intervalo_broll": (2.0, 3.5),
+        "zoom": "punch", "zoom_forca": 0.07, "transicao": "corte",
+        "intervalo_broll": (2.0, 3.5),
         "legenda_estilo": "palavra", "legenda_destaque": "#FFFF00",
     },
     "produzido": {
-        "zoom": "in", "transicao": "fade", "intervalo_broll": (3.0, 5.0),
+        # alternado: um trecho fecha, o próximo abre. É o que tira a cara de
+        # montagem automática sem custar um filtro a mais.
+        "zoom": "alternado", "zoom_forca": 0.10, "transicao": "fade",
+        "intervalo_broll": (3.0, 5.0),
         "legenda_estilo": "destaque", "legenda_destaque": "#FF4500",
     },
     "vsl_agressivo": {
-        "zoom": "in", "transicao": "flash", "intervalo_broll": (1.5, 2.5),
+        "zoom": "punch", "zoom_forca": 0.14, "transicao": "flash",
+        "intervalo_broll": (1.5, 2.5),
         "legenda_estilo": "bloco", "legenda_destaque": "#FFFFFF",
     },
 }
@@ -1697,6 +1702,7 @@ def _template(nome):
     return TEMPLATES.get(str(nome or ""), TEMPLATES[TEMPLATE_PADRAO])
 
 
+RE_ASS_TAGS = re.compile(r"\{[^}]*\}")
 RE_MARCA_CLIPE = re.compile(r"\$([\w-]+)")
 RE_MARCA_PASTA = re.compile(r"\[broll:\s*([\w-]+)(?:\s*x(\d+))?\s*\]", re.I)
 
@@ -1797,24 +1803,57 @@ ZOOM_FORCA = 0.12
 TRANSICAO_DUR = 0.18
 
 
-def _corta_broll(caminho, ini, dur, w, h, dest, zoom="nenhum", transicao="corte"):
+PUNCH_DUR = 0.32      # quanto tempo o punch-in leva pra assentar
+FADE_EMENDA = 0.03    # respiro de áudio nas emendas, pra não estalar
+
+
+def _corta_broll(caminho, ini, dur, w, h, dest, zoom="nenhum", transicao="corte",
+                 forca=None, direcao="centro"):
     """Um trecho do b-roll no formato de saída: recorte central, sem áudio.
 
-    zoom: nenhum | in | out — aproximação lenta ao longo do trecho (12%).
+    zoom:
+      nenhum — quadro parado
+      in     — fecha devagar ao longo do trecho
+      out    — começa fechado e abre
+      punch  — entra ampliado e assenta em 0,3s (o "soco" do corte)
+    forca: 0.02 a 0.40 — quanto ele amplia. Sem valor, usa o padrão (12%).
+    direcao: centro | cima | baixo | esquerda | direita — pra onde o
+    enquadramento caminha enquanto amplia.
     transicao: corte | fade (sai do preto) | flash (sai do branco) — no começo
-    do trecho. Os dois são por trecho, então o custo é o mesmo corte de hoje;
+    do trecho. Tudo é por trecho, então o custo é o mesmo corte de hoje;
     nada de xfade entre clipes, que obrigaria renderizar tudo junto."""
     filtros = ["scale=%d:%d:force_original_aspect_ratio=increase" % (w, h),
                "crop=%d:%d" % (w, h), "fps=30"]
     d = max(0.1, float(dur))
-    if zoom in ("in", "out"):
-        prog = "(t/%.3f)" % d if zoom == "in" else "(1-t/%.3f)" % d
+    f = _clamp(forca, 0.02, 0.40, ZOOM_FORCA)
+    if zoom in ("in", "out", "punch"):
+        # prog vai de 0 a 1 e diz "o quanto estou ampliado agora".
+        if zoom == "in":
+            prog = "(t/%.3f)" % d
+        elif zoom == "out":
+            prog = "(1-t/%.3f)" % d
+        else:
+            prog = "(1-t/%.3f)" % PUNCH_DUR
         # Vírgula escapada em vez de aspas: aspas somem no caminho em alguns
         # ambientes e a vírgula do min() quebraria a cadeia de filtros.
-        fator = r"(1+%.3f*min(1\,max(0\,%s)))" % (ZOOM_FORCA, prog)
+        clamp = r"min(1\,max(0\,%s))" % prog
+        fator = r"(1+%.3f*%s)" % (f, clamp)
         filtros += ["scale=w=trunc(%d*%s/2)*2:h=trunc(%d*%s/2)*2:eval=frame"
-                    % (w, fator, h, fator),
-                    "crop=%d:%d" % (w, h)]
+                    % (w, fator, h, fator)]
+        # A sobra do quadro ampliado é (fator-1)*lado. O recorte passeia dentro
+        # dessa sobra conforme a direção; no centro fica parado no meio.
+        sx, sy = "(iw-%d)/2" % w, "(ih-%d)/2" % h
+        if direcao == "cima":
+            sy = "(ih-%d)*(1-%s)" % (h, clamp)
+        elif direcao == "baixo":
+            sy = "(ih-%d)*%s" % (h, clamp)
+        elif direcao == "esquerda":
+            sx = "(iw-%d)*(1-%s)" % (w, clamp)
+        elif direcao == "direita":
+            sx = "(iw-%d)*%s" % (w, clamp)
+        filtros.append("crop=%d:%d:x=%s:y=%s" % (w, h, sx, sy))
+    else:
+        filtros.append("crop=%d:%d" % (w, h))
     if transicao == "fade":
         filtros.append("fade=t=in:st=0:d=%.2f:color=black" % TRANSICAO_DUR)
     elif transicao == "flash":
@@ -1852,10 +1891,18 @@ def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None):
     y = int(h * _clamp(cfg.get("posicao"), 0.1, 0.92, 0.5 if estilo == "palavra" else 0.75))
     caixa = _bool(cfg.get("caixa"), False)
     maiusc = _bool(cfg.get("maiusculas"), estilo == "palavra")
-    pop = str(cfg.get("animacao") or "pop") == "pop"
+    # animacao: pop (estala de escala) | subir | lado (desliza entrando) | nenhuma
+    anima = str(cfg.get("animacao") or "pop")
+    pop = anima == "pop"
+    desliza = anima in ("subir", "lado")
     fundo = str(cfg.get("tipo_destaque") or "cor") == "fundo"
     por_linha = int(_clamp(cfg.get("por_linha"), 2, 10, 4 if estilo == "destaque" else 6))
     contorno = max(3, int(corpo * 0.09))
+    # Aberração cromática: duas cópias fantasmas, vermelha e azul, deslocadas
+    # pros lados por baixo do texto. É o "erro de impressão" que o CapCut faz.
+    aberracao = _bool(cfg.get("aberracao"), False)
+    # Brilho: cópia borrada atrás, na cor do destaque.
+    brilho = _bool(cfg.get("brilho"), False)
 
     if caixa:
         # BorderStyle 3 = caixa opaca atrás do texto, com a cor do contorno.
@@ -1874,9 +1921,24 @@ def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None):
         "", "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
-    pos = r"{\an5\pos(%d,%d)}" % (w // 2, y)
+    def tag_pos(dx=0):
+        """Onde o texto fica — e, se deslizar, de onde ele vem."""
+        x = w // 2 + dx
+        if anima == "subir":
+            return (r"{\an5\move(%d,%d,%d,%d,0,130)\fad(90,0)}"
+                    % (x, y + int(corpo * 0.45), x, y))
+        if anima == "lado":
+            return (r"{\an5\move(%d,%d,%d,%d,0,130)\fad(90,0)}"
+                    % (x - int(corpo * 0.9), y, x, y))
+        return r"{\an5\pos(%d,%d)}" % (x, y)
+
+    pos = tag_pos()
     anima_linha = r"{\fscx80\fscy80\t(0,80,\fscx108\fscy108)\t(80,150,\fscx100\fscy100)}"
     anima_palavra = r"{\t(0,80,\fscx114\fscy114)\t(80,150,\fscx100\fscy100)}"
+    # Quanto as cópias fantasmas saem do lugar. Abaixo de ~5% do corpo o
+    # contorno do texto cobre o efeito e não se vê nada.
+    desloc = max(3, int(corpo * _clamp(cfg.get("aberracao_forca"), 0.02, 0.20, 0.055)))
+    borrao = max(2, int(corpo * 0.05))
 
     vis = [p for p in palavras if not p.get("oculta") and (p.get("t") or "").strip()]
 
@@ -1901,8 +1963,30 @@ def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None):
             return r"{\c%s}%s{\c%s}" % (dest, t, cor)
         return t
 
-    def dialogo(ini, fim, txt):
-        return "Dialogue: 0,%s,%s,Base,,0,0,0,,%s%s" % (_ass_tempo(ini), _ass_tempo(fim), pos, txt)
+    def dialogo(ini, fim, txt, camada=1, dx=0):
+        return ("Dialogue: %d,%s,%s,Base,,0,0,0,,%s%s"
+                % (camada, _ass_tempo(ini), _ass_tempo(fim),
+                   pos if dx == 0 else tag_pos(dx), txt))
+
+    def camadas(ini, fim, txt):
+        """O texto e, por baixo dele, as cópias de efeito.
+
+        As fantasmas usam o texto SEM as marcações de cor — elas são manchas
+        atrás, não legenda: se herdassem o destaque, virariam sujeira."""
+        if not (aberracao or brilho):
+            return [dialogo(ini, fim, txt)]
+        plano = RE_ASS_TAGS.sub("", txt)
+        fora = []
+        if brilho:
+            fora.append(dialogo(ini, fim,
+                                r"{\bord%d\3c%s\3a&H70&\blur%d\shad0}%s"
+                                % (contorno * 3, dest, borrao, plano), camada=0))
+        if aberracao:
+            for cor_fantasma, lado in ((r"&H0000FF&", -1), (r"&HFF0000&", 1)):
+                fora.append(dialogo(ini, fim,
+                                    r"{\c%s\bord0\shad0\alpha&H50&}%s" % (cor_fantasma, plano),
+                                    camada=0, dx=lado * desloc))
+        return fora + [dialogo(ini, fim, txt)]
 
     linhas = []
     if estilo == "palavra":
@@ -1910,13 +1994,13 @@ def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None):
             txt = marcada(p, False)
             if p.get("enfase"):
                 txt = r"{\fscx118\fscy118}" + txt
-            linhas.append(dialogo(p["ini"], fim_de(vis, i), (anima_linha if pop else "") + txt))
+            linhas += camadas(p["ini"], fim_de(vis, i), (anima_linha if pop else "") + txt)
     else:
         grupos = [vis[i:i + por_linha] for i in range(0, len(vis), por_linha)]
         for g in grupos:
             if estilo == "bloco":
                 fim = max(g[-1]["fim"], g[0]["ini"] + 0.4)
-                linhas.append(dialogo(g[0]["ini"], fim, " ".join(marcada(p, False) for p in g)))
+                linhas += camadas(g[0]["ini"], fim, " ".join(marcada(p, False) for p in g))
                 continue
             for k, p in enumerate(g):
                 partes = []
@@ -1926,7 +2010,7 @@ def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None):
                                       + (r"{\fscx100\fscy100}" if pop else ""))
                     else:
                         partes.append(marcada(q, False))
-                linhas.append(dialogo(p["ini"], fim_de(g, k), " ".join(partes)))
+                linhas += camadas(p["ini"], fim_de(g, k), " ".join(partes))
     return "\n".join(cab + linhas) + "\n"
 
 
@@ -2061,7 +2145,11 @@ def _projeto_automatico(body, baixar, tmp, tempos):
     for i, tr in enumerate(trechos):
         tr["origem"] = round(_melhor_trecho(baixar(tr["caminho"]), tr["dur"], tmp, i), 2)
         tr["id"] = "t%d" % i
-        tr["zoom"] = tpl["zoom"]
+        z = tpl["zoom"]
+        # "alternado" não chega no ffmpeg: aqui ele vira in/out de verdade.
+        tr["zoom"] = (("in", "out")[i % 2]) if z == "alternado" else z
+        tr["zoom_forca"] = tpl.get("zoom_forca", ZOOM_FORCA)
+        tr["zoom_direcao"] = "centro"
         # O primeiro trecho entra sempre em corte seco: fade/flash no segundo
         # zero come o hook, que e onde o criativo ganha ou perde a pessoa.
         tr["transicao"] = "corte" if i == 0 else tpl["transicao"]
@@ -2152,7 +2240,9 @@ def _montar(body):
             orig = baixar(tr["caminho"])
             dest = os.path.join(tmp, "parte%03d.mp4" % i)
             if _corta_broll(orig, float(tr.get("origem") or 0), dur, w, h, dest,
-                            str(tr.get("zoom") or "nenhum"), str(tr.get("transicao") or "corte")):
+                            str(tr.get("zoom") or "nenhum"),
+                            str(tr.get("transicao") or "corte"),
+                            tr.get("zoom_forca"), str(tr.get("zoom_direcao") or "centro")):
                 partes.append(dest)
             else:
                 print("[montador] falhou o trecho %d (%s)" % (i, tr["caminho"]), flush=True)
@@ -2203,6 +2293,17 @@ def _montar(body):
             expr = "+".join(r"between(t\,%.3f\,%.3f)" % c for c in cortes)
             vf += ",select=not(%s),setpts=N/FRAME_RATE/TB" % expr
             af = "aselect=not(%s),asetpts=N/SR/TB" % expr
+            # Emendar a onda sonora em qualquer ponto estala. Um respiro de
+            # 30ms de cada lado da emenda some com o estalo sem que ninguém
+            # perceba que faltou áudio ali.
+            removido = 0.0
+            for a, b in sorted(cortes):
+                junta = a - removido
+                removido += b - a
+                if junta <= 0.03:
+                    continue
+                af += (",afade=t=out:st=%.3f:d=%.3f,afade=t=in:st=%.3f:d=%.3f"
+                       % (junta - FADE_EMENDA, FADE_EMENDA, junta, FADE_EMENDA))
         cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-i", base, "-i", loc,
                "-vf", vf, "-af", af, "-map", "0:v", "-map", "1:a", "-shortest",
                "-c:v", "libx264", "-preset", "superfast", "-crf", "23",

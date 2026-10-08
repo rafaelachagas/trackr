@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import {
   type Projeto, type Trecho, type Palavra, type Legenda,
-  legendaCompleta, corpoRelativo, fimTrecho, trechoEm, corteEm, legendaEm, escalaPop,
+  legendaCompleta, corpoRelativo, fimTrecho, trechoEm, corteEm, legendaEm, escalaPop, PUNCH_DUR,
   ZOOM_FORCA, TRANSICAO_DUR,
 } from '@/lib/criativos-projeto'
 
@@ -356,14 +356,23 @@ export default function EditorCriativo({ id }: { id: string }) {
   const idx = trechoEm(p, t)
   const trAtual = p.trechos[idx]
   const prog = trAtual ? Math.min(1, Math.max(0, (t - trAtual.ini) / Math.max(0.1, fimTrecho(p, idx) - trAtual.ini))) : 0
-  const escalaZoom = trAtual?.zoom === 'in' ? 1 + ZOOM_FORCA * prog : trAtual?.zoom === 'out' ? 1 + ZOOM_FORCA * (1 - prog) : 1
+  // Mesma conta do ffmpeg (_corta_broll): prog diz o quanto está ampliado agora.
+  const forcaZoom = trAtual?.zoom_forca ?? ZOOM_FORCA
+  const progZoom = trAtual?.zoom === 'in' ? prog
+    : trAtual?.zoom === 'out' ? 1 - prog
+    : trAtual?.zoom === 'punch' ? Math.max(0, 1 - (t - trAtual.ini) / PUNCH_DUR)
+    : 0
+  const escalaZoom = 1 + forcaZoom * Math.min(1, Math.max(0, progZoom))
   const opTransicao = trAtual && trAtual.transicao && trAtual.transicao !== 'corte'
     ? Math.max(0, 1 - (t - trAtual.ini) / TRANSICAO_DUR) : 0
 
   const escalaPx = boxH / p.altura
   const corpoPx = corpoRelativo(leg) * boxH
   const contornoPx = Math.max(3, Math.floor(corpoRelativo(leg) * p.altura * 0.09)) * escalaPx
+  const aberrPx = Math.max(2, corpoPx * (leg.aberracao_forca ?? 0.055))
   const naTela = legendaEm(p, t)
+  const desliza = leg.animacao === 'subir' || leg.animacao === 'lado'
+  const avancoEntrada = naTela ? Math.min(1, Math.max(0, (t - naTela[0].desde) / 0.13)) : 1
   const duracaoFinal = p.duracao - p.cortes.reduce((s, c) => s + (c.fim - c.ini), 0)
 
   const trSel = sel?.tipo === 'trecho' ? p.trechos[sel.i] : null
@@ -425,7 +434,11 @@ export default function EditorCriativo({ id }: { id: string }) {
                 style={{
                   top: `${leg.posicao * 100}%`,
                   width: `${((p.largura - 160) / p.largura) * 100}%`,
-                  transform: `translate(-50%, -50%) scale(${leg.animacao === 'pop' && leg.estilo === 'palavra' ? escalaPop(naTela[0].desde, t) : 1})`,
+                  // Deslizar: mesma entrada do \move do ASS (130ms) com o ad.
+                  transform: `translate(-50%, -50%)`
+                    + (desliza ? ` translate(${leg.animacao === 'lado' ? -(1 - avancoEntrada) * corpoPx * 0.9 : 0}px, ${leg.animacao === 'subir' ? (1 - avancoEntrada) * corpoPx * 0.45 : 0}px)` : '')
+                    + ` scale(${leg.animacao === 'pop' && leg.estilo === 'palavra' ? escalaPop(naTela[0].desde, t) : 1})`,
+                  opacity: desliza ? Math.min(1, avancoEntrada * 1.5) : 1,
                   fontFamily: 'FonteLegendaPrevia, Montserrat, Arial Black, sans-serif',
                   fontWeight: 700,
                   fontSize: corpoPx,
@@ -450,7 +463,12 @@ export default function EditorCriativo({ id }: { id: string }) {
                           color: destacar && !fundo ? leg.destaque : leg.cor,
                           WebkitTextStroke: leg.caixa ? undefined : `${(fundo ? contornoPx * 3 : contornoPx) * 2}px ${fundo ? leg.destaque : '#000'}`,
                           paintOrder: 'stroke fill',
-                          textShadow: leg.caixa ? undefined : `0 ${Math.max(1, corpoPx * 0.04)}px 0 rgba(0,0,0,0.5)`,
+                          textShadow: [
+                            // Aberração cromática: as duas cópias fantasmas do ASS.
+                            leg.aberracao ? `${-aberrPx}px 0 0 rgba(255,0,0,0.7), ${aberrPx}px 0 0 rgba(0,0,255,0.7)` : '',
+                            leg.brilho ? `0 0 ${Math.max(4, corpoPx * 0.18)}px ${leg.destaque}` : '',
+                            leg.caixa ? '' : `0 ${Math.max(1, corpoPx * 0.04)}px 0 rgba(0,0,0,0.5)`,
+                          ].filter(Boolean).join(', ') || undefined,
                         }}>{w.texto}</span>
                       </span>
                     )
@@ -545,10 +563,25 @@ export default function EditorCriativo({ id }: { id: string }) {
               <Faixa rotulo="Palavras por frase" valor={leg.por_linha} min={2} max={10} passo={1} mostrar={(v) => `${v}`}
                 onChange={(v) => mudarLegenda({ por_linha: v })} />
             )}
+            <div className="space-y-1">
+              <span className="text-muted-foreground">Entrada da legenda</span>
+              <div className="grid grid-cols-4 gap-1">
+                {(['nenhuma', 'pop', 'subir', 'lado'] as const).map((a) => (
+                  <Alternar key={a} ativo={leg.animacao === a} onClick={() => mudarLegenda({ animacao: a })}>
+                    {a === 'nenhuma' ? 'Sem' : a === 'pop' ? 'Estala' : a === 'subir' ? 'Sobe' : 'Lado'}
+                  </Alternar>
+                ))}
+              </div>
+            </div>
+            {leg.aberracao && (
+              <Faixa rotulo="Força da aberração" valor={Math.round(leg.aberracao_forca * 1000) / 10} min={2} max={20} passo={0.5}
+                mostrar={(v) => `${v}%`} onChange={(v) => mudarLegenda({ aberracao_forca: v / 100 })} />
+            )}
             <div className="flex flex-wrap gap-1.5">
               <Alternar ativo={leg.caixa} onClick={() => mudarLegenda({ caixa: !leg.caixa })}>Caixa de fundo</Alternar>
               <Alternar ativo={leg.maiusculas} onClick={() => mudarLegenda({ maiusculas: !leg.maiusculas })}>MAIÚSCULAS</Alternar>
-              <Alternar ativo={leg.animacao === 'pop'} onClick={() => mudarLegenda({ animacao: leg.animacao === 'pop' ? 'nenhuma' : 'pop' })}>Animação pop</Alternar>
+              <Alternar ativo={leg.aberracao} onClick={() => mudarLegenda({ aberracao: !leg.aberracao })}>Aberração</Alternar>
+              <Alternar ativo={leg.brilho} onClick={() => mudarLegenda({ brilho: !leg.brilho })}>Brilho</Alternar>
               {leg.estilo === 'destaque' && !leg.caixa && (
                 <Alternar ativo={leg.tipo_destaque === 'fundo'} onClick={() => mudarLegenda({ tipo_destaque: leg.tipo_destaque === 'fundo' ? 'cor' : 'fundo' })}>
                   Destaque em contorno
@@ -750,13 +783,32 @@ function PainelTrecho({
 
       <div className="space-y-1">
         <span className="text-muted-foreground">Zoom</span>
-        <div className="grid grid-cols-3 gap-1">
-          {(['nenhum', 'in', 'out'] as const).map((z) => (
+        <div className="grid grid-cols-4 gap-1">
+          {(['nenhum', 'in', 'out', 'punch'] as const).map((z) => (
             <Alternar key={z} ativo={(tr.zoom || 'nenhum') === z} onClick={() => onMudar((x) => { x.zoom = z })}>
-              {z === 'nenhum' ? 'Sem' : z === 'in' ? 'Aproximar' : 'Afastar'}
+              {z === 'nenhum' ? 'Sem' : z === 'in' ? 'Fecha' : z === 'out' ? 'Abre' : 'Soco'}
             </Alternar>
           ))}
         </div>
+        {tr.zoom && tr.zoom !== 'nenhum' && (
+          <>
+            <label className="flex items-center gap-2 pt-1">
+              <span className="text-muted-foreground w-14 shrink-0">Força</span>
+              <input type="range" min={2} max={40} step={1} className="w-full"
+                value={Math.round((tr.zoom_forca ?? ZOOM_FORCA) * 100)}
+                onChange={(e) => onMudar((x) => { x.zoom_forca = Number(e.target.value) / 100 })} />
+              <span className="tabular-nums w-10 text-right">{Math.round((tr.zoom_forca ?? ZOOM_FORCA) * 100)}%</span>
+            </label>
+            <div className="grid grid-cols-5 gap-1">
+              {(['centro', 'cima', 'baixo', 'esquerda', 'direita'] as const).map((d) => (
+                <Alternar key={d} ativo={(tr.zoom_direcao || 'centro') === d}
+                  onClick={() => onMudar((x) => { x.zoom_direcao = d })}>
+                  {d === 'centro' ? 'Meio' : d === 'esquerda' ? 'Esq' : d === 'direita' ? 'Dir' : d === 'cima' ? 'Cima' : 'Baixo'}
+                </Alternar>
+              ))}
+            </div>
+          </>
+        )}
       </div>
       <div className="space-y-1">
         <span className="text-muted-foreground">Entrada</span>

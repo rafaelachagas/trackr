@@ -6,7 +6,8 @@
 export const PASTA_PROJETOS = 'projetos'
 
 export type Palavra = { t: string; ini: number; fim: number; enfase?: boolean; oculta?: boolean }
-export type Zoom = 'nenhum' | 'in' | 'out'
+export type Zoom = 'nenhum' | 'in' | 'out' | 'punch'
+export type ZoomDirecao = 'centro' | 'cima' | 'baixo' | 'esquerda' | 'direita'
 export type Transicao = 'corte' | 'fade' | 'flash'
 export type Trecho = {
   id: string
@@ -14,6 +15,8 @@ export type Trecho = {
   ini: number        // onde começa na linha do tempo (s)
   origem: number     // de que ponto do clipe original ele começa (s)
   zoom?: Zoom
+  zoom_forca?: number
+  zoom_direcao?: ZoomDirecao
   transicao?: Transicao
 }
 export type EstiloLegenda = 'palavra' | 'destaque' | 'bloco'
@@ -25,9 +28,12 @@ export type Legenda = {
   posicao?: number
   caixa?: boolean
   maiusculas?: boolean
-  animacao?: 'pop' | 'nenhuma'
+  animacao?: 'pop' | 'nenhuma' | 'subir' | 'lado'
   tipo_destaque?: 'cor' | 'fundo'
   por_linha?: number
+  aberracao?: boolean
+  aberracao_forca?: number
+  brilho?: boolean
 }
 export type Corte = { ini: number; fim: number }
 export type Projeto = {
@@ -47,6 +53,7 @@ export type Projeto = {
 }
 
 export const ZOOM_FORCA = 0.12
+export const PUNCH_DUR = 0.32
 export const TRANSICAO_DUR = 0.18
 
 /** Legenda com todos os campos preenchidos, com os mesmos padrões da VPS. */
@@ -63,6 +70,9 @@ export function legendaCompleta(l: Legenda): Required<Legenda> {
     animacao: l.animacao || 'pop',
     tipo_destaque: l.tipo_destaque || 'cor',
     por_linha: l.por_linha ?? (l.estilo === 'destaque' ? 4 : 6),
+    aberracao: l.aberracao ?? false,
+    aberracao_forca: l.aberracao_forca ?? 0.055,
+    brilho: l.brilho ?? false,
   }
 }
 
