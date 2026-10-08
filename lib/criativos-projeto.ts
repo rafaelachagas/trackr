@@ -56,6 +56,15 @@ export type TextoFixo = {
   animacao?: 'pop' | 'subir' | 'lado' | 'nenhuma'
 }
 
+/** Um efeito sonoro disparado num instante (whoosh, pop, cha-ching). */
+export type Som = {
+  id: string
+  caminho: string
+  nome: string
+  quando: number
+  volume?: number
+}
+
 export const TEXTO_PADRAO: Omit<TextoFixo, 'id' | 'ini' | 'fim'> = {
   texto: 'Dia 3', x: 0.5, y: 0.25, tamanho: 0.14, cor: '#FFFFFF',
   rotacao: 0, maiusculas: false, animacao: 'pop',
@@ -74,6 +83,7 @@ export type Projeto = {
   trechos: Trecho[]
   cortes: Corte[]
   textos?: TextoFixo[]
+  sons?: Som[]
   musica_path?: string | null
   musica_volume?: number
   saida_path?: string

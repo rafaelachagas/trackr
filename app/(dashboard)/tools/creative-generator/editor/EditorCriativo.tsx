@@ -9,7 +9,7 @@ import {
 import {
   type Projeto, type Trecho, type Palavra, type Legenda,
   legendaCompleta, corpoRelativo, fimTrecho, trechoEm, corteEm, legendaEm, escalaPop, PUNCH_DUR,
-  textosEm, TEXTO_PADRAO, type TextoFixo, TRANSICOES_CRUZADAS, type Transicao,
+  textosEm, TEXTO_PADRAO, type TextoFixo, TRANSICOES_CRUZADAS, type Transicao, type Som,
   encaixaNaPalavra,
   ZOOM_FORCA, TRANSICAO_DUR,
 } from '@/lib/criativos-projeto'
@@ -62,6 +62,14 @@ export default function EditorCriativo({ id }: { id: string }) {
   // Picos da locução pra desenhar a onda. Sem ela, achar o "éééé" pra cortar
   // é ouvir o áudio inteiro. 600 colunas chegam pra qualquer criativo.
   const [picos, setPicos] = useState<number[] | null>(null)
+  // Catálogo de efeitos sonoros disponíveis (a biblioteca, não os usados aqui).
+  const [catalogoSons, setCatalogoSons] = useState<{ nome: string; caminho: string; url: string | null }[]>([])
+  useEffect(() => {
+    fetch('/api/creative-generator/sfx')
+      .then((r) => r.json())
+      .then((j) => setCatalogoSons(j.sons || []))
+      .catch(() => setCatalogoSons([]))
+  }, [])
   const boxRef = useRef<HTMLDivElement>(null)
   const trilhaRef = useRef<HTMLDivElement>(null)
   const videos = useRef<Record<string, HTMLVideoElement | null>>({})
@@ -431,6 +439,29 @@ export default function EditorCriativo({ id }: { id: string }) {
     setSel({ tipo: 'texto', i: (p.textos || []).length })
   }
 
+  function porSom(som: { nome: string; caminho: string }, quando: number) {
+    mudar((d) => {
+      d.sons = [...(d.sons || []), {
+        id: `sm${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+        caminho: som.caminho, nome: som.nome, quando: +quando.toFixed(3), volume: 0.8,
+      }]
+    })
+  }
+
+  /** Um efeito em cada emenda de b-roll — menos a primeira, que é o começo. */
+  function somEmTodasAsTrocas(som: { nome: string; caminho: string }) {
+    if (!p) return
+    mudar((d) => {
+      const novos: Som[] = d.trechos.slice(1).map((tr, k) => ({
+        id: `sm${Date.now()}${k}`,
+        caminho: som.caminho, nome: som.nome,
+        // Um pouquinho antes da troca: o som anuncia o corte, não o segue.
+        quando: +Math.max(0, tr.ini - 0.08).toFixed(3), volume: 0.8,
+      }))
+      d.sons = [...(d.sons || []), ...novos]
+    })
+  }
+
   function mudarTexto(campos: Partial<TextoFixo>) {
     if (sel?.tipo !== 'texto') return
     mudar((d) => {
@@ -689,6 +720,55 @@ export default function EditorCriativo({ id }: { id: string }) {
             )}
           </div>
 
+          <div className="space-y-2">
+            <p className="font-semibold text-foreground">Efeitos sonoros</p>
+            {catalogoSons.length === 0 ? (
+              <p className="text-muted-foreground text-[11px]">
+                Nenhum efeito na biblioteca. Envie whoosh, pop e cha-ching no gerador
+                (Modo avançado) e eles aparecem aqui.
+              </p>
+            ) : (
+              <>
+                <p className="text-muted-foreground text-[11px]">Clique pra pôr no cursor ({fmt(t)}):</p>
+                <div className="flex flex-wrap gap-1">
+                  {catalogoSons.map((sm) => (
+                    <button key={sm.caminho} onClick={() => porSom(sm, t)}
+                      className="px-2 py-1 rounded-md border border-border text-[11px] text-muted-foreground hover:text-foreground hover:border-sky-500/50">
+                      {sm.nome}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {catalogoSons.map((sm) => (
+                    <button key={sm.caminho} onClick={() => somEmTodasAsTrocas(sm)}
+                      className="px-2 py-1 rounded-md border border-dashed border-border text-[11px] text-muted-foreground hover:text-foreground">
+                      {sm.nome} em todas as trocas
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {(p.sons || []).length > 0 && (
+              <div className="space-y-1 pt-1">
+                {(p.sons || []).map((sm, i) => (
+                  <div key={sm.id} className="flex items-center gap-2 text-[11px]">
+                    <button onClick={() => irPara(sm.quando)} className="text-sky-300 hover:underline tabular-nums">
+                      {fmt(sm.quando)}
+                    </button>
+                    <span className="text-foreground truncate flex-1">{sm.nome}</span>
+                    <input type="range" min={0} max={150} step={5} value={Math.round((sm.volume ?? 0.8) * 100)}
+                      onChange={(e) => mudar((d) => { (d.sons || [])[i].volume = Number(e.target.value) / 100 })}
+                      className="w-20" title="volume" />
+                    <button onClick={() => mudar((d) => { (d.sons || []).splice(i, 1) })}
+                      className="text-muted-foreground hover:text-rose-300">×</button>
+                  </div>
+                ))}
+                <button onClick={() => mudar((d) => { d.sons = [] })}
+                  className="text-[11px] text-muted-foreground hover:text-foreground underline">limpar todos</button>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-3">
             <p className="font-semibold text-foreground">Legenda</p>
             <div className="grid grid-cols-3 gap-1">
@@ -853,6 +933,14 @@ export default function EditorCriativo({ id }: { id: string }) {
                 )
               })}
             </div>
+
+            {/* efeitos sonoros */}
+            {(p.sons || []).map((sm) => (
+              <div key={sm.id} className="absolute top-6 h-3 w-0.5 bg-sky-400 pointer-events-none"
+                style={{ left: sm.quando * pps }} title={sm.nome}>
+                <div className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-sky-400" />
+              </div>
+            ))}
 
             {/* cortes */}
             {p.cortes.map((c, i) => (

@@ -111,6 +111,9 @@ export default function CreativeGeneratorPage() {
   const [musica, setMusica] = useState<{ nome: string; caminho: string } | null>(null)
   const [musicaVol, setMusicaVol] = useState(0.12)
   const musicaRef = useRef<HTMLInputElement>(null)
+  // Biblioteca de efeitos sonoros — o editor usa, aqui só se envia.
+  const [sfx, setSfx] = useState<{ nome: string; caminho: string }[]>([])
+  const sfxRef = useRef<HTMLInputElement>(null)
 
   // --- roteiro ---
   const [origem, setOrigem] = useState<'minha' | 'concorrente' | 'nosso'>('minha')
@@ -320,7 +323,15 @@ export default function CreativeGeneratorPage() {
     await carregarPastas()
   }
 
-  async function subir(f: File, tipo: 'broll' | 'fonte' | 'locucao' | 'musica', pastaAlvo?: string) {
+  const carregarSfx = useCallback(async () => {
+    try {
+      const j = await fetch('/api/creative-generator/sfx').then(json)
+      setSfx(j.sons || [])
+    } catch { /* biblioteca de som é acessório: falhar aqui não trava nada */ }
+  }, [])
+  useEffect(() => { carregarSfx() }, [carregarSfx])
+
+  async function subir(f: File, tipo: 'broll' | 'fonte' | 'locucao' | 'musica' | 'sfx', pastaAlvo?: string) {
     setEnviando(f.name)
     try {
       const sign = await fetch('/api/creative-generator/sign-upload', {
@@ -334,6 +345,7 @@ export default function CreativeGeneratorPage() {
       if (tipo === 'fonte') await carregarFontes(buscaFonte, categoriaFonte)
       else if (tipo === 'locucao') setLocucao({ nome: f.name, caminho: sign.caminho })
       else if (tipo === 'musica') setMusica({ nome: f.name, caminho: sign.caminho })
+      else if (tipo === 'sfx') await carregarSfx()
       else {
         const dentro = pastaAlvo ?? pastaAberta
         if (dentro) { await abrirPasta(dentro); await carregarPastas() }
@@ -773,8 +785,8 @@ export default function CreativeGeneratorPage() {
             </div>
           </Passo>
 
-          <Passo n={5} titulo="Trilha de fundo (opcional)" pronto={!!musica}
-            ajuda="Ela entra em loop e abaixa sozinha quando a expert fala. Sem trilha, sai só a voz.">
+          <Passo n={5} titulo="Som (opcional)" pronto={!!musica}
+            ajuda="Trilha de fundo e efeitos sonoros. A trilha entra em loop e abaixa sozinha quando a expert fala.">
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={() => musicaRef.current?.click()} disabled={!!enviando}
                 className="px-3 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:border-fuchsia-500/40 disabled:opacity-50 text-xs text-foreground inline-flex items-center gap-1.5">
@@ -801,6 +813,42 @@ export default function CreativeGeneratorPage() {
                   onChange={(e) => setMusicaVol(Number(e.target.value) / 100)} className="w-full" />
               </label>
             )}
+            <div className="pt-2 border-t border-border/60 space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                <b className="text-foreground">Efeitos sonoros</b> — whoosh na troca de cena,
+                pop na figurinha, cha-ching no valor. Você posiciona cada um no editor,
+                depois de montar.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => sfxRef.current?.click()} disabled={!!enviando}
+                  className="px-3 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:border-fuchsia-500/40 disabled:opacity-50 text-xs text-foreground inline-flex items-center gap-1.5">
+                  <UploadCloud className="w-3.5 h-3.5" /> Enviar efeitos
+                </button>
+                <input ref={sfxRef} type="file" accept="audio/*" multiple className="hidden"
+                  onChange={async (e) => {
+                    for (const f of Array.from(e.target.files || [])) await subir(f, 'sfx')
+                    e.target.value = ''
+                  }} />
+                {sfx.length === 0
+                  ? <span className="text-[11px] text-muted-foreground">
+                      Nenhum ainda — pegue uns whooshes CC0 (Pixabay, Freesound) ou use os seus.
+                    </span>
+                  : <div className="flex flex-wrap gap-1">
+                      {sfx.map((sm) => (
+                        <span key={sm.caminho}
+                          className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md border border-border text-[11px] text-muted-foreground">
+                          {sm.nome}
+                          <button
+                            onClick={async () => {
+                              await fetch(`/api/creative-generator/sfx?caminho=${encodeURIComponent(sm.caminho)}`, { method: 'DELETE' })
+                              carregarSfx()
+                            }}
+                            className="hover:text-rose-300 px-0.5">×</button>
+                        </span>
+                      ))}
+                    </div>}
+              </div>
+            </div>
           </Passo>
 
           <div className="flex flex-wrap items-center gap-3 pt-1">

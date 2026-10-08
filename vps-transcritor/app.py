@@ -2345,6 +2345,7 @@ def _projeto_automatico(body, baixar, tmp, tempos):
         "trechos": trechos,
         "cortes": [],
         "textos": [],
+        "sons": [],
         "musica_path": body.get("musica_path") or None,
         "musica_volume": _clamp(body.get("musica_volume"), 0.0, 1.0, 0.12),
     }
@@ -2534,9 +2535,34 @@ def _montar(body):
             n_video = 1
         entradas += ["-i", loc]
         i_loc = n_video
+        i_prox = n_video + 1
         if mus and vol > 0:
             entradas += ["-i", mus]
-        i_mus = n_video + 1
+            i_mus = i_prox
+            i_prox += 1
+        else:
+            i_mus = -1
+
+        # Efeitos sonoros pontuais (whoosh na troca, cha-ching no valor...).
+        # Cada um e uma entrada propria, atrasada ate o instante dele.
+        sons = []
+        for item in (projeto.get("sons") or []):
+            try:
+                quando = float(item.get("quando") or 0)
+                if quando < 0 or quando > esperado:
+                    continue
+                arq = baixar(item["caminho"])
+            except Exception as e:
+                print("[montador] som ignorado (%s)" % e, flush=True)
+                continue
+            sons.append((i_prox, quando, _clamp(item.get("volume"), 0.0, 2.0, 0.8)))
+            entradas += ["-i", arq]
+            i_prox += 1
+        if len(sons) > 24:
+            # Cada som e uma entrada no ffmpeg; passar disso nao melhora o
+            # video e so deixa a cadeia gigante.
+            print("[montador] %d sons: usando os 24 primeiros" % len(sons), flush=True)
+            sons = sons[:24]
 
         # A parte de video da cadeia: cruzar os pedacos (quando for o caso) e,
         # por cima do resultado, a legenda e os cortes do editor.
@@ -2546,21 +2572,40 @@ def _montar(body):
         else:
             video = "[0:v]%s[v]" % vf
 
+        # A cadeia de som, montada em pedacos: a voz (com a trilha, se houver)
+        # produz um rotulo, e os efeitos entram por cima dele. Montar por
+        # rotulo em vez de remendar texto evita o classico "troquei o [a]
+        # errado" quando a cadeia muda.
+        voz_rot = "avoz" if sons else "a"
         if mus and vol > 0:
             fade = min(1.5, esperado * 0.2)
-            cadeia = (
-                "%s;"
+            som = (
                 "[%d:a]%s,asplit=2[voz][sc];"
                 # aloop em amostras: -1 repete pra sempre, o atrim corta no fim.
                 "[%d:a]aloop=loop=-1:size=2147483647,atrim=0:%.3f,asetpts=N/SR/TB,"
                 "volume=%.3f,afade=t=in:st=0:d=0.8,afade=t=out:st=%.3f:d=%.3f[mus];"
                 # A voz manda: quando ela entra, a trilha recua.
                 "[mus][sc]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=350[duck];"
-                "[voz][duck]amix=inputs=2:duration=first:normalize=0[a]"
-            ) % (video, i_loc, af, i_mus, esperado, vol,
-                 max(0.0, esperado - fade), fade)
+                "[voz][duck]amix=inputs=2:duration=first:normalize=0[%s]"
+            ) % (i_loc, af, i_mus, esperado, vol,
+                 max(0.0, esperado - fade), fade, voz_rot)
         else:
-            cadeia = "%s;[%d:a]%s[a]" % (video, i_loc, af)
+            som = "[%d:a]%s[%s]" % (i_loc, af, voz_rot)
+
+        if sons:
+            # adelay empurra cada efeito pro instante dele; apad impede que um
+            # efeito curto encurte a mixagem inteira.
+            pedacos = []
+            rotulos = []
+            for n_entrada, quando, v_som in sons:
+                rot = "s%d" % n_entrada
+                pedacos.append("[%d:a]volume=%.3f,adelay=%d:all=1,apad[%s]"
+                               % (n_entrada, v_som, int(round(quando * 1000)), rot))
+                rotulos.append("[%s]" % rot)
+            som = "%s;%s;[%s]%samix=inputs=%d:duration=first:normalize=0[a]" % (
+                som, ";".join(pedacos), voz_rot, "".join(rotulos), len(rotulos) + 1)
+
+        cadeia = "%s;%s" % (video, som)
 
         cmd = (["nice", "-n", "10", "ffmpeg", "-v", "error"] + entradas
                + ["-filter_complex", cadeia, "-map", "[v]", "-map", "[a]", "-shortest"])

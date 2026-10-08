@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import {
-  BUCKET_CRIATIVOS, RAIZ_BROLL, RAIZ_FONTES, RAIZ_LOCUCAO, RAIZ_MUSICA,
+  BUCKET_CRIATIVOS, RAIZ_BROLL, RAIZ_FONTES, RAIZ_LOCUCAO, RAIZ_MUSICA, RAIZ_SFX,
   VIDEO_OK, FONTE_OK, AUDIO_OK, nomeSeguro,
 } from '@/lib/criativos'
 
@@ -29,6 +29,12 @@ export async function POST(req: Request) {
       // A trilha é reaproveitada entre criativos, então o nome dela é o
       // identificador: subir de novo o mesmo arquivo substitui.
       caminho = `${RAIZ_MUSICA}/${limpo}`
+    } else if (tipo === 'sfx') {
+      if (!AUDIO_OK.test(limpo)) {
+        return NextResponse.json({ error: 'use .mp3, .wav, .m4a ou .aac' }, { status: 400 })
+      }
+      // O nome e o identificador: reenviar o mesmo arquivo substitui.
+      caminho = `${RAIZ_SFX}/${limpo}`
     } else if (tipo === 'fonte') {
       if (!FONTE_OK.test(limpo)) {
         return NextResponse.json({ error: 'use .ttf, .otf ou .woff2' }, { status: 400 })
