@@ -2034,11 +2034,29 @@ def _corta_broll(caminho, ini, dur, w, h, dest, zoom="nenhum", transicao="corte"
         filtros += ["tpad=stop_mode=clone:stop_duration=%.2f" % (sobra + 1.0),
                     "trim=duration=%.3f" % total, "setpts=PTS-STARTPTS"]
     vf = ",".join(filtros)
-    cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-ss", "%.2f" % ini,
-           "-t", "%.2f" % total, "-i", caminho, "-an", "-vf", vf,
-           "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
-           "-threads", "1", dest, "-y"]
-    return subprocess.run(cmd, capture_output=True, timeout=1800).returncode == 0
+    def roda(antes_do_input):
+        if antes_do_input:
+            # Busca rapida: pula direto pro ponto antes de decodificar.
+            corte = ["-ss", "%.2f" % ini, "-t", "%.2f" % total, "-i", caminho]
+        else:
+            # Busca lenta: decodifica desde o inicio e descarta. Gasta mais,
+            # mas aguenta arquivo que a busca rapida nao consegue posicionar.
+            corte = ["-i", caminho, "-ss", "%.2f" % ini, "-t", "%.2f" % total]
+        cmd = (["nice", "-n", "10", "ffmpeg", "-v", "error"] + corte
+               + ["-an", "-vf", vf, "-c:v", "libx264", "-preset", "superfast",
+                  "-crf", "23", "-threads", "1", dest, "-y"])
+        r = subprocess.run(cmd, capture_output=True, timeout=1800)
+        if r.returncode == 0 and os.path.exists(dest) and os.path.getsize(dest) > 1024:
+            return None
+        return (r.stderr or b"").decode(errors="ignore").strip()[-400:] or "saida vazia"
+
+    erro = roda(True)
+    if erro is None:
+        return None
+    # Uma segunda tentativa salva o render inteiro quando o problema e so a
+    # busca — e custa um corte, nao a montagem toda.
+    print("[montador] 1a tentativa falhou (%s); repetindo com busca lenta" % erro[:160], flush=True)
+    return roda(False)
 
 
 def _ass_tempo(t):
@@ -2568,15 +2586,22 @@ def _montar(body):
             # Em cadeia cruzada o fade/flash vem do proprio cruzamento; aplicar
             # tambem dentro do pedaco escureceria duas vezes.
             trans = "corte" if cruzar else str(tr.get("transicao") or "corte")
-            if _corta_broll(orig, float(tr.get("origem") or 0), dur, w, h, dest,
-                            str(tr.get("zoom") or "nenhum"), trans,
-                            tr.get("zoom_forca"), str(tr.get("zoom_direcao") or "centro"),
-                            sobra, tr.get("enquadramento")):
+            falha = _corta_broll(orig, float(tr.get("origem") or 0), dur, w, h, dest,
+                                 str(tr.get("zoom") or "nenhum"), trans,
+                                 tr.get("zoom_forca"), str(tr.get("zoom_direcao") or "centro"),
+                                 sobra, tr.get("enquadramento"))
+            if falha is None:
                 partes.append(dest)
                 duracoes.append(dur)
                 trechos_ok.append(tr)
             else:
-                print("[montador] falhou o trecho %d (%s)" % (k, tr["caminho"]), flush=True)
+                # Seguir sem o trecho entrega um video curto, com tudo depois
+                # dele fora de lugar, e com cara de pronto. E o pior desfecho
+                # possivel: o usuario so descobre assistindo.
+                nome_clipe = os.path.basename(str(tr.get("caminho") or ""))
+                raise MontagemErro(
+                    "nao consegui cortar a cena %d (%s, a partir de %.1fs): %s"
+                    % (k + 1, nome_clipe, float(tr.get("origem") or 0), falha), 500)
             print("[montador] trecho %d %.2f-%.2f %s @%.2f"
                   % (k, ini, ini + dur, tr["caminho"], float(tr.get("origem") or 0)), flush=True)
         if not partes:
@@ -2759,9 +2784,11 @@ def _montar(body):
         # e isso aparece como voz sem imagem no fim, que é o pior defeito.
         obtido = _duracao(saida)
         if obtido > 0 and abs(obtido - esperado) > 0.6:
-            aviso = ("o vídeo saiu com %.1fs e devia ter %.1fs" % (obtido, esperado))
-            tempos["aviso"] = aviso
-            print("[montador] ATENÇÃO: " + aviso, flush=True)
+            # Isto ja existia, mas so no log — e log ninguem le. Video com a
+            # duracao errada e video errado: melhor falhar do que entregar.
+            raise MontagemErro(
+                "o vídeo saiu com %.1fs e devia ter %.1fs — algum trecho não entrou"
+                % (obtido, esperado), 500)
 
         _storage_subir(bucket, outp, saida)
         print("[montador] %dx%d %.0fs %d trecho(s) -> %s"
