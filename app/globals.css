@@ -127,3 +127,61 @@ select:-webkit-autofill {
   caret-color: #e2e8f0;
   transition: background-color 9999s ease-in-out 0s;
 }
+
+/* Controles deslizantes. Sem isto o navegador desenha o azul padrão dele, que
+   não tem nada a ver com o resto da interface — o Gerador de Criativos usa
+   vários deles lado a lado e a diferença fica gritante. Uma regra só, pra não
+   ter que lembrar de estilizar cada campo novo. */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.25rem;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 85%, transparent);
+}
+input[type='range']::-moz-range-track {
+  height: 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 85%, transparent);
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-top: -0.275rem;
+  border-radius: 999px;
+  background: #d946ef;
+  border: 2px solid #0b1114;
+  box-shadow: 0 0 0 1px #d946ef;
+}
+input[type='range']::-moz-range-thumb {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  background: #d946ef;
+  border: 2px solid #0b1114;
+  box-shadow: 0 0 0 1px #d946ef;
+}
+input[type='range']:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* O seletor de cor some no fundo escuro se ficar com a moldura do sistema. */
+input[type='color'] {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='color']::-webkit-color-swatch-wrapper { padding: 2px; }
+input[type='color']::-webkit-color-swatch {
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+}

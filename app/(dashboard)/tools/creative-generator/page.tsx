@@ -884,11 +884,29 @@ export default function CreativeGeneratorPage() {
                   </Campo>
                 )}
                 <Campo rotulo={`Troca de b-roll a cada ${meu.ritmo_min}s a ${meu.ritmo_max}s`}>
-                  <div className="flex items-center gap-2">
-                    <input type="range" min={0.6} max={10} step={0.1} value={meu.ritmo_min}
-                      onChange={(e) => setMeu((m) => ({ ...m, ritmo_min: Number(e.target.value) }))} className="w-full" />
-                    <input type="range" min={0.6} max={10} step={0.1} value={meu.ritmo_max}
-                      onChange={(e) => setMeu((m) => ({ ...m, ritmo_max: Number(e.target.value) }))} className="w-full" />
+                  {/* Dois limites, não dois controles soltos: o mínimo nunca
+                      passa o máximo, senão o ritmo sai invertido sem avisar. */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1">
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        no mínimo {meu.ritmo_min}s
+                      </span>
+                      <input type="range" min={0.6} max={10} step={0.1} value={meu.ritmo_min}
+                        onChange={(e) => setMeu((m) => {
+                          const v = Number(e.target.value)
+                          return { ...m, ritmo_min: v, ritmo_max: Math.max(v, m.ritmo_max) }
+                        })} className="w-full" />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        no máximo {meu.ritmo_max}s
+                      </span>
+                      <input type="range" min={0.6} max={10} step={0.1} value={meu.ritmo_max}
+                        onChange={(e) => setMeu((m) => {
+                          const v = Number(e.target.value)
+                          return { ...m, ritmo_max: v, ritmo_min: Math.min(v, m.ritmo_min) }
+                        })} className="w-full" />
+                    </label>
                   </div>
                 </Campo>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
