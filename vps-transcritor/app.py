@@ -178,9 +178,25 @@ def baixar(video_url: str, cookies: str = None) -> str:
     return path
 
 
+def _versao_do_codigo():
+    """Impressão digital deste arquivo.
+
+    Serve pra responder, de fora, a pergunta que sempre volta: "o rebuild
+    pegou?". Comparar com o hash do arquivo local responde sem adivinhação."""
+    try:
+        import hashlib
+        with open(os.path.abspath(__file__), "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()[:12]
+    except Exception:
+        return "?"
+
+
+VERSAO_CODIGO = _versao_do_codigo()
+
+
 @app.get("/health")
 def health():
-    return jsonify(ok=True, model=MODEL_SIZE)
+    return jsonify(ok=True, model=MODEL_SIZE, codigo=VERSAO_CODIGO)
 
 
 # ---- Transcrição assíncrona (VSLs longas estouram o timeout do site) ----
