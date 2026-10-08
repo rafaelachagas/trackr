@@ -9,6 +9,7 @@ import {
 import {
   type Projeto, type Trecho, type Palavra, type Legenda,
   legendaCompleta, corpoRelativo, fimTrecho, trechoEm, corteEm, legendaEm, escalaPop, PUNCH_DUR,
+  encaixaNaPalavra,
   ZOOM_FORCA, TRANSICAO_DUR,
 } from '@/lib/criativos-projeto'
 
@@ -227,7 +228,8 @@ export default function EditorCriativo({ id }: { id: string }) {
   const cortar = useCallback(() => {
     if (!p) return
     if (marca === null) { setMarca(t); return }
-    const ini = Math.min(marca, t), fim = Math.max(marca, t)
+    const ini = encaixaNaPalavra(p, Math.min(marca, t), 'ini')
+    const fim = encaixaNaPalavra(p, Math.max(marca, t), 'fim')
     setMarca(null)
     if (fim - ini < 0.05) return
     mudar((d) => {

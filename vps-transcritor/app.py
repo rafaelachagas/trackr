@@ -2316,6 +2316,17 @@ def _montar(body):
                   % (r.stderr or b"").decode(errors="ignore")[-3000:], flush=True)
             return ({"error": _erro_ffmpeg(r)}, 500)
 
+        # Confere o próprio trabalho antes de entregar: o vídeo tem que ter a
+        # duração da locução menos o que foi cortado. Sair diferente disso
+        # quer dizer que algum trecho não entrou ou que um corte comeu demais —
+        # e isso aparece como voz sem imagem no fim, que é o pior defeito.
+        esperado = max(0.0, dur_total - sum(b - a for a, b in cortes))
+        obtido = _duracao(saida)
+        if obtido > 0 and abs(obtido - esperado) > 0.6:
+            aviso = ("o vídeo saiu com %.1fs e devia ter %.1fs" % (obtido, esperado))
+            tempos["aviso"] = aviso
+            print("[montador] ATENÇÃO: " + aviso, flush=True)
+
         _storage_subir(bucket, outp, saida)
         print("[montador] %dx%d %.0fs %d trecho(s) -> %s"
               % (w, h, dur_total, len(partes), tempos), flush=True)

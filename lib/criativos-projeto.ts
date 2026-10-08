@@ -52,6 +52,24 @@ export type Projeto = {
   saida_path?: string
 }
 
+/** Folga nas bordas do corte. O tempo da transcrição erra 50-100ms; sem a
+ *  folga o corte come o comecinho da palavra vizinha. */
+export const FOLGA_CORTE = 0.03
+
+/** Nunca cortar no meio de uma palavra.
+ *
+ *  Se o tempo escolhido cai dentro de uma palavra falada, o corte é empurrado
+ *  pra fora dela — pro começo, se for a borda inicial do corte; pro fim, se
+ *  for a final. Assim a palavra ou fica inteira ou sai inteira, nunca pela
+ *  metade ("dinhei—"). Em silêncio, respeita o que a pessoa marcou. */
+export function encaixaNaPalavra(p: Projeto, t: number, lado: 'ini' | 'fim'): number {
+  const dentro = p.palavras.find((w) => !w.oculta && t > w.ini && t < w.fim)
+  if (!dentro) return t
+  return lado === 'ini'
+    ? Math.max(0, dentro.ini - FOLGA_CORTE)
+    : Math.min(p.duracao, dentro.fim + FOLGA_CORTE)
+}
+
 export const ZOOM_FORCA = 0.12
 export const PUNCH_DUR = 0.32
 export const TRANSICAO_DUR = 0.18
