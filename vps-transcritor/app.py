@@ -2322,6 +2322,23 @@ def _projeto_automatico(body, baixar, tmp, tempos):
 
     # 3. Marcações do roteiro viram trechos com início e fim.
     plano = _plano_do_roteiro(body.get("roteiro") or "", palavras)
+
+    # O nome do arquivo e o nome escrito no roteiro quase nunca batem letra por
+    # letra: o arquivo e "BROLL3.mp4" e a decupagem escreve "$broll3", ou tem
+    # hifen de um lado e underline do outro. Comparar as duas pontas sem
+    # maiuscula, sem acento e sem separador resolve, e nao cria ambiguidade
+    # nova — "broll3" e "BROLL-3" sao o mesmo clipe pra qualquer pessoa.
+    def _chave(nome):
+        txt = unicodedata.normalize("NFD", str(nome or ""))
+        txt = "".join(ch for ch in txt if unicodedata.category(ch) != "Mn")
+        return re.sub(r"[^a-z0-9]", "", txt.lower())
+
+    clipes_norm = {}
+    for nome_clipe, caminho_clipe in clipes.items():
+        clipes_norm.setdefault(_chave(nome_clipe), caminho_clipe)
+    pastas_norm = {}
+    for nome_pasta, lista_pasta in pastas.items():
+        pastas_norm.setdefault(_chave(nome_pasta), lista_pasta)
     tpl = _template(body.get("template"), body.get("template_custom"))
     ritmo_min, ritmo_max = tpl["intervalo_broll"]
     usados = {}
@@ -2337,11 +2354,14 @@ def _projeto_automatico(body, baixar, tmp, tempos):
             continue
         escolhidos = []
         if p["tipo"] == "clipe":
-            c = clipes.get(p["alvo"])
+            c = clipes.get(p["alvo"]) or clipes_norm.get(_chave(p["alvo"]))
             if c:
                 escolhidos = [c]
+            else:
+                print("[montador] nenhum clipe chamado %r (tem: %s)"
+                      % (p["alvo"], ", ".join(sorted(clipes)[:12])), flush=True)
         else:
-            disp = list(pastas.get(p["alvo"]) or [])
+            disp = list(pastas.get(p["alvo"]) or pastas_norm.get(_chave(p["alvo"])) or [])
             if disp:
                 # Sorteio sem repetir enquanto houver clipe novo na pasta —
                 # repetir b-roll no mesmo vídeo é o que mais denuncia
