@@ -70,6 +70,9 @@ export default function CreativeGeneratorPage() {
   const [lido, setLido] = useState<LeituraRoteiro | null>(null)
   const [cenasExtra, setCenasExtra] = useState<{ transicao?: string; zoom?: string; enquadramento?: number }[]>([])
   const [lendoIA, setLendoIA] = useState(false)
+  // Audio mais longo que a decupagem: ou o ultimo b-roll estica ate o fim, ou
+  // o video acaba junto com o roteiro.
+  const [terminarNoRoteiro, setTerminarNoRoteiro] = useState(false)
 
   // --- biblioteca ---
   const [pastas, setPastas] = useState<Pasta[]>([])
@@ -436,6 +439,7 @@ export default function CreativeGeneratorPage() {
             intervalo_broll: [meu.ritmo_min, meu.ritmo_max],
           } : null,
           cenas: emBlocos && cenasExtra.length ? cenasExtra : null,
+          terminarNoRoteiro,
           musicaPath: musica?.caminho || null,
           musicaVolume: musicaVol,
           fontePath: fonteEscolhida || fontes[0]?.caminho || null,
@@ -689,6 +693,16 @@ export default function CreativeGeneratorPage() {
                 className="w-full rounded-lg bg-black/30 border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-fuchsia-500/50" />
             )}
             <span className="text-[11px] text-muted-foreground">{palavras} palavra(s) · aprox. {segundos}s de fala</span>
+            <label className="flex items-start gap-2 pt-1 cursor-pointer">
+              <input type="checkbox" checked={terminarNoRoteiro}
+                onChange={(e) => setTerminarNoRoteiro(e.target.checked)}
+                className="mt-0.5 accent-fuchsia-500" />
+              <span className="text-[11px] text-muted-foreground">
+                <b className="text-foreground">Terminar quando o roteiro terminar.</b>{' '}
+                Marque quando o áudio for mais longo que a copy acima — sem isso o último
+                b-roll fica parado na tela até o áudio acabar.
+              </span>
+            </label>
           </Passo>
 
           <Passo n={3} titulo={emBlocos ? 'Os b-rolls (vindos da decupagem)' : 'Os b-rolls, na ordem'} pronto={fila.length > 0}

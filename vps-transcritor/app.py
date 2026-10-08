@@ -2305,6 +2305,21 @@ def _projeto_automatico(body, baixar, tmp, tempos):
     if not palavras:
         raise MontagemErro("não consegui reconhecer fala na locução")
 
+    # Opcional: o video termina onde o roteiro termina, nao onde o audio
+    # termina. Serve pra quando a locucao e um audio longo e a decupagem cobre
+    # so o comeco — sem isso o ultimo b-roll ficaria parado na tela ate o fim.
+    if _bool(body.get("terminar_no_roteiro"), False):
+        quantas = len([w for w in re.split(r"\s+", body.get("roteiro") or "")
+                       if _normaliza(RE_MARCA_CLIPE.sub("", RE_MARCA_PASTA.sub("", w)))])
+        if 0 < quantas < len(palavras):
+            # Um respiro depois da ultima palavra, pra nao cortar o fim dela.
+            corte = palavras[quantas - 1]["fim"] + 0.25
+            if 1.0 < corte < dur_total:
+                palavras = [w for w in palavras if w["ini"] < corte]
+                dur_total = corte
+                print("[montador] termina no roteiro: %.2fs (%d palavras)"
+                      % (dur_total, quantas), flush=True)
+
     # 3. Marcações do roteiro viram trechos com início e fim.
     plano = _plano_do_roteiro(body.get("roteiro") or "", palavras)
     tpl = _template(body.get("template"), body.get("template_custom"))

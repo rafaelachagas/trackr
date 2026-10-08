@@ -22,7 +22,7 @@ const FORMATOS: Record<string, { w: number; h: number }> = {
 export async function POST(req: Request) {
   try {
     const { roteiro, locucaoPath, formato, estilo, fontePath, template, templateCustom,
-      musicaPath, musicaVolume, cenas } = await req.json()
+      musicaPath, musicaVolume, cenas, terminarNoRoteiro } = await req.json()
     if (!roteiro?.trim()) return NextResponse.json({ error: 'sem roteiro' }, { status: 400 })
     if (!locucaoPath) return NextResponse.json({ error: 'sem locução' }, { status: 400 })
     if (!TRANSCRITOR_URL || !TRANSCRITOR_APIKEY) {
@@ -69,6 +69,7 @@ export async function POST(req: Request) {
           template_custom: templateCustom || null,
           // Ajustes por cena (o que a IA leu do "Context:"): a VPS valida.
           cenas: Array.isArray(cenas) ? cenas : null,
+          terminar_no_roteiro: !!terminarNoRoteiro,
           musica_path: musicaPath || null,
           musica_volume: typeof musicaVolume === 'number' ? musicaVolume : 0.12,
           largura: fmt.w,
