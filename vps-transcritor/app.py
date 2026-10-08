@@ -1749,7 +1749,8 @@ def _template(nome, proprio=None):
 
 
 RE_ASS_TAGS = re.compile(r"\{[^}]*\}")
-RE_MARCA_CLIPE = re.compile(r"\$([\w-]+)")
+# "$broll3" usa o clipe inteiro; "$broll3@1:00-1:02" usa so aquele pedaco.
+RE_MARCA_CLIPE = re.compile(r"\$([\w-]+)(@[\d:.,]+(?:\s*(?:-|a|ate|até)\s*[\d:.,]+)?)?")
 RE_MARCA_PASTA = re.compile(r"\[broll:\s*([\w-]+)(?:\s*x(\d+))?\s*\]", re.I)
 
 
@@ -1776,6 +1777,41 @@ def _normaliza(p):
     return re.sub(r"[^a-z0-9]", "", p)
 
 
+def _segundos_do_tempo(txt):
+    """'1:02', '01:02', '62' ou '62.5' -> segundos. None se nao der pra ler."""
+    txt = str(txt or "").strip()
+    if not txt:
+        return None
+    try:
+        if ":" in txt:
+            total = 0.0
+            for parte in txt.split(":"):
+                total = total * 60 + float(parte.replace(",", "."))
+            return total
+        return float(txt.replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _janela_da_marca(bruto):
+    """O pedaco do clipe pedido na marcacao: "$broll3@1:00-1:02".
+
+    O mesmo arquivo citado duas vezes com janelas diferentes vira duas cenas
+    diferentes — e a tecnica que o editor usa pra nao precisar de dois clipes.
+    Sem janela, devolve (None, None) e quem decide e o sistema."""
+    if not bruto or "@" not in bruto:
+        return (None, None)
+    pedaco = bruto.split("@", 1)[1]
+    partes = re.split(r"\s*(?:-|até|ate|a)\s*", pedaco, maxsplit=1)
+    ini = _segundos_do_tempo(partes[0])
+    fim = _segundos_do_tempo(partes[1]) if len(partes) > 1 else None
+    if ini is None:
+        return (None, None)
+    if fim is not None and fim <= ini:
+        fim = None
+    return (max(0.0, ini), fim)
+
+
 def _plano_do_roteiro(roteiro, palavras):
     """Liga cada marcação do roteiro ao instante em que ela acontece no áudio.
 
@@ -1788,7 +1824,7 @@ def _plano_do_roteiro(roteiro, palavras):
     contador = 0
     for linha in (roteiro or "").splitlines():
         pos = 0
-        for m in re.finditer(r"\$[\w-]+|\[broll:[^\]]*\]", linha):
+        for m in re.finditer(r"\$[\w-]+(?:@[\d:.,]+(?:\s*(?:-|a|ate|até)\s*[\d:.,]+)?)?|\[broll:[^\]]*\]", linha):
             antes = linha[pos:m.start()]
             contador += len([w for w in re.split(r"\s+", antes) if _normaliza(w)])
             alvo = min(contador, len(palavras) - 1) if palavras else 0
@@ -1797,7 +1833,9 @@ def _plano_do_roteiro(roteiro, palavras):
             mc = RE_MARCA_CLIPE.fullmatch(txt)
             mp = RE_MARCA_PASTA.fullmatch(txt)
             if mc:
-                plano.append({"quando": quando, "tipo": "clipe", "alvo": mc.group(1), "n": 1})
+                jini, jfim = _janela_da_marca(mc.group(2))
+                plano.append({"quando": quando, "tipo": "clipe", "alvo": mc.group(1),
+                              "n": 1, "janela_ini": jini, "janela_fim": jfim})
             elif mp:
                 plano.append({"quando": quando, "tipo": "pasta", "alvo": mp.group(1),
                               "n": max(1, min(int(mp.group(2) or 1), 6))})
@@ -2294,7 +2332,9 @@ def _projeto_automatico(body, baixar, tmp, tempos):
             continue
         fatia = (fim - ini) / len(escolhidos)
         for k, c in enumerate(escolhidos):
-            trechos.append({"caminho": c, "ini": ini + k * fatia, "dur": fatia})
+            trechos.append({"caminho": c, "ini": ini + k * fatia, "dur": fatia,
+                            # So a marcacao de clipe traz janela: "$broll3@1:00-1:02".
+                            "janela": p.get("janela_ini") if p["tipo"] == "clipe" else None})
 
     if not trechos:
         raise MontagemErro("nenhuma marcação de b-roll válida no roteiro")
@@ -2313,8 +2353,38 @@ def _projeto_automatico(body, baixar, tmp, tempos):
     # 4. O melhor pedaço de cada clipe — vira o "origem" do trecho, que o
     # editor deixa arrastar depois.
     t0 = time.time()
+    # Quantas vezes cada arquivo ja entrou — e de onde. O mesmo clipe usado
+    # duas vezes no MESMO ponto denuncia a montagem; usado em dois momentos
+    # diferentes vira duas cenas, que e o que o editor faz a mao.
+    usos = {}
     for i, tr in enumerate(trechos):
-        tr["origem"] = round(_melhor_trecho(baixar(tr["caminho"]), tr["dur"], tmp, i), 2)
+        arq = baixar(tr["caminho"])
+        janela = tr.pop("janela", None)
+        if janela is not None:
+            # O usuario mandou de onde comecar: manda ele.
+            tr["origem"] = round(max(0.0, float(janela)), 2)
+        else:
+            origem = _melhor_trecho(arq, tr["dur"], tmp, i)
+            anteriores = usos.get(tr["caminho"]) or []
+            if anteriores:
+                # Ja usamos este arquivo: procura outro pedaco dele, longe o
+                # bastante pra ser outra cena, e so volta ao mesmo lugar se o
+                # clipe nao tiver onde mais ir.
+                dur_clipe = _duracao(arq)
+                passo = max(tr["dur"] * 1.5, 1.5)
+                candidato = origem
+                for tentativa in range(1, 6):
+                    alvo = origem + passo * tentativa
+                    if alvo + tr["dur"] > dur_clipe:
+                        alvo = max(0.0, origem - passo * tentativa)
+                    if alvo < 0 or alvo + tr["dur"] > dur_clipe:
+                        continue
+                    if all(abs(alvo - a) >= passo * 0.8 for a in anteriores):
+                        candidato = alvo
+                        break
+                origem = candidato
+            tr["origem"] = round(origem, 2)
+        usos.setdefault(tr["caminho"], []).append(tr["origem"])
         tr["id"] = "t%d" % i
         z = tpl["zoom"]
         # "alternado" não chega no ffmpeg: aqui ele vira in/out de verdade.

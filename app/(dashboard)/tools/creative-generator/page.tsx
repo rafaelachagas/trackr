@@ -58,7 +58,11 @@ export default function CreativeGeneratorPage() {
   const [erro, setErro] = useState<string | null>(null)
   // A ordem em que os b-rolls entram. É o que o usuário monta clicando, e o
   // que vira marcação no roteiro na hora de gerar.
-  const [fila, setFila] = useState<string[]>([])
+  // Cada item e uma CENA, nao um arquivo: o mesmo clipe pode entrar duas
+  // vezes com pedacos diferentes, que e como o editor cria duas cenas de um
+  // b-roll so.
+  const [fila, setFila] = useState<{ nome: string; de?: string; ate?: string }[]>([])
+  const [filaAberta, setFilaAberta] = useState<number | null>(null)
 
   // --- biblioteca ---
   const [pastas, setPastas] = useState<Pasta[]>([])
@@ -194,7 +198,7 @@ export default function CreativeGeneratorPage() {
     if (e.musica_volume != null) setMusicaVol(e.musica_volume)
   }
 
-  function comMarcacoes(texto: string, ordem: string[]) {
+  function comMarcacoes(texto: string, ordem: { nome: string; de?: string; ate?: string }[]) {
     const limpo = texto.replace(/\$[\w-]+\s*/g, '').trim()
     if (!ordem.length) return limpo
     const ps = limpo.split(/\s+/)
@@ -204,7 +208,12 @@ export default function CreativeGeneratorPage() {
     let proximo = 0
     for (let i = 0; i < ps.length; i++) {
       if (proximo < ordem.length && i >= Math.floor(proximo * passo)) {
-        saida.push(`$${ordem[proximo]}`)
+        const c = ordem[proximo]
+        // "$clipe" usa o clipe inteiro; "$clipe@1:00-1:02" usa aquele pedaço.
+        const janela = c.de?.trim()
+          ? '@' + c.de.trim() + (c.ate?.trim() ? '-' + c.ate.trim() : '')
+          : ''
+        saida.push(`$${c.nome}${janela}`)
         proximo++
       }
       saida.push(ps[i])
@@ -569,7 +578,7 @@ export default function CreativeGeneratorPage() {
           </Passo>
 
           <Passo n={3} titulo="Os b-rolls, na ordem" pronto={fila.length > 0}
-            ajuda="Escolha a pasta do criativo e clique nos clipes na ordem em que eles aparecem. Dá pra repetir o mesmo clipe.">
+            ajuda="Escolha a pasta e clique nos clipes na ordem em que eles aparecem. Repetir o mesmo clipe vira outra cena — clique no item da fila pra dizer que pedaço dele usar.">
             {/* A pasta é o "projeto": uma por criativo (B-rolls AD12) deixa a
                 lista de clipes curta e a escolha óbvia. */}
             <div className="flex flex-wrap items-center gap-1.5">
@@ -619,22 +628,48 @@ export default function CreativeGeneratorPage() {
             ) : (
               <>
                 {fila.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {fila.map((nome, i) => (
-                      <span key={`${nome}-${i}`}
-                        className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-fuchsia-500/15 border border-fuchsia-500/30 text-xs text-foreground">
-                        <span className="text-fuchsia-300 tabular-nums">{i + 1}.</span> {nome}
-                        <button onClick={() => setFila((f) => f.filter((_, k) => k !== i))}
-                          className="text-muted-foreground hover:text-rose-300 px-1" title="tirar da fila">×</button>
-                      </span>
-                    ))}
-                    <button onClick={() => setFila([])}
-                      className="text-[11px] text-muted-foreground hover:text-foreground underline px-1">limpar</button>
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {fila.map((c, i) => (
+                        <span key={`${c.nome}-${i}`}
+                          className={`inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg border text-xs text-foreground ${
+                            filaAberta === i ? 'bg-fuchsia-500/25 border-fuchsia-400' : 'bg-fuchsia-500/15 border-fuchsia-500/30'
+                          }`}>
+                          <span className="text-fuchsia-300 tabular-nums">{i + 1}.</span>
+                          <button onClick={() => setFilaAberta(filaAberta === i ? null : i)}
+                            className="hover:underline" title="escolher o pedaço do clipe">
+                            {c.nome}{c.de ? ` (${c.de}${c.ate ? `–${c.ate}` : ''})` : ''}
+                          </button>
+                          <button onClick={() => { setFila((f) => f.filter((_, k) => k !== i)); setFilaAberta(null) }}
+                            className="text-muted-foreground hover:text-rose-300 px-1" title="tirar da fila">×</button>
+                        </span>
+                      ))}
+                      <button onClick={() => { setFila([]); setFilaAberta(null) }}
+                        className="text-[11px] text-muted-foreground hover:text-foreground underline px-1">limpar</button>
+                    </div>
+                    {filaAberta !== null && fila[filaAberta] && (
+                      <div className="rounded-lg border border-fuchsia-500/30 bg-black/20 px-3 py-2 space-y-1.5">
+                        <p className="text-[11px] text-muted-foreground">
+                          Que pedaço de <b className="text-foreground">{fila[filaAberta].nome}</b> usar nesta cena.
+                          Em branco, o sistema escolhe. Formato <code>1:02</code> ou <code>62</code>.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <input value={fila[filaAberta].de || ''} placeholder="de (1:00)"
+                            onChange={(e) => setFila((f) => f.map((x, k) => k === filaAberta ? { ...x, de: e.target.value } : x))}
+                            className="w-24 rounded-md bg-black/40 border border-border px-2 py-1 text-xs text-foreground focus:outline-none focus:border-fuchsia-500/50" />
+                          <input value={fila[filaAberta].ate || ''} placeholder="até (1:02)"
+                            onChange={(e) => setFila((f) => f.map((x, k) => k === filaAberta ? { ...x, ate: e.target.value } : x))}
+                            className="w-24 rounded-md bg-black/40 border border-border px-2 py-1 text-xs text-foreground focus:outline-none focus:border-fuchsia-500/50" />
+                          <button onClick={() => setFilaAberta(null)}
+                            className="text-[11px] text-muted-foreground hover:text-foreground underline">pronto</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {clipesDaPasta.map((c) => (
-                    <button key={c.caminho} onClick={() => setFila((f) => [...f, c.nome])}
+                    <button key={c.caminho} onClick={() => setFila((f) => [...f, { nome: c.nome }])}
                       className="px-2.5 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:border-fuchsia-500/40 text-xs text-foreground inline-flex items-center gap-1.5">
                       <Plus className="w-3 h-3 text-muted-foreground" /> {c.nome}
                     </button>
@@ -956,7 +991,9 @@ export default function CreativeGeneratorPage() {
               <b className="text-foreground">Imagens de apoio</b> — clique pra inserir onde o cursor está.
               <span className="block mt-0.5">
                 <code className="text-foreground">[broll: pasta x3]</code> sorteia 3 clipes da pasta ·{' '}
-                <code className="text-foreground">$nome-do-clipe</code> usa aquele arquivo específico.
+                <code className="text-foreground">$nome-do-clipe</code> usa aquele arquivo específico.{' '}
+                <code className="text-foreground">$nome@1:00-1:02</code> usa so esse pedaco dele —
+                repetir o mesmo clipe com pedacos diferentes vira cenas diferentes.
               </span>
             </p>
             <div className="flex flex-wrap gap-1.5 mt-2">
