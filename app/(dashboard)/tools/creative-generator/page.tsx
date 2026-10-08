@@ -49,8 +49,15 @@ async function json(r: Response) {
 }
 
 export default function CreativeGeneratorPage() {
+  // Dois modos: o guiado é a tela de quem senta pra fazer um criativo hoje
+  // (áudio -> copy -> b-rolls na ordem -> gerar). O avançado é a mesa de
+  // trabalho antiga, com as marcações escritas à mão e o preparo da conta.
+  const [modo, setModo] = useState<'guiado' | 'avancado'>('guiado')
   const [aba, setAba] = useState<Aba>('roteiro')
   const [erro, setErro] = useState<string | null>(null)
+  // A ordem em que os b-rolls entram. É o que o usuário monta clicando, e o
+  // que vira marcação no roteiro na hora de gerar.
+  const [fila, setFila] = useState<string[]>([])
 
   // --- biblioteca ---
   const [pastas, setPastas] = useState<Pasta[]>([])
@@ -138,6 +145,29 @@ export default function CreativeGeneratorPage() {
     ...refsClipe.filter((r) => !clipes.some((c) => c.nome === r)).map((r) => `$${r}`),
     ...refsPasta.filter((r) => !pastas.some((p) => p.nome === r)).map((r) => `[broll: ${r}]`),
   ]
+
+  // A fila de b-rolls espalhada pela fala: cada clipe entra num ponto do
+  // texto, em partes iguais. Não é escolha fina — é o começo. O ajuste de
+  // tempo acontece depois, arrastando na linha do tempo do editor.
+  function comMarcacoes(texto: string, ordem: string[]) {
+    const limpo = texto.replace(/\$[\w-]+\s*/g, '').trim()
+    if (!ordem.length) return limpo
+    const ps = limpo.split(/\s+/)
+    if (!ps.length) return limpo
+    const passo = ps.length / ordem.length
+    const saida: string[] = []
+    let proximo = 0
+    for (let i = 0; i < ps.length; i++) {
+      if (proximo < ordem.length && i >= Math.floor(proximo * passo)) {
+        saida.push(`$${ordem[proximo]}`)
+        proximo++
+      }
+      saida.push(ps[i])
+    }
+    return saida.join(' ')
+  }
+
+  const roteiroFinal = modo === 'guiado' ? comMarcacoes(roteiro, fila) : roteiro
 
   function inserir(marca: string) {
     const el = roteiroRef.current
@@ -247,7 +277,9 @@ export default function CreativeGeneratorPage() {
         setFaseMontagem('Gerando a locução no ElevenLabs...')
         const v = await fetch('/api/creative-generator/tts', {
           method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ texto: roteiro, vozId: vozEscolhida }),
+          // Marcação de b-roll é instrução de montagem, não fala: se for
+          // junto, a voz lê "cifrão broll um" em voz alta.
+          body: JSON.stringify({ texto: roteiro.replace(/\$[\w-]+\s*/g, ''), vozId: vozEscolhida }),
         }).then(json)
         if (v.error) throw new Error(v.error)
         locucaoPath = v.caminho
@@ -257,7 +289,7 @@ export default function CreativeGeneratorPage() {
       const j = await fetch('/api/creative-generator/assemble', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          roteiro, locucaoPath, formato, estilo, template,
+          roteiro: roteiroFinal, locucaoPath, formato, estilo, template,
           fontePath: fonteEscolhida || fontes[0]?.caminho || null,
         }),
       }).then(json)
@@ -416,7 +448,119 @@ export default function CreativeGeneratorPage() {
         </div>
       )}
 
+      {modo === 'guiado' && (
+        <div className="space-y-3">
+          <Passo n={1} titulo="O áudio da fala" pronto={!!locucao}
+            ajuda="O áudio que a expert gravou — pode ser o do WhatsApp mesmo.">
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => locucaoRef.current?.click()} disabled={!!enviando}
+                className="px-3 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 text-white text-sm font-medium inline-flex items-center gap-1.5">
+                {enviando === 'locucao' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                {locucao ? 'Trocar o áudio' : 'Enviar o áudio'}
+              </button>
+              {locucao
+                ? <span className="text-xs text-emerald-300/90 inline-flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5" /> {locucao.nome}
+                  </span>
+                : <span className="text-xs text-muted-foreground">mp3, m4a, ogg ou wav</span>}
+            </div>
+          </Passo>
+
+          <Passo n={2} titulo="O que ela fala" pronto={palavras >= 10}
+            ajuda="Cole a copy, igual ao que está sendo dito no áudio. É isso que vira legenda.">
+            <textarea value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={6}
+              placeholder="Dia 3 da série te mostrando rendas extras reais na internet..."
+              className="w-full rounded-lg bg-black/30 border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-fuchsia-500/50" />
+            <span className="text-[11px] text-muted-foreground">{palavras} palavra(s) · aprox. {segundos}s de fala</span>
+          </Passo>
+
+          <Passo n={3} titulo="Os b-rolls, na ordem" pronto={fila.length > 0}
+            ajuda="Clique nos clipes na ordem em que eles devem aparecer. Dá pra repetir o mesmo clipe.">
+            {clipes.length === 0 ? (
+              <button onClick={() => { setModo('avancado'); setAba('biblioteca') }}
+                className="text-xs text-fuchsia-300 hover:text-fuchsia-200 underline">
+                Nenhum clipe na biblioteca ainda — enviar b-rolls
+              </button>
+            ) : (
+              <>
+                {fila.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {fila.map((nome, i) => (
+                      <span key={`${nome}-${i}`}
+                        className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-fuchsia-500/15 border border-fuchsia-500/30 text-xs text-foreground">
+                        <span className="text-fuchsia-300 tabular-nums">{i + 1}.</span> {nome}
+                        <button onClick={() => setFila((f) => f.filter((_, k) => k !== i))}
+                          className="text-muted-foreground hover:text-rose-300 px-1" title="tirar da fila">×</button>
+                      </span>
+                    ))}
+                    <button onClick={() => setFila([])}
+                      className="text-[11px] text-muted-foreground hover:text-foreground underline px-1">limpar</button>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {clipes.map((c) => (
+                    <button key={c.caminho} onClick={() => setFila((f) => [...f, c.nome])}
+                      className="px-2.5 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:border-fuchsia-500/40 text-xs text-foreground inline-flex items-center gap-1.5">
+                      <Plus className="w-3 h-3 text-muted-foreground" /> {c.nome}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </Passo>
+
+          <Passo n={4} titulo="O estilo da edição" pronto
+            ajuda="Define o ritmo do corte, o zoom e a legenda. Dá pra ajustar tudo depois, no editor.">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {TEMPLATES.map((t) => (
+                <button key={t.id} onClick={() => { setTemplate(t.id); setEstilo(ESTILO_DO_TEMPLATE[t.id] as EstiloId) }}
+                  className={`text-left rounded-lg border px-3 py-2 transition ${
+                    template === t.id ? 'border-fuchsia-500/60 bg-fuchsia-500/10' : 'border-border bg-white/[0.02] hover:border-fuchsia-500/40'
+                  }`}>
+                  <span className="block text-sm font-semibold text-foreground">{t.nome}</span>
+                  <span className="block text-[11px] text-muted-foreground mt-0.5">{t.desc}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {FORMATOS.map((f) => (
+                <button key={f.id} onClick={() => setFormato(f.id)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs transition ${
+                    formato === f.id ? 'border-fuchsia-500/60 bg-fuchsia-500/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'
+                  }`}>
+                  {f.rotulo} <span className="opacity-60">{f.onde}</span>
+                </button>
+              ))}
+            </div>
+          </Passo>
+
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <button onClick={montar}
+              disabled={montando || !locucao || palavras < 10 || fila.length === 0 || fontes.length === 0}
+              className="px-5 py-2.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white font-semibold inline-flex items-center gap-2">
+              {montando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {montando ? faseMontagem || 'Montando...' : 'Montar o criativo'}
+            </button>
+            {fontes.length === 0 && (
+              <button onClick={() => { setModo('avancado'); setAba('fontes') }}
+                className="text-xs text-amber-300 hover:text-amber-200 underline">
+                Falta escolher a fonte da legenda
+              </button>
+            )}
+            <button onClick={() => setModo('avancado')}
+              className="text-xs text-muted-foreground hover:text-foreground underline ml-auto">
+              Modo avançado
+            </button>
+          </div>
+        </div>
+      )}
+
+      {modo === 'avancado' && (
       <div className="flex gap-1.5 border-b border-border">
+        <button onClick={() => setModo('guiado')}
+          className="px-2 py-2 text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+          <ChevronLeft className="w-4 h-4" /> Voltar
+        </button>
         {ABAS.map((a) => (
           <button key={a.id} onClick={() => setAba(a.id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px inline-flex items-center gap-1.5 transition ${
@@ -426,8 +570,9 @@ export default function CreativeGeneratorPage() {
           </button>
         ))}
       </div>
+      )}
 
-      {aba === 'roteiro' && (
+      {modo === 'avancado' && aba === 'roteiro' && (
         <div className="space-y-3">
           <div className="flex gap-1.5">
             {([['minha', 'Escrevo eu'], ['concorrente', 'Do concorrente'], ['nosso', 'De um anúncio nosso']] as const).map(([id, rot]) => (
@@ -704,7 +849,7 @@ export default function CreativeGeneratorPage() {
         </div>
       )}
 
-      {aba === 'biblioteca' && (
+      {modo === 'avancado' && aba === 'biblioteca' && (
         <div className="space-y-3">
           {!pastaAberta ? (
             <>
@@ -843,7 +988,7 @@ export default function CreativeGeneratorPage() {
         </div>
       )}
 
-      {aba === 'fontes' && (
+      {modo === 'avancado' && aba === 'fontes' && (
         <div className="space-y-3">
           {/* A prévia usa a fonte de verdade: o Google serve woff2 pro
               navegador, e o servidor baixa o TTF da MESMA família. */}
@@ -982,7 +1127,7 @@ export default function CreativeGeneratorPage() {
         </div>
       )}
 
-      {aba === 'config' && (
+      {modo === 'avancado' && aba === 'config' && (
         <div className="space-y-3">
           <div className="flex gap-1.5">
             {([['api', 'Gerar por API'], ['arquivo', 'Enviar áudio pronto']] as const).map(([id, rot]) => (
@@ -1064,5 +1209,27 @@ export default function CreativeGeneratorPage() {
         </div>
       )}
     </div>
+  )
+}
+
+/** Um passo do fluxo guiado: número, título, estado e o conteúdo. */
+function Passo({ n, titulo, ajuda, pronto, children }: {
+  n: number; titulo: string; ajuda: string; pronto?: boolean; children: React.ReactNode
+}) {
+  return (
+    <section className={`rounded-xl border px-4 py-3 space-y-2 ${
+      pronto ? 'border-emerald-500/25 bg-emerald-500/[0.04]' : 'border-border bg-white/[0.02]'
+    }`}>
+      <header className="flex items-center gap-2">
+        <span className={`w-6 h-6 rounded-full grid place-items-center text-xs font-bold shrink-0 ${
+          pronto ? 'bg-emerald-500/20 text-emerald-300' : 'bg-fuchsia-500/15 text-fuchsia-300'
+        }`}>
+          {pronto ? <Check className="w-3.5 h-3.5" /> : n}
+        </span>
+        <h2 className="text-sm font-semibold text-foreground">{titulo}</h2>
+      </header>
+      <p className="text-[11px] text-muted-foreground -mt-1 pl-8">{ajuda}</p>
+      <div className="space-y-2 pl-8">{children}</div>
+    </section>
   )
 }
