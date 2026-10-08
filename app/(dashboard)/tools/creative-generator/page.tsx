@@ -613,6 +613,53 @@ export default function CreativeGeneratorPage() {
         </div>
       )}
 
+      {/* Resultado e criativos recentes: fora dos modos. Eles moravam na
+          aba Roteiro, entao no fluxo guiado a montagem terminava e nao
+          aparecia nada — nem o video, nem o link do editor, nem erro. */}
+      {videoPronto && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/[0.07] p-4 space-y-3">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+            <Check className="w-4 h-4 text-emerald-400" /> Vídeo pronto
+            {videoPronto.tempos && (
+              <span className="text-[11px] font-normal text-muted-foreground">
+                ({Object.entries(videoPronto.tempos).map(([k, v]) => `${k} ${v}s`).join(' · ')})
+              </span>
+            )}
+          </p>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video src={videoPronto.url} controls className="w-full max-w-[320px] rounded-lg border border-border" />
+          <div className="flex flex-wrap gap-2">
+            <a href={videoPronto.downloadUrl || videoPronto.url}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold
+                         bg-emerald-600 hover:bg-emerald-500 text-white">
+              <Download className="w-3.5 h-3.5" /> Baixar
+            </a>
+            {videoPronto.projetoId && (
+              <a href={`/tools/creative-generator/editor?id=${videoPronto.projetoId}`}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold
+                           bg-fuchsia-600 hover:bg-fuchsia-500 text-white">
+                <Clapperboard className="w-3.5 h-3.5" /> Abrir no editor
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {projetos.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+          <p className="text-sm font-semibold text-foreground">Criativos recentes</p>
+          <div className="flex flex-wrap gap-2">
+            {projetos.slice(0, 8).map((pr) => (
+              <a key={pr.id} href={`/tools/creative-generator/editor?id=${pr.id}`}
+                className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-muted inline-flex items-center gap-1.5">
+                <Clapperboard className="w-3.5 h-3.5 text-fuchsia-400" />
+                {new Date(pr.atualizado).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {modo === 'guiado' && (
         <div className="space-y-3">
           <Passo n={1} titulo="O áudio da fala" pronto={!!locucao}
@@ -1309,49 +1356,6 @@ export default function CreativeGeneratorPage() {
             </button>
           </div>
 
-          {videoPronto && (
-            <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/[0.07] p-4 space-y-3">
-              <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-400" /> Vídeo pronto
-                {videoPronto.tempos && (
-                  <span className="text-[11px] font-normal text-muted-foreground">
-                    ({Object.entries(videoPronto.tempos).map(([k, v]) => `${k} ${v}s`).join(' · ')})
-                  </span>
-                )}
-              </p>
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <video src={videoPronto.url} controls className="w-full max-w-[320px] rounded-lg border border-border" />
-              <div className="flex flex-wrap gap-2">
-                <a href={videoPronto.downloadUrl || videoPronto.url}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold
-                             bg-emerald-600 hover:bg-emerald-500 text-white">
-                  <Download className="w-3.5 h-3.5" /> Baixar
-                </a>
-                {videoPronto.projetoId && (
-                  <a href={`/tools/creative-generator/editor?id=${videoPronto.projetoId}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold
-                               bg-fuchsia-600 hover:bg-fuchsia-500 text-white">
-                    <Clapperboard className="w-3.5 h-3.5" /> Abrir no editor
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-
-          {projetos.length > 0 && (
-            <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-              <p className="text-sm font-semibold text-foreground">Criativos recentes</p>
-              <div className="flex flex-wrap gap-2">
-                {projetos.slice(0, 8).map((pr) => (
-                  <a key={pr.id} href={`/tools/creative-generator/editor?id=${pr.id}`}
-                    className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-muted inline-flex items-center gap-1.5">
-                    <Clapperboard className="w-3.5 h-3.5 text-fuchsia-400" />
-                    {new Date(pr.atualizado).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
