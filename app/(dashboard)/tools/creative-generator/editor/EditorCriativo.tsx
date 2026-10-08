@@ -62,6 +62,8 @@ export default function EditorCriativo({ id }: { id: string }) {
   // Picos da locução pra desenhar a onda. Sem ela, achar o "éééé" pra cortar
   // é ouvir o áudio inteiro. 600 colunas chegam pra qualquer criativo.
   const [picos, setPicos] = useState<number[] | null>(null)
+  // Sem id na URL, em vez de beco sem saída: a lista do que existe.
+  const [recentes, setRecentes] = useState<{ id: string; atualizado: string }[] | null>(null)
   // Catálogo de efeitos sonoros disponíveis (a biblioteca, não os usados aqui).
   const [catalogoSons, setCatalogoSons] = useState<{ nome: string; caminho: string; url: string | null }[]>([])
   useEffect(() => {
@@ -80,7 +82,16 @@ export default function EditorCriativo({ id }: { id: string }) {
 
   // ---- carregar ---------------------------------------------------------
   useEffect(() => {
-    if (!id) { setErro('projeto não informado'); return }
+    if (!id) {
+      // Chegar aqui sem id acontece (link velho, recarregar depois de perder a
+      // sessão). Mostrar os projetos existentes resolve; dizer "não informado"
+      // só deixa a pessoa parada.
+      fetch('/api/creative-generator/project', { cache: 'no-store' })
+        .then(json)
+        .then((j) => setRecentes(j.projetos || []))
+        .catch(() => setRecentes([]))
+      return
+    }
     fetch(`/api/creative-generator/project?id=${encodeURIComponent(id)}`, { cache: 'no-store' })
       .then(json)
       .then((j) => {
@@ -365,6 +376,37 @@ export default function EditorCriativo({ id }: { id: string }) {
       </div>
     )
   }
+  if (recentes) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto space-y-3">
+        <Link href="/tools/creative-generator" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+          <ChevronLeft className="w-4 h-4" /> Voltar pro gerador
+        </Link>
+        <h1 className="text-lg font-bold text-foreground">Qual criativo você quer editar?</h1>
+        {recentes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhum criativo montado ainda. Monte um no gerador e ele aparece aqui.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {recentes.map((r) => (
+              <Link key={r.id} href={`/tools/creative-generator/editor?id=${r.id}`}
+                className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted">
+                <Film className="w-4 h-4 text-fuchsia-400 shrink-0" />
+                <span className="text-foreground">
+                  {new Date(r.atualizado).toLocaleString('pt-BR', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                  })}
+                </span>
+                <span className="text-muted-foreground text-xs truncate">{r.id.slice(0, 8)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (!p || !dados || !leg) {
     return <div className="p-6 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Abrindo o projeto...</div>
   }
