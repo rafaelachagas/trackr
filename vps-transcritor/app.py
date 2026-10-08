@@ -186,7 +186,10 @@ def _versao_do_codigo():
     try:
         import hashlib
         with open(os.path.abspath(__file__), "rb") as fh:
-            return hashlib.sha256(fh.read()).hexdigest()[:12]
+            # Quebra de linha normalizada: o git entrega CRLF no Windows e LF
+            # aqui, e sem isso o mesmo código daria hashes diferentes.
+            bruto = fh.read().replace(b"\r\n", b"\n")
+        return hashlib.sha256(bruto).hexdigest()[:12]
     except Exception:
         return "?"
 
