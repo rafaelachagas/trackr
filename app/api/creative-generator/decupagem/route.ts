@@ -143,7 +143,9 @@ export async function POST(req: Request) {
       const c = porCena.get(Number(s.cena))
       if (!c) continue
       const motivo = String(s.motivo || '').slice(0, 140)
-      if (c.de == null && typeof s.de === 'number' && s.de >= 0) {
+      // 0:00 é o que já acontece sem dizer nada. Anunciar "a IA leu 0:00"
+      // em toda cena sem tempo é ruído que esconde os avisos que importam.
+      if (c.de == null && typeof s.de === 'number' && s.de > 0.01) {
         c.de = s.de
         if (typeof s.ate === 'number' && s.ate > s.de) c.ate = s.ate
         c.avisos.push(`IA leu o tempo ${comoTempo(c.de)} do contexto${motivo ? ` — ${motivo}` : ''}`)

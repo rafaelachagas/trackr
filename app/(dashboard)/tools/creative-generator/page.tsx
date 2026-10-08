@@ -399,7 +399,10 @@ export default function CreativeGeneratorPage() {
         .uploadToSignedUrl(sign.path, sign.token, f)
       if (error) throw new Error(error.message)
       if (tipo === 'fonte') await carregarFontes(buscaFonte, categoriaFonte)
-      else if (tipo === 'locucao') setLocucao({ nome: f.name, caminho: sign.caminho })
+      else if (tipo === 'locucao') {
+        setLocucao({ nome: f.name, caminho: sign.caminho })
+        setOrigemVoz('arquivo')
+      }
       else if (tipo === 'musica') setMusica({ nome: f.name, caminho: sign.caminho })
       else if (tipo === 'sfx') await carregarSfx()
       else {
@@ -415,7 +418,10 @@ export default function CreativeGeneratorPage() {
       // Voz por API: gera o MP3 no ElevenLabs primeiro; daí pra frente é igual
       // ao áudio enviado à mão (a montagem só conhece um caminho no Storage).
       let locucaoPath = locucao?.caminho
-      if (origemVoz === 'api') {
+      // Áudio enviado manda, sempre. O seletor "origem da voz" mora na aba
+      // Voz, que o fluxo guiado nem mostra — exigir que ele estivesse certo
+      // mandava quem subiu o áudio direto pro ElevenLabs.
+      if (!locucaoPath && origemVoz === 'api') {
         setFaseMontagem('Gerando a locução no ElevenLabs...')
         const v = await fetch('/api/creative-generator/tts', {
           method: 'POST', headers: { 'content-type': 'application/json' },
