@@ -570,17 +570,25 @@ export default function EditorCriativo({ id }: { id: string }) {
         <div className="rounded-xl border border-border bg-black/40 p-3 flex flex-col items-center gap-3">
           <div ref={boxRef} className="relative overflow-hidden bg-black rounded-md"
             style={{ height: 'min(62vh, 720px)', aspectRatio: `${p.largura} / ${p.altura}`, maxWidth: '100%' }}>
-            {caminhosUsados.map((cam) => (
-              // eslint-disable-next-line jsx-a11y/media-has-caption
-              <video key={cam} ref={(el) => { videos.current[cam] = el }} src={dados.urls[cam]}
-                muted playsInline preload="auto"
-                onLoadedMetadata={(e) => { const d = e.currentTarget.duration; setDurClipe((m) => ({ ...m, [cam]: d })) }}
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{
-                  opacity: trAtual?.caminho === cam ? 1 : 0,
-                  transform: trAtual?.caminho === cam ? `scale(${escalaZoom})` : undefined,
-                }} />
-            ))}
+            {/* Só o clipe de agora e o próximo carregam. B-roll de celular passa
+                fácil de 100 MB; com todos montados em preload="auto" o navegador
+                baixava a biblioteca inteira de uma vez e a aba morria. */}
+            {caminhosUsados.map((cam) => {
+              const ativo = trAtual?.caminho === cam
+              const carrega = ativo || cam === p.trechos[idx + 1]?.caminho
+              return (
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video key={cam} ref={(el) => { videos.current[cam] = el }}
+                  src={carrega ? dados.urls[cam] : undefined}
+                  muted playsInline preload="metadata"
+                  onLoadedMetadata={(e) => { const d = e.currentTarget.duration; setDurClipe((m) => ({ ...m, [cam]: d })) }}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{
+                    opacity: ativo ? 1 : 0,
+                    transform: ativo ? `scale(${escalaZoom})` : undefined,
+                  }} />
+              )
+            })}
             {opTransicao > 0 && (
               <div className="absolute inset-0 pointer-events-none"
                 style={{ background: trAtual?.transicao === 'flash' ? '#fff' : '#000', opacity: opTransicao }} />
