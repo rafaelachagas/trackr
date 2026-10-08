@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { TEMPLATES, TEMPLATE_PADRAO, ESTILO_DO_TEMPLATE, type TemplateId } from '@/lib/criativos-templates'
+import { lerEstiloGemini, type ResultadoImport } from '@/lib/criativos-estilo-gemini'
 
 // Gerador de Criativos Automáticos — a base: de onde vem a voz, de onde vêm as
 // imagens de apoio, qual fonte a legenda usa e de onde sai o roteiro. A
@@ -125,6 +126,10 @@ export default function CreativeGeneratorPage() {
   // Estilo próprio: nenhum dos três prontos é obrigatório. Os campos são os
   // mesmos que a VPS entende; ela valida de novo do lado de lá.
   const [proprio, setProprio] = useState(false)
+  // A análise que o Gemini faz de um criativo de referência, colada aqui.
+  const [colando, setColando] = useState(false)
+  const [analise, setAnalise] = useState('')
+  const [importado, setImportado] = useState<ResultadoImport | null>(null)
   const [meu, setMeu] = useState({
     zoom: 'punch' as 'nenhum' | 'in' | 'out' | 'punch' | 'alternado',
     zoom_forca: 0.1,
@@ -167,6 +172,25 @@ export default function CreativeGeneratorPage() {
   // A fila de b-rolls espalhada pela fala: cada clipe entra num ponto do
   // texto, em partes iguais. Não é escolha fina — é o começo. O ajuste de
   // tempo acontece depois, arrastando na linha do tempo do editor.
+  function aplicarAnalise() {
+    const r = lerEstiloGemini(analise)
+    setImportado(r)
+    const e = r.estilo
+    if (!Object.keys(e).length) return
+    setProprio(true)
+    setMeu((m) => ({
+      ...m,
+      zoom: e.zoom ?? m.zoom,
+      zoom_forca: e.zoom_forca ?? m.zoom_forca,
+      transicao: e.transicao ?? m.transicao,
+      legenda_estilo: (e.legenda_estilo as EstiloId) ?? m.legenda_estilo,
+      legenda_destaque: e.legenda_destaque ?? m.legenda_destaque,
+      ritmo_min: e.ritmo_min ?? m.ritmo_min,
+      ritmo_max: e.ritmo_max ?? m.ritmo_max,
+    }))
+    if (e.musica_volume != null) setMusicaVol(e.musica_volume)
+  }
+
   function comMarcacoes(texto: string, ordem: string[]) {
     const limpo = texto.replace(/\$[\w-]+\s*/g, '').trim()
     if (!ordem.length) return limpo
@@ -629,6 +653,53 @@ export default function CreativeGeneratorPage() {
                   Você define o ritmo, o zoom, a entrada e a legenda.
                 </span>
               </button>
+            </div>
+
+            {/* Importar a análise de um criativo de referência. */}
+            <div className="space-y-2">
+              <button onClick={() => setColando((v) => !v)}
+                className="text-xs text-fuchsia-300 hover:text-fuchsia-200 underline inline-flex items-center gap-1">
+                <Wand2 className="w-3.5 h-3.5" /> Copiar o estilo de um criativo que funcionou
+              </button>
+              {colando && (
+                <div className="space-y-2 rounded-lg border border-border bg-black/20 px-3 py-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    Cole aqui o <b>style_config.json</b> da análise do vídeo de referência.
+                  </p>
+                  <textarea value={analise} onChange={(e) => setAnalise(e.target.value)} rows={5}
+                    placeholder='{ "metadados": { ... }, "legenda": { ... } }'
+                    className="w-full rounded-md bg-black/40 border border-border px-2 py-1.5 text-[11px] font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-fuchsia-500/50" />
+                  <button onClick={aplicarAnalise} disabled={!analise.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white text-xs font-medium">
+                    Aplicar no estilo
+                  </button>
+                  {importado && (
+                    <div className="space-y-1.5 text-[11px] pt-1">
+                      {importado.aplicado.length > 0 && (
+                        <div>
+                          <span className="text-emerald-300 font-medium">Aplicado:</span>
+                          <ul className="text-muted-foreground list-disc pl-4">
+                            {importado.aplicado.map((a, i) => <li key={i}>{a}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {importado.ignorado.length > 0 && (
+                        <div>
+                          <span className="text-amber-300 font-medium">Ainda não dá pra reproduzir:</span>
+                          <ul className="text-muted-foreground list-disc pl-4">
+                            {importado.ignorado.map((a, i) => <li key={i}>{a}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {importado.avisos.map((a, i) => (
+                        <p key={i} className="text-rose-200/90 flex items-start gap-1">
+                          <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" /> {a}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {proprio && (
