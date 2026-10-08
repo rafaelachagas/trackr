@@ -82,18 +82,56 @@ export async function POST(req: Request) {
       fala: c.copy,
     }))
 
+    // O formato exigido. Com enum, "speed ramp" nem chega a ser uma resposta
+    // possível — o modelo escolhe dentro da lista ou não responde o campo.
+    const schema = {
+      type: 'object',
+      properties: {
+        sugestoes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              cena: { type: 'integer' },
+              de: { type: 'number' },
+              ate: { type: 'number' },
+              transicao: { type: 'string', enum: TRANSICOES },
+              zoom: { type: 'string', enum: ZOOMS },
+              enquadramento: { type: 'number' },
+              motivo: { type: 'string' },
+            },
+            required: ['cena'],
+          },
+        },
+      },
+      required: ['sugestoes'],
+    }
+
     const r = await chamarLLM({
+      schema,
       system: SYSTEM,
       prompt: `Decupagem:\n${JSON.stringify(resumo, null, 1)}`,
       json: true,
-      maxTokens: 1800,
+      // Folga grande: nos modelos que "pensam", o raciocinio sai do mesmo
+      // orcamento, e um teto apertado devolve resposta vazia.
+      maxTokens: 8000,
       temperatura: 0,
     })
     if (!r.ok) return NextResponse.json({ ...base, ia: false, motivoIA: r.erro })
 
     const parsed = extrairJSON<{ sugestoes?: Sugestao[] }>(r.texto)
     if (!parsed) {
-      return NextResponse.json({ ...base, ia: false, motivoIA: 'a IA não devolveu JSON válido' })
+      // Mostra o que realmente veio: sem isso, "JSON inválido" pode ser
+      // resposta vazia, texto em prosa ou corte no meio — três consertos bem
+      // diferentes.
+      const amostra = r.texto.trim().slice(0, 160).replace(/\s+/g, ' ')
+      return NextResponse.json({
+        ...base,
+        ia: false,
+        motivoIA: amostra
+          ? `a IA respondeu fora do formato: "${amostra}"`
+          : 'a IA respondeu vazio',
+      })
     }
     const sugestoes: Sugestao[] = Array.isArray(parsed.sugestoes) ? parsed.sugestoes : []
 

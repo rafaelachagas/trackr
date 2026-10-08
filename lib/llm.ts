@@ -62,13 +62,18 @@ export async function chamarLLM(opts: {
   maxTokens?: number
   temperatura?: number
   json?: boolean          // força saída JSON (Gemini: responseMimeType)
+  // Formato exigido da resposta (só o Gemini respeita). Vale a pena quando a
+  // resposta alimenta código: sem isso o modelo inventa valor fora da lista
+  // ("transicao": "speed ramp"), e aí ou se descarta em silêncio ou se aceita
+  // lixo. Com schema, o valor inválido não chega a existir.
+  schema?: Record<string, unknown>
 }): Promise<LLMResult> {
   const cfg = await getLLMConfig()
   if (cfg.provider === 'gemini') return chamarGemini(cfg, opts)
   return chamarAnthropic(cfg, opts)
 }
 
-async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean }): Promise<LLMResult> {
+async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean; schema?: Record<string, unknown> }): Promise<LLMResult> {
   if (!cfg.anthropicKey) return { ok: false, texto: '', erro: 'Chave da Anthropic não configurada.' }
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 60000)
@@ -102,7 +107,7 @@ async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: 
   }
 }
 
-async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean }): Promise<LLMResult> {
+async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean; schema?: Record<string, unknown> }): Promise<LLMResult> {
   if (!cfg.geminiKey) return { ok: false, texto: '', erro: 'Chave do Gemini não configurada.' }
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 60000)
@@ -113,7 +118,8 @@ async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: str
       maxOutputTokens: opts.maxTokens ?? 1500,
       temperature: opts.temperatura ?? 0.7,
     }
-    if (opts.json) gen.responseMimeType = 'application/json'
+    if (opts.json || opts.schema) gen.responseMimeType = 'application/json'
+    if (opts.schema) gen.responseSchema = opts.schema
     const body: Record<string, any> = {
       contents: [{ role: 'user', parts: [{ text: opts.prompt }] }],
       generationConfig: gen,
@@ -134,6 +140,22 @@ async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: str
     const texto = (j?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('').trim()
     if (!texto && j?.promptFeedback?.blockReason) {
       return { ok: false, texto: '', erro: `Gemini bloqueou: ${j.promptFeedback.blockReason}` }
+    }
+    // Resposta vazia tem causa, e quase sempre é a mesma: o "thinking" dos
+    // modelos 3.x consome maxOutputTokens antes de escrever a resposta. Dizer
+    // "não devolveu JSON válido" aqui manda quem lê procurar no lugar errado.
+    if (!texto) {
+      const motivo = j?.candidates?.[0]?.finishReason
+      const pensou = j?.usageMetadata?.thoughtsTokenCount
+      if (motivo === 'MAX_TOKENS') {
+        return {
+          ok: false, texto: '',
+          erro: `o modelo gastou o limite de ${gen.maxOutputTokens} tokens pensando`
+            + `${pensou ? ` (${pensou} em raciocínio)` : ''} e não sobrou pra resposta`
+            + ' — aumente o limite ou escolha um modelo Flash.',
+        }
+      }
+      return { ok: false, texto: '', erro: `Gemini respondeu vazio${motivo ? ` (${motivo})` : ''}.` }
     }
     return { ok: true, texto }
   } catch (e: any) {
