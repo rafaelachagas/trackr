@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ChevronLeft, Download, Eye, EyeOff, Film, Loader2, Pause, Play, Redo2, Scissors, Star,
-  Trash2, Undo2, ZoomIn, ZoomOut, Check, AlertTriangle,
+  Trash2, Undo2, ZoomIn, ZoomOut, Check, AlertTriangle, Plus,
 } from 'lucide-react'
 import {
   type Projeto, type Trecho, type Palavra, type Legenda,
   legendaCompleta, corpoRelativo, fimTrecho, trechoEm, corteEm, legendaEm, escalaPop, PUNCH_DUR,
+  textosEm, TEXTO_PADRAO, type TextoFixo,
   encaixaNaPalavra,
   ZOOM_FORCA, TRANSICAO_DUR,
 } from '@/lib/criativos-projeto'
@@ -27,7 +28,7 @@ type Dados = {
   videoUrl: string | null
   downloadUrl: string | null
 }
-type Selecao = { tipo: 'trecho' | 'palavra' | 'corte'; i: number } | null
+type Selecao = { tipo: 'trecho' | 'palavra' | 'corte' | 'texto'; i: number } | null
 
 const CORES = ['#7c3aed', '#0891b2', '#db2777', '#059669', '#d97706', '#2563eb', '#dc2626', '#4d7c0f']
 const nomeDe = (c: string) => c.split('/').pop()!.replace(/\.[^.]+$/, '')
@@ -257,6 +258,8 @@ export default function EditorCriativo({ id }: { id: string }) {
       })
     } else if (sel.tipo === 'corte') {
       mudar((d) => { d.cortes.splice(sel.i, 1) })
+    } else if (sel.tipo === 'texto') {
+      mudar((d) => { (d.textos || []).splice(sel.i, 1) })
     } else {
       mudar((d) => { d.palavras[sel.i].oculta = !d.palavras[sel.i].oculta })
       return
@@ -416,6 +419,26 @@ export default function EditorCriativo({ id }: { id: string }) {
   const trSel = sel?.tipo === 'trecho' ? p.trechos[sel.i] : null
   const palSel = sel?.tipo === 'palavra' ? p.palavras[sel.i] : null
   const corteSel = sel?.tipo === 'corte' ? p.cortes[sel.i] : null
+  const textoSel = sel?.tipo === 'texto' ? (p.textos || [])[sel.i] : null
+
+  function novoTexto() {
+    if (!p) return
+    const fim = Math.min(p.duracao, t + 2.5)
+    if (fim - t < 0.3) return
+    mudar((d) => {
+      d.textos = [...(d.textos || []), { ...TEXTO_PADRAO, id: `tx${Date.now()}`, ini: +t.toFixed(3), fim: +fim.toFixed(3) }]
+    })
+    setSel({ tipo: 'texto', i: (p.textos || []).length })
+  }
+
+  function mudarTexto(campos: Partial<TextoFixo>) {
+    if (sel?.tipo !== 'texto') return
+    mudar((d) => {
+      const lista = d.textos || []
+      lista[sel.i] = { ...lista[sel.i], ...campos }
+      d.textos = lista
+    })
+  }
 
   function mudarLegenda(campos: Partial<Legenda>) {
     mudar((d) => { d.legenda = { ...d.legenda, ...campos } })
@@ -467,6 +490,34 @@ export default function EditorCriativo({ id }: { id: string }) {
               <div className="absolute inset-0 pointer-events-none"
                 style={{ background: trAtual?.transicao === 'flash' ? '#fff' : '#000', opacity: opTransicao }} />
             )}
+            {textosEm(p, t).map((x) => {
+              const corpoTx = (x.tamanho ?? 0.14) * boxH
+              const desde = x.ini
+              const avanco = Math.min(1, Math.max(0, (t - desde) / 0.16))
+              const anim = x.animacao || 'pop'
+              return (
+                <div key={x.id} className="absolute pointer-events-none text-center whitespace-pre-wrap"
+                  style={{
+                    left: `${(x.x ?? 0.5) * 100}%`,
+                    top: `${(x.y ?? 0.25) * 100}%`,
+                    transform: `translate(-50%, -50%)`
+                      + (anim === 'subir' ? ` translateY(${(1 - avanco) * corpoTx * 0.4}px)` : '')
+                      + (anim === 'lado' ? ` translateX(${-(1 - avanco) * corpoTx * 0.8}px)` : '')
+                      + ` rotate(${x.rotacao ?? 0}deg)`
+                      + ` scale(${anim === 'pop' ? escalaPop(desde, t, 0.7, 1.12) : 1})`,
+                    opacity: anim === 'subir' || anim === 'lado' ? Math.min(1, avanco * 1.6) : 1,
+                    fontFamily: 'FonteLegendaPrevia, Montserrat, Arial Black, sans-serif',
+                    fontWeight: 800,
+                    fontSize: corpoTx,
+                    lineHeight: 1.1,
+                    color: x.cor || '#FFFFFF',
+                    WebkitTextStroke: `${Math.max(2, corpoTx * 0.07) * 2}px #000`,
+                    paintOrder: 'stroke fill',
+                  }}>
+                  {x.maiusculas ? x.texto.toUpperCase() : x.texto}
+                </div>
+              )
+            })}
             {naTela && (
               <div className="absolute left-1/2 pointer-events-none text-center"
                 style={{
@@ -574,6 +625,69 @@ export default function EditorCriativo({ id }: { id: string }) {
               </button>
             </div>
           )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-foreground">Texto por cima</p>
+              <button onClick={novoTexto}
+                className="rounded-md px-2 py-1 border border-border hover:bg-muted inline-flex items-center gap-1 text-[11px]">
+                <Plus className="w-3 h-3" /> Novo no cursor
+              </button>
+            </div>
+            {!textoSel && (
+              <p className="text-muted-foreground text-[11px]">
+                {(p.textos || []).length
+                  ? 'Clique num texto na linha do tempo pra editar.'
+                  : 'Um título que não vem da fala — o "Dia 3" escrito por cima do vídeo.'}
+              </p>
+            )}
+            {textoSel && (
+              <div className="space-y-2">
+                <textarea value={textoSel.texto} rows={2}
+                  onChange={(e) => mudarTexto({ texto: e.target.value })}
+                  className="w-full rounded-md bg-black/30 border border-border px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-fuchsia-500/50" />
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1">
+                    <span className="text-muted-foreground">Entra em {fmt(textoSel.ini)}</span>
+                    <input type="range" min={0} max={Math.max(0.1, p.duracao)} step={0.05} value={textoSel.ini}
+                      onChange={(e) => mudarTexto({ ini: Math.min(Number(e.target.value), textoSel.fim - 0.2) })}
+                      className="w-full" />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-muted-foreground">Sai em {fmt(textoSel.fim)}</span>
+                    <input type="range" min={0} max={Math.max(0.1, p.duracao)} step={0.05} value={textoSel.fim}
+                      onChange={(e) => mudarTexto({ fim: Math.max(Number(e.target.value), textoSel.ini + 0.2) })}
+                      className="w-full" />
+                  </label>
+                </div>
+                <Faixa rotulo="Tamanho" valor={Math.round((textoSel.tamanho ?? 0.14) * 100)} min={2} max={45} passo={1}
+                  mostrar={(v) => `${v}%`} onChange={(v) => mudarTexto({ tamanho: v / 100 })} />
+                <Faixa rotulo="Altura na tela" valor={Math.round((textoSel.y ?? 0.25) * 100)} min={0} max={100} passo={1}
+                  mostrar={(v) => `${v}%`} onChange={(v) => mudarTexto({ y: v / 100 })} />
+                <Faixa rotulo="Lado" valor={Math.round((textoSel.x ?? 0.5) * 100)} min={0} max={100} passo={1}
+                  mostrar={(v) => `${v}%`} onChange={(v) => mudarTexto({ x: v / 100 })} />
+                <Faixa rotulo="Giro" valor={textoSel.rotacao ?? 0} min={-45} max={45} passo={1}
+                  mostrar={(v) => `${v}°`} onChange={(v) => mudarTexto({ rotacao: v })} />
+                <div className="flex items-center gap-2">
+                  <input type="color" value={textoSel.cor || '#FFFFFF'}
+                    onChange={(e) => mudarTexto({ cor: e.target.value })}
+                    className="w-9 h-7 rounded bg-transparent border border-border cursor-pointer" />
+                  <Alternar ativo={!!textoSel.maiusculas} onClick={() => mudarTexto({ maiusculas: !textoSel.maiusculas })}>MAIÚSCULAS</Alternar>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {(['nenhuma', 'pop', 'subir', 'lado'] as const).map((a) => (
+                    <Alternar key={a} ativo={(textoSel.animacao || 'pop') === a} onClick={() => mudarTexto({ animacao: a })}>
+                      {a === 'nenhuma' ? 'Sem' : a === 'pop' ? 'Estala' : a === 'subir' ? 'Sobe' : 'Lado'}
+                    </Alternar>
+                  ))}
+                </div>
+                <button onClick={apagarSelecionado}
+                  className="rounded-md px-2.5 py-1.5 border border-border hover:bg-muted inline-flex items-center gap-1">
+                  <Trash2 className="w-3.5 h-3.5" /> Apagar este texto
+                </button>
+              </div>
+            )}
+          </div>
 
           <div className="space-y-3">
             <p className="font-semibold text-foreground">Legenda</p>
@@ -707,6 +821,21 @@ export default function EditorCriativo({ id }: { id: string }) {
                 <span className="absolute left-2 top-2 text-[10px] text-muted-foreground">carregando a onda...</span>
               )}
             </div>
+
+            {/* textos por cima */}
+            {(p.textos || []).length > 0 && (
+              <div className="relative h-6 mb-1">
+                {(p.textos || []).map((x, i) => (
+                  <div key={x.id} onClick={() => { setSel({ tipo: 'texto', i }); irPara(x.ini) }}
+                    className={`absolute top-0 h-full rounded px-1.5 text-[10px] flex items-center overflow-hidden cursor-pointer border
+                      ${sel?.tipo === 'texto' && sel.i === i ? 'border-amber-300 bg-amber-400/30' : 'border-amber-500/40 bg-amber-500/15'}`}
+                    style={{ left: x.ini * pps, width: Math.max(10, (x.fim - x.ini) * pps - 1) }}
+                    title={x.texto}>
+                    <span className="truncate text-amber-100">{x.texto.split(/\r?\n/)[0]}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* legenda */}
             <div className="relative h-8 mb-1">

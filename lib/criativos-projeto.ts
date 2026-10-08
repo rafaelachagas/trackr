@@ -36,6 +36,26 @@ export type Legenda = {
   brilho?: boolean
 }
 export type Corte = { ini: number; fim: number }
+
+/** Texto escrito por cima, que não vem da transcrição (o "Dia 3"). */
+export type TextoFixo = {
+  id: string
+  texto: string
+  ini: number
+  fim: number
+  x?: number          // 0..1 da largura
+  y?: number          // 0..1 da altura
+  tamanho?: number    // fração da altura
+  cor?: string
+  rotacao?: number    // graus, -45 a 45
+  maiusculas?: boolean
+  animacao?: 'pop' | 'subir' | 'lado' | 'nenhuma'
+}
+
+export const TEXTO_PADRAO: Omit<TextoFixo, 'id' | 'ini' | 'fim'> = {
+  texto: 'Dia 3', x: 0.5, y: 0.25, tamanho: 0.14, cor: '#FFFFFF',
+  rotacao: 0, maiusculas: false, animacao: 'pop',
+}
 export type Projeto = {
   versao: number
   criado_em: number
@@ -49,6 +69,7 @@ export type Projeto = {
   palavras: Palavra[]
   trechos: Trecho[]
   cortes: Corte[]
+  textos?: TextoFixo[]
   musica_path?: string | null
   musica_volume?: number
   saida_path?: string
@@ -70,6 +91,11 @@ export function encaixaNaPalavra(p: Projeto, t: number, lado: 'ini' | 'fim'): nu
   return lado === 'ini'
     ? Math.max(0, dentro.ini - FOLGA_CORTE)
     : Math.min(p.duracao, dentro.fim + FOLGA_CORTE)
+}
+
+/** Os textos fixos visíveis neste instante. */
+export function textosEm(p: Projeto, t: number): TextoFixo[] {
+  return (p.textos || []).filter((x) => t >= x.ini && t < x.fim)
 }
 
 export const ZOOM_FORCA = 0.12

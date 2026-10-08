@@ -1918,7 +1918,54 @@ def _ass_tempo(t):
     return "%d:%02d:%05.2f" % (h, m, s)
 
 
-def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None):
+def _textos_fixos_ass(textos, w, h):
+    """Os textos que NAO vem da transcricao — o "Dia 3" escrito por cima.
+
+    Saem como dialogos comuns do ASS, na mesma folha da legenda, so que com
+    tudo sobrescrito na propria linha (tamanho, cor, posicao, giro). Assim nao
+    precisa de um segundo passe de ffmpeg: e a mesma queima. Camada 2 deixa
+    eles por cima da legenda e das camadas de efeito dela."""
+    linhas = []
+    for item in (textos or []):
+        try:
+            txt = str(item.get("texto") or "").strip()
+            if not txt:
+                continue
+            ini = max(0.0, float(item.get("ini") or 0))
+            fim = float(item.get("fim") or 0)
+            if fim - ini < 0.05:
+                continue
+            if _bool(item.get("maiusculas"), False):
+                txt = txt.upper()
+            # A quebra de linha do ASS e barra-N; o site manda quebra normal.
+            txt = txt.replace(chr(13), chr(10)).replace(chr(10), chr(92) + "N")
+            corpo = int(h * _clamp(item.get("tamanho"), 0.02, 0.45, 0.12))
+            x = int(w * _clamp(item.get("x"), 0.0, 1.0, 0.5))
+            y = int(h * _clamp(item.get("y"), 0.0, 1.0, 0.3))
+            cor = _hex_ass(item.get("cor"), "FFFFFF")
+            giro = _clamp(item.get("rotacao"), -45, 45, 0)
+            borda = max(2, int(corpo * 0.07))
+            anima = str(item.get("animacao") or "pop")
+            if anima == "subir":
+                pos = r"{\an5\move(%d,%d,%d,%d,0,160)\fad(100,0)}" % (
+                    x, y + int(corpo * 0.4), x, y)
+            elif anima == "lado":
+                pos = r"{\an5\move(%d,%d,%d,%d,0,160)\fad(100,0)}" % (
+                    x - int(corpo * 0.8), y, x, y)
+            else:
+                pos = r"{\an5\pos(%d,%d)}" % (x, y)
+            estalo = (r"{\fscx70\fscy70\t(0,90,\fscx112\fscy112)\t(90,170,\fscx100\fscy100)}"
+                      if anima == "pop" else "")
+            visual = r"{\fs%d\c%s\bord%d\3c&H00000000&\shad%d\frz%.1f}" % (
+                corpo, cor, borda, max(1, int(corpo * 0.03)), giro)
+            linhas.append("Dialogue: 2,%s,%s,Base,,0,0,0,,%s%s%s%s"
+                          % (_ass_tempo(ini), _ass_tempo(fim), pos, estalo, visual, txt))
+        except Exception as e:
+            print("[montador] texto fixo ignorado: %s" % e, flush=True)
+    return linhas
+
+
+def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None, textos=None):
     """Legenda queimada, no formato ASS (o libass desenha).
 
     Três estilos, que são três jeitos de usar o MESMO tempo por palavra:
@@ -2056,7 +2103,7 @@ def _legenda_ass(palavras, w, h, estilo, fonte_nome, cfg=None):
                     else:
                         partes.append(marcada(q, False))
                 linhas += camadas(p["ini"], fim_de(g, k), " ".join(partes))
-    return "\n".join(cab + linhas) + "\n"
+    return "\n".join(cab + linhas + _textos_fixos_ass(textos, w, h)) + "\n"
 
 
 def _hex_ass(valor, padrao):
@@ -2218,6 +2265,7 @@ def _projeto_automatico(body, baixar, tmp, tempos):
                      for p in palavras],
         "trechos": trechos,
         "cortes": [],
+        "textos": [],
         "musica_path": body.get("musica_path") or None,
         "musica_volume": _clamp(body.get("musica_volume"), 0.0, 1.0, 0.12),
     }
@@ -2325,7 +2373,8 @@ def _montar(body):
                 pass
         ass = os.path.join(tmp, "leg.ass")
         with open(ass, "w", encoding="utf-8") as fh:
-            fh.write(_legenda_ass(palavras, w, h, estilo, fonte_nome, leg))
+            fh.write(_legenda_ass(palavras, w, h, estilo, fonte_nome, leg,
+                                  projeto.get("textos")))
 
         # 7. Vídeo + legenda + locução. O -shortest corta no fim do áudio.
         t0 = time.time()
