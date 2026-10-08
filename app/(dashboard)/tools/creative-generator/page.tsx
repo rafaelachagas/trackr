@@ -65,8 +65,10 @@ export default function CreativeGeneratorPage() {
   const [pastaAberta, setPastaAberta] = useState<string | null>(null)
   const [arquivos, setArquivos] = useState<Arquivo[]>([])
   const [novaPasta, setNovaPasta] = useState('')
+  const [criandoPasta, setCriandoPasta] = useState(false)
   const [enviando, setEnviando] = useState<string | null>(null)
   const brollRef = useRef<HTMLInputElement>(null)
+  const brollGuiadoRef = useRef<HTMLInputElement>(null)
   const [renomeando, setRenomeando] = useState<string | null>(null)
   const [nomeNovo, setNomeNovo] = useState('')
   // Duração vem do próprio player, quando ele carrega os metadados: evita uma
@@ -116,6 +118,18 @@ export default function CreativeGeneratorPage() {
   const [formato, setFormato] = useState<FormatoId>('9:16')
   const [estilo, setEstilo] = useState<EstiloId>('palavra')
   const [template, setTemplate] = useState<TemplateId>(TEMPLATE_PADRAO)
+  // Estilo próprio: nenhum dos três prontos é obrigatório. Os campos são os
+  // mesmos que a VPS entende; ela valida de novo do lado de lá.
+  const [proprio, setProprio] = useState(false)
+  const [meu, setMeu] = useState({
+    zoom: 'punch' as 'nenhum' | 'in' | 'out' | 'punch' | 'alternado',
+    zoom_forca: 0.1,
+    transicao: 'corte' as 'corte' | 'fade' | 'flash',
+    legenda_estilo: 'palavra' as EstiloId,
+    legenda_destaque: '#FFFF00',
+    ritmo_min: 2,
+    ritmo_max: 3.5,
+  })
 
   // Locução em PT-BR fica perto de 160 palavras por minuto. Serve pra avisar
   // que o roteiro passou do tamanho de um criativo antes de gastar TTS.
@@ -167,6 +181,10 @@ export default function CreativeGeneratorPage() {
     return saida.join(' ')
   }
 
+  // No guiado só aparecem os clipes da pasta escolhida — é ela que define o
+  // criativo. Sem pasta escolhida, mostra tudo pra não travar quem tem uma só.
+  const clipesDaPasta = pastaAberta ? clipes.filter((c) => c.pasta === pastaAberta) : clipes
+
   const roteiroFinal = modo === 'guiado' ? comMarcacoes(roteiro, fila) : roteiro
 
   function inserir(marca: string) {
@@ -180,6 +198,11 @@ export default function CreativeGeneratorPage() {
       el.setSelectionRange(ini + marca.length, ini + marca.length)
     })
   }
+
+  // Com uma pasta só, escolher não é decisão — já vem escolhida.
+  useEffect(() => {
+    if (!pastaAberta && pastas.length === 1) setPastaAberta(pastas[0].nome)
+  }, [pastas, pastaAberta])
 
   const carregarPastas = useCallback(async () => {
     try {
@@ -250,12 +273,31 @@ export default function CreativeGeneratorPage() {
     carregarPastas()
   }
 
-  async function subir(f: File, tipo: 'broll' | 'fonte' | 'locucao') {
+  // No fluxo guiado não existe "pasta aberta": quem está montando um criativo
+  // não deveria precisar pensar em pasta. Os clipes caem numa pasta "geral",
+  // criada na hora se for o primeiro envio.
+  async function subirBrolls(lista: FileList | null) {
+    if (!lista?.length) return
+    let pasta = pastaAberta || pastas[0]?.nome
+    if (!pasta) {
+      const j = await fetch('/api/creative-generator/library', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pasta: 'geral' }),
+      }).then(json).catch(() => ({}))
+      if (j?.error) { setErro(j.error); return }
+      pasta = 'geral'
+      setPastaAberta(pasta)
+    }
+    for (const f of Array.from(lista)) await subir(f, 'broll', pasta)
+    await carregarPastas()
+  }
+
+  async function subir(f: File, tipo: 'broll' | 'fonte' | 'locucao', pastaAlvo?: string) {
     setEnviando(f.name)
     try {
       const sign = await fetch('/api/creative-generator/sign-upload', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ nome: f.name, tipo, pasta: pastaAberta }),
+        body: JSON.stringify({ nome: f.name, tipo, pasta: pastaAlvo ?? pastaAberta }),
       }).then(json)
       if (sign.error) throw new Error(sign.error)
       const { error } = await supabase.storage.from('criativos')
@@ -263,7 +305,10 @@ export default function CreativeGeneratorPage() {
       if (error) throw new Error(error.message)
       if (tipo === 'fonte') await carregarFontes(buscaFonte, categoriaFonte)
       else if (tipo === 'locucao') setLocucao({ nome: f.name, caminho: sign.caminho })
-      else if (pastaAberta) { await abrirPasta(pastaAberta); await carregarPastas() }
+      else {
+        const dentro = pastaAlvo ?? pastaAberta
+        if (dentro) { await abrirPasta(dentro); await carregarPastas() }
+      }
     } catch (e) { setErro(`${e}`) } finally { setEnviando(null) }
   }
 
@@ -289,7 +334,13 @@ export default function CreativeGeneratorPage() {
       const j = await fetch('/api/creative-generator/assemble', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          roteiro: roteiroFinal, locucaoPath, formato, estilo, template,
+          roteiro: roteiroFinal, locucaoPath, formato, template,
+          estilo: proprio ? meu.legenda_estilo : estilo,
+          templateCustom: proprio ? {
+            zoom: meu.zoom, zoom_forca: meu.zoom_forca, transicao: meu.transicao,
+            legenda_estilo: meu.legenda_estilo, legenda_destaque: meu.legenda_destaque,
+            intervalo_broll: [meu.ritmo_min, meu.ritmo_max],
+          } : null,
           fontePath: fonteEscolhida || fontes[0]?.caminho || null,
         }),
       }).then(json)
@@ -475,12 +526,53 @@ export default function CreativeGeneratorPage() {
           </Passo>
 
           <Passo n={3} titulo="Os b-rolls, na ordem" pronto={fila.length > 0}
-            ajuda="Clique nos clipes na ordem em que eles devem aparecer. Dá pra repetir o mesmo clipe.">
-            {clipes.length === 0 ? (
-              <button onClick={() => { setModo('avancado'); setAba('biblioteca') }}
-                className="text-xs text-fuchsia-300 hover:text-fuchsia-200 underline">
-                Nenhum clipe na biblioteca ainda — enviar b-rolls
+            ajuda="Escolha a pasta do criativo e clique nos clipes na ordem em que eles aparecem. Dá pra repetir o mesmo clipe.">
+            {/* A pasta é o "projeto": uma por criativo (B-rolls AD12) deixa a
+                lista de clipes curta e a escolha óbvia. */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground mr-1">Pasta:</span>
+              {pastas.map((pa) => (
+                <Mini key={pa.nome} ativo={pastaAberta === pa.nome}
+                  onClick={() => { setPastaAberta(pa.nome); setFila([]) }}>
+                  {pa.nome} <span className="opacity-50">{pa.clipes}</span>
+                </Mini>
+              ))}
+              {criandoPasta ? (
+                <span className="inline-flex items-center gap-1">
+                  <input autoFocus value={novaPasta} onChange={(e) => setNovaPasta(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') { const nome = novaPasta.trim(); await criarPasta(); if (nome) setPastaAberta(nome); setCriandoPasta(false) }
+                      if (e.key === 'Escape') { setNovaPasta(''); setCriandoPasta(false) }
+                    }}
+                    placeholder="B-rolls AD12"
+                    className="w-32 rounded-md bg-black/30 border border-fuchsia-500/40 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none" />
+                </span>
+              ) : (
+                <button onClick={() => setCriandoPasta(true)}
+                  className="px-2.5 py-1 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+                  <FolderPlus className="w-3 h-3" /> Nova pasta
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => brollGuiadoRef.current?.click()} disabled={!!enviando}
+                className="px-3 py-1.5 rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 disabled:opacity-50 text-xs text-foreground inline-flex items-center gap-1.5">
+                {enviando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                Enviar b-rolls
               </button>
+              <input ref={brollGuiadoRef} type="file" accept="video/*" multiple className="hidden"
+                onChange={(e) => { subirBrolls(e.target.files); e.target.value = '' }} />
+              <span className="text-[11px] text-muted-foreground">
+                {enviando ? `enviando ${enviando}...`
+                  : pastaAberta ? `${clipesDaPasta.length} clipe(s) em "${pastaAberta}"`
+                  : `${clipes.length} clipe(s) no total`}
+              </span>
+            </div>
+            {clipesDaPasta.length === 0 ? (
+              <span className="text-xs text-muted-foreground">
+                {pastaAberta ? `A pasta "${pastaAberta}" está vazia — envie os b-rolls acima.`
+                             : 'Crie uma pasta pro criativo e envie os b-rolls dele.'}
+              </span>
             ) : (
               <>
                 {fila.length > 0 && (
@@ -498,7 +590,7 @@ export default function CreativeGeneratorPage() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {clipes.map((c) => (
+                  {clipesDaPasta.map((c) => (
                     <button key={c.caminho} onClick={() => setFila((f) => [...f, c.nome])}
                       className="px-2.5 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:border-fuchsia-500/40 text-xs text-foreground inline-flex items-center gap-1.5">
                       <Plus className="w-3 h-3 text-muted-foreground" /> {c.nome}
@@ -511,17 +603,84 @@ export default function CreativeGeneratorPage() {
 
           <Passo n={4} titulo="O estilo da edição" pronto
             ajuda="Define o ritmo do corte, o zoom e a legenda. Dá pra ajustar tudo depois, no editor.">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
               {TEMPLATES.map((t) => (
-                <button key={t.id} onClick={() => { setTemplate(t.id); setEstilo(ESTILO_DO_TEMPLATE[t.id] as EstiloId) }}
+                <button key={t.id} onClick={() => { setProprio(false); setTemplate(t.id); setEstilo(ESTILO_DO_TEMPLATE[t.id] as EstiloId) }}
                   className={`text-left rounded-lg border px-3 py-2 transition ${
-                    template === t.id ? 'border-fuchsia-500/60 bg-fuchsia-500/10' : 'border-border bg-white/[0.02] hover:border-fuchsia-500/40'
+                    !proprio && template === t.id ? 'border-fuchsia-500/60 bg-fuchsia-500/10' : 'border-border bg-white/[0.02] hover:border-fuchsia-500/40'
                   }`}>
                   <span className="block text-sm font-semibold text-foreground">{t.nome}</span>
                   <span className="block text-[11px] text-muted-foreground mt-0.5">{t.desc}</span>
                 </button>
               ))}
+              <button onClick={() => setProprio(true)}
+                className={`text-left rounded-lg border px-3 py-2 transition ${
+                  proprio ? 'border-fuchsia-500/60 bg-fuchsia-500/10' : 'border-border bg-white/[0.02] hover:border-fuchsia-500/40'
+                }`}>
+                <span className="block text-sm font-semibold text-foreground">Meu estilo</span>
+                <span className="block text-[11px] text-muted-foreground mt-0.5">
+                  Você define o ritmo, o zoom, a entrada e a legenda.
+                </span>
+              </button>
             </div>
+
+            {proprio && (
+              <div className="rounded-lg border border-fuchsia-500/25 bg-fuchsia-500/[0.04] px-3 py-3 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Campo rotulo="Movimento da imagem">
+                    <div className="flex flex-wrap gap-1">
+                      {([['nenhum', 'Parado'], ['punch', 'Soco'], ['in', 'Fecha'], ['out', 'Abre'], ['alternado', 'Alterna']] as const).map(([id, rot]) => (
+                        <Mini key={id} ativo={meu.zoom === id} onClick={() => setMeu((m) => ({ ...m, zoom: id }))}>{rot}</Mini>
+                      ))}
+                    </div>
+                  </Campo>
+                  <Campo rotulo="Entrada de cada b-roll">
+                    <div className="flex flex-wrap gap-1">
+                      {([['corte', 'Corte seco'], ['fade', 'Fade'], ['flash', 'Flash branco']] as const).map(([id, rot]) => (
+                        <Mini key={id} ativo={meu.transicao === id} onClick={() => setMeu((m) => ({ ...m, transicao: id }))}>{rot}</Mini>
+                      ))}
+                    </div>
+                  </Campo>
+                </div>
+                {meu.zoom !== 'nenhum' && (
+                  <Campo rotulo={`Força do movimento — ${Math.round(meu.zoom_forca * 100)}%`}>
+                    <input type="range" min={2} max={40} step={1} value={Math.round(meu.zoom_forca * 100)}
+                      onChange={(e) => setMeu((m) => ({ ...m, zoom_forca: Number(e.target.value) / 100 }))}
+                      className="w-full" />
+                  </Campo>
+                )}
+                <Campo rotulo={`Troca de b-roll a cada ${meu.ritmo_min}s a ${meu.ritmo_max}s`}>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={0.6} max={10} step={0.1} value={meu.ritmo_min}
+                      onChange={(e) => setMeu((m) => ({ ...m, ritmo_min: Number(e.target.value) }))} className="w-full" />
+                    <input type="range" min={0.6} max={10} step={0.1} value={meu.ritmo_max}
+                      onChange={(e) => setMeu((m) => ({ ...m, ritmo_max: Number(e.target.value) }))} className="w-full" />
+                  </div>
+                </Campo>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Campo rotulo="Legenda">
+                    <div className="flex flex-wrap gap-1">
+                      {ESTILOS.map((e) => (
+                        <Mini key={e.id} ativo={meu.legenda_estilo === e.id}
+                          onClick={() => setMeu((m) => ({ ...m, legenda_estilo: e.id }))}>{e.nome}</Mini>
+                      ))}
+                    </div>
+                  </Campo>
+                  <Campo rotulo="Cor do destaque">
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={meu.legenda_destaque}
+                        onChange={(e) => setMeu((m) => ({ ...m, legenda_destaque: e.target.value }))}
+                        className="w-10 h-8 rounded bg-transparent border border-border cursor-pointer" />
+                      <span className="text-xs text-muted-foreground tabular-nums">{meu.legenda_destaque}</span>
+                    </div>
+                  </Campo>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Isto é o ponto de partida. Cor, tamanho, posição, aberração e brilho da legenda,
+                  e o zoom de cada trecho, você afina no editor depois de montar.
+                </p>
+              </div>
+            )}
             <div className="flex flex-wrap gap-1.5 pt-1">
               {FORMATOS.map((f) => (
                 <button key={f.id} onClick={() => setFormato(f.id)}
@@ -1231,5 +1390,26 @@ function Passo({ n, titulo, ajuda, pronto, children }: {
       <p className="text-[11px] text-muted-foreground -mt-1 pl-8">{ajuda}</p>
       <div className="space-y-2 pl-8">{children}</div>
     </section>
+  )
+}
+
+function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-1">
+      <span className="text-[11px] text-muted-foreground">{rotulo}</span>
+      {children}
+    </label>
+  )
+}
+
+function Mini({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick}
+      className={`px-2.5 py-1 rounded-md border text-xs transition ${
+        ativo ? 'border-fuchsia-500/60 bg-fuchsia-500/15 text-foreground'
+              : 'border-border text-muted-foreground hover:text-foreground'
+      }`}>
+      {children}
+    </button>
   )
 }

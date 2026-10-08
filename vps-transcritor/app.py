@@ -1717,8 +1717,34 @@ TEMPLATES = {
 TEMPLATE_PADRAO = "ugc_cru"
 
 
-def _template(nome):
-    return TEMPLATES.get(str(nome or ""), TEMPLATES[TEMPLATE_PADRAO])
+def _template(nome, proprio=None):
+    """O jeito do vídeo.
+
+    Três prontos, e o "proprio": um dicionário vindo do site com os mesmos
+    campos, pra quem quer o estilo dele e não um dos três."""
+    base = dict(TEMPLATES.get(str(nome or ""), TEMPLATES[TEMPLATE_PADRAO]))
+    if not isinstance(proprio, dict):
+        return base
+    zoom = str(proprio.get("zoom") or base["zoom"])
+    if zoom not in ("nenhum", "in", "out", "punch", "alternado"):
+        zoom = base["zoom"]
+    base["zoom"] = zoom
+    base["zoom_forca"] = _clamp(proprio.get("zoom_forca"), 0.02, 0.40,
+                                base.get("zoom_forca", ZOOM_FORCA))
+    transicao = str(proprio.get("transicao") or base["transicao"])
+    base["transicao"] = transicao if transicao in ("corte", "fade", "flash") else base["transicao"]
+    estilo = str(proprio.get("legenda_estilo") or base["legenda_estilo"])
+    base["legenda_estilo"] = estilo if estilo in ("palavra", "destaque", "bloco") else base["legenda_estilo"]
+    cor = str(proprio.get("legenda_destaque") or "")
+    if re.fullmatch(r"#?[0-9a-fA-F]{6}", cor):
+        base["legenda_destaque"] = cor if cor.startswith("#") else "#" + cor
+    # Ritmo: o site manda os dois lados em segundos; o menor nunca passa o maior.
+    rit = proprio.get("intervalo_broll")
+    if isinstance(rit, (list, tuple)) and len(rit) == 2:
+        a = _clamp(rit[0], 0.6, 20.0, base["intervalo_broll"][0])
+        b = _clamp(rit[1], 0.6, 20.0, base["intervalo_broll"][1])
+        base["intervalo_broll"] = (min(a, b), max(a, b))
+    return base
 
 
 RE_ASS_TAGS = re.compile(r"\{[^}]*\}")
@@ -2105,7 +2131,7 @@ def _projeto_automatico(body, baixar, tmp, tempos):
 
     # 3. Marcações do roteiro viram trechos com início e fim.
     plano = _plano_do_roteiro(body.get("roteiro") or "", palavras)
-    tpl = _template(body.get("template"))
+    tpl = _template(body.get("template"), body.get("template_custom"))
     ritmo_min, ritmo_max = tpl["intervalo_broll"]
     usados = {}
     trechos = []
