@@ -58,6 +58,9 @@ export default function EditorCriativo({ id }: { id: string }) {
   const [filtroPasta, setFiltroPasta] = useState('')
 
   const audioRef = useRef<HTMLAudioElement>(null)
+  // Picos da locução pra desenhar a onda. Sem ela, achar o "éééé" pra cortar
+  // é ouvir o áudio inteiro. 600 colunas chegam pra qualquer criativo.
+  const [picos, setPicos] = useState<number[] | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const trilhaRef = useRef<HTMLDivElement>(null)
   const videos = useRef<Record<string, HTMLVideoElement | null>>({})
@@ -355,6 +358,39 @@ export default function EditorCriativo({ id }: { id: string }) {
     return <div className="p-6 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Abrindo o projeto...</div>
   }
 
+  const urlLocucao = dados && p ? dados.urls[p.locucao_path] : null
+  useEffect(() => {
+    if (!urlLocucao) return
+    let vivo = true
+    ;(async () => {
+      try {
+        const buf = await fetch(urlLocucao).then((r) => r.arrayBuffer())
+        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+        const audio = await ctx.decodeAudioData(buf)
+        const dados0 = audio.getChannelData(0)
+        const colunas = 600
+        const porColuna = Math.floor(dados0.length / colunas) || 1
+        const fora: number[] = []
+        for (let c = 0; c < colunas; c++) {
+          let pico = 0
+          const ini = c * porColuna
+          for (let i = ini; i < ini + porColuna && i < dados0.length; i += 8) {
+            const v = Math.abs(dados0[i])
+            if (v > pico) pico = v
+          }
+          fora.push(pico)
+        }
+        const teto = Math.max(...fora) || 1
+        if (vivo) setPicos(fora.map((v) => v / teto))
+        ctx.close()
+      } catch {
+        // Onda é conforto, não função: se o navegador não decodificar, segue sem.
+        if (vivo) setPicos(null)
+      }
+    })()
+    return () => { vivo = false }
+  }, [urlLocucao])
+
   const idx = trechoEm(p, t)
   const trAtual = p.trechos[idx]
   const prog = trAtual ? Math.min(1, Math.max(0, (t - trAtual.ini) / Math.max(0.1, fimTrecho(p, idx) - trAtual.ini))) : 0
@@ -575,6 +611,11 @@ export default function EditorCriativo({ id }: { id: string }) {
                 ))}
               </div>
             </div>
+            {p.musica_path && (
+              <Faixa rotulo="Volume da trilha" valor={Math.round((p.musica_volume ?? 0.12) * 100)}
+                min={0} max={60} passo={1} mostrar={(v) => `${v}%`}
+                onChange={(v) => mudar((d) => { d.musica_volume = v / 100 })} />
+            )}
             {leg.aberracao && (
               <Faixa rotulo="Força da aberração" valor={Math.round(leg.aberracao_forca * 1000) / 10} min={2} max={20} passo={0.5}
                 mostrar={(v) => `${v}%`} onChange={(v) => mudarLegenda({ aberracao_forca: v / 100 })} />
@@ -650,6 +691,21 @@ export default function EditorCriativo({ id }: { id: string }) {
                   </div>
                 )
               })}
+            </div>
+
+            {/* onda da locução */}
+            <div className="relative h-10 mb-1 border-b border-border/60 cursor-pointer"
+              onClick={(e) => irPara((e.clientX - e.currentTarget.getBoundingClientRect().left) / pps)}>
+              {picos ? (
+                <div className="absolute inset-0 flex items-center gap-px overflow-hidden">
+                  {picos.map((v, i) => (
+                    <div key={i} className="shrink-0 bg-sky-400/50 rounded-[1px]"
+                      style={{ width: Math.max(1, (p.duracao * pps) / picos.length - 1), height: `${Math.max(4, v * 100)}%` }} />
+                  ))}
+                </div>
+              ) : (
+                <span className="absolute left-2 top-2 text-[10px] text-muted-foreground">carregando a onda...</span>
+              )}
             </div>
 
             {/* legenda */}

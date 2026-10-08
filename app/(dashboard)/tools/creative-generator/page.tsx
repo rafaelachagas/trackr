@@ -106,6 +106,10 @@ export default function CreativeGeneratorPage() {
   const [origemVoz, setOrigemVoz] = useState<'api' | 'arquivo'>('api')
   const [locucao, setLocucao] = useState<{ nome: string; caminho: string } | null>(null)
   const locucaoRef = useRef<HTMLInputElement>(null)
+  // Trilha de fundo: opcional, e abaixa sozinha quando a expert fala.
+  const [musica, setMusica] = useState<{ nome: string; caminho: string } | null>(null)
+  const [musicaVol, setMusicaVol] = useState(0.12)
+  const musicaRef = useRef<HTMLInputElement>(null)
 
   // --- roteiro ---
   const [origem, setOrigem] = useState<'minha' | 'concorrente' | 'nosso'>('minha')
@@ -292,7 +296,7 @@ export default function CreativeGeneratorPage() {
     await carregarPastas()
   }
 
-  async function subir(f: File, tipo: 'broll' | 'fonte' | 'locucao', pastaAlvo?: string) {
+  async function subir(f: File, tipo: 'broll' | 'fonte' | 'locucao' | 'musica', pastaAlvo?: string) {
     setEnviando(f.name)
     try {
       const sign = await fetch('/api/creative-generator/sign-upload', {
@@ -305,6 +309,7 @@ export default function CreativeGeneratorPage() {
       if (error) throw new Error(error.message)
       if (tipo === 'fonte') await carregarFontes(buscaFonte, categoriaFonte)
       else if (tipo === 'locucao') setLocucao({ nome: f.name, caminho: sign.caminho })
+      else if (tipo === 'musica') setMusica({ nome: f.name, caminho: sign.caminho })
       else {
         const dentro = pastaAlvo ?? pastaAberta
         if (dentro) { await abrirPasta(dentro); await carregarPastas() }
@@ -341,6 +346,8 @@ export default function CreativeGeneratorPage() {
             legenda_estilo: meu.legenda_estilo, legenda_destaque: meu.legenda_destaque,
             intervalo_broll: [meu.ritmo_min, meu.ritmo_max],
           } : null,
+          musicaPath: musica?.caminho || null,
+          musicaVolume: musicaVol,
           fontePath: fonteEscolhida || fontes[0]?.caminho || null,
         }),
       }).then(json)
@@ -691,6 +698,36 @@ export default function CreativeGeneratorPage() {
                 </button>
               ))}
             </div>
+          </Passo>
+
+          <Passo n={5} titulo="Trilha de fundo (opcional)" pronto={!!musica}
+            ajuda="Ela entra em loop e abaixa sozinha quando a expert fala. Sem trilha, sai só a voz.">
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => musicaRef.current?.click()} disabled={!!enviando}
+                className="px-3 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:border-fuchsia-500/40 disabled:opacity-50 text-xs text-foreground inline-flex items-center gap-1.5">
+                <UploadCloud className="w-3.5 h-3.5" /> {musica ? 'Trocar a trilha' : 'Enviar uma trilha'}
+              </button>
+              <input ref={musicaRef} type="file" accept="audio/*" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f, 'musica'); e.target.value = '' }} />
+              {musica && (
+                <>
+                  <span className="text-xs text-emerald-300/90 inline-flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5" /> {musica.nome}
+                  </span>
+                  <button onClick={() => setMusica(null)}
+                    className="text-[11px] text-muted-foreground hover:text-rose-300 underline">tirar</button>
+                </>
+              )}
+            </div>
+            {musica && (
+              <label className="flex items-center gap-2 max-w-sm">
+                <span className="text-[11px] text-muted-foreground w-28 shrink-0">
+                  Volume {Math.round(musicaVol * 100)}%
+                </span>
+                <input type="range" min={2} max={60} step={1} value={Math.round(musicaVol * 100)}
+                  onChange={(e) => setMusicaVol(Number(e.target.value) / 100)} className="w-full" />
+              </label>
+            )}
           </Passo>
 
           <div className="flex flex-wrap items-center gap-3 pt-1">

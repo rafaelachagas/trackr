@@ -7,6 +7,7 @@ export const RAIZ_BROLL = 'broll'
 export const RAIZ_FONTES = 'fontes'
 // Locução pronta, pra quem não pode (ou não quer) gerar a voz pela API.
 export const RAIZ_LOCUCAO = 'locucao'
+export const RAIZ_MUSICA = 'musica'
 
 // Arquivo-marcador: o Storage não guarda pasta vazia. Sem isto, uma pasta
 // recém-criada sumiria até o primeiro upload.

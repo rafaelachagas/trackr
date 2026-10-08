@@ -21,7 +21,8 @@ const FORMATOS: Record<string, { w: number; h: number }> = {
 
 export async function POST(req: Request) {
   try {
-    const { roteiro, locucaoPath, formato, estilo, fontePath, template, templateCustom } = await req.json()
+    const { roteiro, locucaoPath, formato, estilo, fontePath, template, templateCustom,
+      musicaPath, musicaVolume } = await req.json()
     if (!roteiro?.trim()) return NextResponse.json({ error: 'sem roteiro' }, { status: 400 })
     if (!locucaoPath) return NextResponse.json({ error: 'sem locução' }, { status: 400 })
     if (!TRANSCRITOR_URL || !TRANSCRITOR_APIKEY) {
@@ -66,6 +67,8 @@ export async function POST(req: Request) {
           template: template || 'ugc_cru',
           // Estilo próprio: a VPS valida campo por campo, aqui só repassa.
           template_custom: templateCustom || null,
+          musica_path: musicaPath || null,
+          musica_volume: typeof musicaVolume === 'number' ? musicaVolume : 0.12,
           largura: fmt.w,
           altura: fmt.h,
           fonte_path: fontePath || null,

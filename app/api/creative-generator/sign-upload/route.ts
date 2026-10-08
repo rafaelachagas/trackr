@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import {
-  BUCKET_CRIATIVOS, RAIZ_BROLL, RAIZ_FONTES, RAIZ_LOCUCAO, VIDEO_OK, FONTE_OK, AUDIO_OK, nomeSeguro,
+  BUCKET_CRIATIVOS, RAIZ_BROLL, RAIZ_FONTES, RAIZ_LOCUCAO, RAIZ_MUSICA,
+  VIDEO_OK, FONTE_OK, AUDIO_OK, nomeSeguro,
 } from '@/lib/criativos'
 
 // Upload direto do navegador pro Storage (b-roll costuma ter dezenas de MB e
@@ -21,6 +22,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'use .mp3, .wav, .m4a ou .aac' }, { status: 400 })
       }
       caminho = `${RAIZ_LOCUCAO}/${Date.now()}-${limpo}`
+    } else if (tipo === 'musica') {
+      if (!AUDIO_OK.test(limpo)) {
+        return NextResponse.json({ error: 'use .mp3, .wav, .m4a ou .aac' }, { status: 400 })
+      }
+      // A trilha é reaproveitada entre criativos, então o nome dela é o
+      // identificador: subir de novo o mesmo arquivo substitui.
+      caminho = `${RAIZ_MUSICA}/${limpo}`
     } else if (tipo === 'fonte') {
       if (!FONTE_OK.test(limpo)) {
         return NextResponse.json({ error: 'use .ttf, .otf ou .woff2' }, { status: 400 })

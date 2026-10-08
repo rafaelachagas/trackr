@@ -49,6 +49,8 @@ export type Projeto = {
   palavras: Palavra[]
   trechos: Trecho[]
   cortes: Corte[]
+  musica_path?: string | null
+  musica_volume?: number
   saida_path?: string
 }
 

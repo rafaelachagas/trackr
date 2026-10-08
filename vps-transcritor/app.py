@@ -2218,6 +2218,8 @@ def _projeto_automatico(body, baixar, tmp, tempos):
                      for p in palavras],
         "trechos": trechos,
         "cortes": [],
+        "musica_path": body.get("musica_path") or None,
+        "musica_volume": _clamp(body.get("musica_volume"), 0.0, 1.0, 0.12),
     }
 
 
@@ -2349,11 +2351,43 @@ def _montar(body):
                     continue
                 af += (",afade=t=out:st=%.3f:d=%.3f,afade=t=in:st=%.3f:d=%.3f"
                        % (junta - FADE_EMENDA, FADE_EMENDA, junta, FADE_EMENDA))
-        cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-i", base, "-i", loc,
-               "-vf", vf, "-af", af, "-map", "0:v", "-map", "1:a", "-shortest",
-               "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
-               "-pix_fmt", "yuv420p", "-threads", "1", "-r", "30",
-               "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", saida, "-y"]
+        # Duração que o vídeo DEVE ter: a locução menos o que foi cortado.
+        esperado = max(0.1, dur_total - sum(b - a for a, b in cortes))
+
+        # 7. Trilha de fundo (opcional). Ela entra em loop até cobrir o vídeo,
+        # e abaixa sozinha quando a expert fala (sidechain) — música em volume
+        # fixo ou atrapalha a voz ou não se ouve.
+        mus = None
+        mus_path = projeto.get("musica_path") or body.get("musica_path")
+        if mus_path:
+            try:
+                mus = baixar(mus_path)
+            except Exception as e:
+                print("[montador] trilha ignorada (%s)" % e, flush=True)
+                mus = None
+        vol = _clamp(projeto.get("musica_volume", body.get("musica_volume")), 0.0, 1.0, 0.12)
+
+        if mus and vol > 0:
+            fade = min(1.5, esperado * 0.2)
+            cadeia = (
+                "[0:v]%s[v];"
+                "[1:a]%s,asplit=2[voz][sc];"
+                # aloop em amostras: -1 repete pra sempre, o atrim corta no fim.
+                "[2:a]aloop=loop=-1:size=2147483647,atrim=0:%.3f,asetpts=N/SR/TB,"
+                "volume=%.3f,afade=t=in:st=0:d=0.8,afade=t=out:st=%.3f:d=%.3f[mus];"
+                # A voz manda: quando ela entra, a trilha recua.
+                "[mus][sc]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=350[duck];"
+                "[voz][duck]amix=inputs=2:duration=first:normalize=0[a]"
+            ) % (vf, af, esperado, vol, max(0.0, esperado - fade), fade)
+            cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error",
+                   "-i", base, "-i", loc, "-i", mus,
+                   "-filter_complex", cadeia, "-map", "[v]", "-map", "[a]"]
+        else:
+            cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-i", base, "-i", loc,
+                   "-vf", vf, "-af", af, "-map", "0:v", "-map", "1:a", "-shortest"]
+        cmd += ["-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+                "-pix_fmt", "yuv420p", "-threads", "1", "-r", "30",
+                "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", saida, "-y"]
         r = subprocess.run(cmd, capture_output=True, timeout=3600)
         tempos["render"] = round(time.time() - t0, 1)
         if r.returncode != 0 or not os.path.exists(saida):
@@ -2365,7 +2399,6 @@ def _montar(body):
         # duração da locução menos o que foi cortado. Sair diferente disso
         # quer dizer que algum trecho não entrou ou que um corte comeu demais —
         # e isso aparece como voz sem imagem no fim, que é o pior defeito.
-        esperado = max(0.0, dur_total - sum(b - a for a, b in cortes))
         obtido = _duracao(saida)
         if obtido > 0 and abs(obtido - esperado) > 0.6:
             aviso = ("o vídeo saiu com %.1fs e devia ter %.1fs" % (obtido, esperado))
