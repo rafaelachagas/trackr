@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { TEMPLATES, TEMPLATE_PADRAO, ESTILO_DO_TEMPLATE, type TemplateId } from '@/lib/criativos-templates'
 import { lerEstiloGemini, type ResultadoImport } from '@/lib/criativos-estilo-gemini'
+import { lerRoteiroEmBlocos, comoTempo, type LeituraRoteiro } from '@/lib/criativos-roteiro-editor'
 
 // Gerador de Criativos Automáticos — a base: de onde vem a voz, de onde vêm as
 // imagens de apoio, qual fonte a legenda usa e de onde sai o roteiro. A
@@ -63,6 +64,10 @@ export default function CreativeGeneratorPage() {
   // b-roll so.
   const [fila, setFila] = useState<{ nome: string; de?: string; ate?: string }[]>([])
   const [filaAberta, setFilaAberta] = useState<number | null>(null)
+  // Roteiro em blocos [BROLL1] + Context:, o jeito que a decupagem é escrita.
+  const [emBlocos, setEmBlocos] = useState(false)
+  const [blocos, setBlocos] = useState('')
+  const [lido, setLido] = useState<LeituraRoteiro | null>(null)
 
   // --- biblioteca ---
   const [pastas, setPastas] = useState<Pasta[]>([])
@@ -179,6 +184,20 @@ export default function CreativeGeneratorPage() {
   // A fila de b-rolls espalhada pela fala: cada clipe entra num ponto do
   // texto, em partes iguais. Não é escolha fina — é o começo. O ajuste de
   // tempo acontece depois, arrastando na linha do tempo do editor.
+  function aplicarBlocos() {
+    const r = lerRoteiroEmBlocos(blocos)
+    setLido(r)
+    if (!r.cenas.length) return
+    // O roteiro já sai com as marcações prontas; a fila vira só o espelho
+    // visual delas, pra você conferir a ordem sem ler código.
+    setRoteiro(r.roteiro)
+    setFila(r.cenas.map((c) => ({
+      nome: c.clipe,
+      de: c.de != null ? comoTempo(c.de) : undefined,
+      ate: c.ate != null ? comoTempo(c.ate) : undefined,
+    })))
+  }
+
   function aplicarAnalise() {
     const r = lerEstiloGemini(analise)
     setImportado(r)
@@ -225,7 +244,9 @@ export default function CreativeGeneratorPage() {
   // criativo. Sem pasta escolhida, mostra tudo pra não travar quem tem uma só.
   const clipesDaPasta = pastaAberta ? clipes.filter((c) => c.pasta === pastaAberta) : clipes
 
-  const roteiroFinal = modo === 'guiado' ? comMarcacoes(roteiro, fila) : roteiro
+  // Roteiro vindo de blocos já carrega as marcações — espalhar de novo
+  // duplicaria tudo.
+  const roteiroFinal = modo === 'guiado' && !emBlocos ? comMarcacoes(roteiro, fila) : roteiro
 
   function inserir(marca: string) {
     const el = roteiroRef.current
@@ -571,13 +592,65 @@ export default function CreativeGeneratorPage() {
 
           <Passo n={2} titulo="O que ela fala" pronto={palavras >= 10}
             ajuda="Cole a copy, igual ao que está sendo dito no áudio. É isso que vira legenda.">
-            <textarea value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={6}
-              placeholder="Dia 3 da série te mostrando rendas extras reais na internet..."
-              className="w-full rounded-lg bg-black/30 border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-fuchsia-500/50" />
+            <div className="flex gap-1.5">
+              <Mini ativo={!emBlocos} onClick={() => setEmBlocos(false)}>Só a copy</Mini>
+              <Mini ativo={emBlocos} onClick={() => setEmBlocos(true)}>Decupagem em blocos</Mini>
+            </div>
+
+            {emBlocos ? (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Um bloco <code>[BROLL3]</code> por cena, <code>Context:</code> opcional com os tempos
+                  do clipe, e embaixo a fala daquela cena. Repetir o mesmo BROLL vira outra cena.
+                </p>
+                <textarea value={blocos} onChange={(e) => setBlocos(e.target.value)} rows={10}
+                  placeholder={[
+                    '[BROLL1]',
+                    'Dia 3 da série te mostrando rendas extras reais.',
+                    '',
+                    '[BROLL3]',
+                    'Context: usa o segundo 0:04 até 0:06',
+                    'Não precisa gastar nada,',
+                  ].join('\n')}
+                  className="w-full rounded-lg bg-black/30 border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-fuchsia-500/50" />
+                <button onClick={aplicarBlocos} disabled={!blocos.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white text-xs font-medium">
+                  Ler a decupagem
+                </button>
+
+                {lido && (
+                  <div className="space-y-1.5 text-[11px] rounded-lg border border-border bg-black/20 px-3 py-2">
+                    {lido.cenas.map((c) => (
+                      <div key={c.cena}>
+                        <span className="text-foreground">
+                          <b className="text-fuchsia-300">Cena {c.cena}</b> · {c.clipe} ·{' '}
+                          {c.de != null
+                            ? `${comoTempo(c.de)}${c.ate != null ? ` até ${comoTempo(c.ate)}` : ' (só o início)'}`
+                            : 'clipe inteiro'}
+                        </span>
+                        <span className="text-muted-foreground"> — {c.copy.slice(0, 60)}</span>
+                        {c.avisos.map((a, k) => (
+                          <p key={k} className="text-amber-300/90 pl-3">· {a}</p>
+                        ))}
+                      </div>
+                    ))}
+                    {lido.avisos.map((a, k) => (
+                      <p key={k} className="text-rose-200/90 flex items-start gap-1">
+                        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" /> {a}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <textarea value={roteiro} onChange={(e) => setRoteiro(e.target.value)} rows={6}
+                placeholder="Dia 3 da série te mostrando rendas extras reais na internet..."
+                className="w-full rounded-lg bg-black/30 border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-fuchsia-500/50" />
+            )}
             <span className="text-[11px] text-muted-foreground">{palavras} palavra(s) · aprox. {segundos}s de fala</span>
           </Passo>
 
-          <Passo n={3} titulo="Os b-rolls, na ordem" pronto={fila.length > 0}
+          <Passo n={3} titulo={emBlocos ? 'Os b-rolls (vindos da decupagem)' : 'Os b-rolls, na ordem'} pronto={fila.length > 0}
             ajuda="Escolha a pasta e clique nos clipes na ordem em que eles aparecem. Repetir o mesmo clipe vira outra cena — clique no item da fila pra dizer que pedaço dele usar.">
             {/* A pasta é o "projeto": uma por criativo (B-rolls AD12) deixa a
                 lista de clipes curta e a escolha óbvia. */}
