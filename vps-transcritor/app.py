@@ -1732,7 +1732,8 @@ def _template(nome, proprio=None):
     base["zoom_forca"] = _clamp(proprio.get("zoom_forca"), 0.02, 0.40,
                                 base.get("zoom_forca", ZOOM_FORCA))
     transicao = str(proprio.get("transicao") or base["transicao"])
-    base["transicao"] = transicao if transicao in ("corte", "fade", "flash") else base["transicao"]
+    base["transicao"] = (transicao if transicao in ("corte", "fade", "flash")
+                         or transicao in TRANSICOES_CRUZADAS else base["transicao"])
     estilo = str(proprio.get("legenda_estilo") or base["legenda_estilo"])
     base["legenda_estilo"] = estilo if estilo in ("palavra", "destaque", "bloco") else base["legenda_estilo"]
     cor = str(proprio.get("legenda_destaque") or "")
@@ -1848,12 +1849,83 @@ ZOOM_FORCA = 0.12
 TRANSICAO_DUR = 0.18
 
 
+# Transicoes que precisam dos DOIS clipes na tela ao mesmo tempo.
+#
+# As de sempre (corte, fade, flash) sao feitas dentro de cada pedaco e os
+# pedacos sao colados sem recomprimir — rapido. Estas aqui obrigam a cruzar um
+# pedaco com o outro, entao o video inteiro passa por uma recompressao. E o
+# preco: render bem mais demorado. So entram quando o usuario pede.
+#
+# O valor e o nome que o xfade do ffmpeg conhece, mais quanto dura o cruzamento.
+TRANSICOES_CRUZADAS = {
+    "whip":     ("hblur", 0.25),      # borrao lateral, o "chicote"
+    "slide":    ("slideleft", 0.30),  # o proximo empurra o anterior
+    "zoom":     ("zoomin", 0.35),     # estoura e entra no proximo
+    "glitch":   ("pixelize", 0.25),   # quadrados, falha de sinal
+    "dissolve": ("fade", 0.30),       # um vira o outro
+}
+# Corte seco dentro de uma cadeia cruzada: 0,04s e pouco mais de um quadro, o
+# olho nao ve. Zero nao serve — o xfade exige duracao maior que zero.
+CRUZADA_CORTE = ("fade", 0.04)
+CRUZADA_FADE = ("fadeblack", 0.25)
+CRUZADA_FLASH = ("fadewhite", 0.20)
+
+
+def _cruzamento(nome):
+    """Como esta transicao se comporta numa cadeia cruzada."""
+    nome = str(nome or "corte")
+    if nome in TRANSICOES_CRUZADAS:
+        return TRANSICOES_CRUZADAS[nome]
+    if nome == "fade":
+        return CRUZADA_FADE
+    if nome == "flash":
+        return CRUZADA_FLASH
+    return CRUZADA_CORTE
+
+
+def _precisa_cruzar(trechos):
+    """Alguem pediu transicao que exige os dois clipes juntos?
+
+    O primeiro trecho nao conta: ele nao tem com quem cruzar."""
+    for tr in trechos[1:]:
+        if str(tr.get("transicao") or "") in TRANSICOES_CRUZADAS:
+            return True
+    return False
+
+
+def _cadeia_xfade(partes, duracoes, trechos):
+    """A cadeia de xfade que emenda os pedacos, e a duracao final.
+
+    Cada pedaco i foi gravado com a sobra do cruzamento que vem DEPOIS dele.
+    O deslocamento de cada emenda e sempre "onde a cadeia esta agora, menos a
+    duracao do cruzamento" — o que faz a conta fechar exatamente na duracao da
+    locucao no fim."""
+    if len(partes) == 1:
+        return "[0:v]null[vmix]", duracoes[0]
+    passos = []
+    atual = "0:v"
+    acumulado = duracoes[0] + _cruzamento(trechos[1].get("transicao"))[1]
+    for i in range(1, len(partes)):
+        tipo, dur = _cruzamento(trechos[i].get("transicao"))
+        deslocamento = max(0.0, acumulado - dur)
+        saida = "x%d" % i
+        passos.append("[%s][%d:v]xfade=transition=%s:duration=%.3f:offset=%.3f[%s]"
+                      % (atual, i, tipo, dur, deslocamento, saida))
+        # O proximo pedaco carrega a sobra do cruzamento seguinte.
+        proxima = (_cruzamento(trechos[i + 1].get("transicao"))[1]
+                   if i + 1 < len(partes) else 0.0)
+        acumulado = acumulado + (duracoes[i] + proxima) - dur
+        atual = saida
+    passos.append("[%s]null[vmix]" % atual)
+    return ";".join(passos), acumulado
+
+
 PUNCH_DUR = 0.32      # quanto tempo o punch-in leva pra assentar
 FADE_EMENDA = 0.03    # respiro de áudio nas emendas, pra não estalar
 
 
 def _corta_broll(caminho, ini, dur, w, h, dest, zoom="nenhum", transicao="corte",
-                 forca=None, direcao="centro"):
+                 forca=None, direcao="centro", sobra=0.0):
     """Um trecho do b-roll no formato de saída: recorte central, sem áudio.
 
     zoom:
@@ -1904,9 +1976,16 @@ def _corta_broll(caminho, ini, dur, w, h, dest, zoom="nenhum", transicao="corte"
     elif transicao == "flash":
         filtros.append("fade=t=in:st=0:d=%.2f:color=white" % TRANSICAO_DUR)
     filtros += ["setsar=1", "format=yuv420p"]
+    # Sobra pro cruzamento com o proximo pedaco. O clipe pode ser curto demais
+    # pra ela, e ai o ultimo quadro e congelado: sem isso o pedaco sai menor
+    # que o combinado e TODAS as emendas seguintes saem fora de lugar.
+    total = dur + max(0.0, sobra)
+    if sobra > 0:
+        filtros += ["tpad=stop_mode=clone:stop_duration=%.2f" % (sobra + 1.0),
+                    "trim=duration=%.3f" % total, "setpts=PTS-STARTPTS"]
     vf = ",".join(filtros)
     cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-ss", "%.2f" % ini,
-           "-t", "%.2f" % dur, "-i", caminho, "-an", "-vf", vf,
+           "-t", "%.2f" % total, "-i", caminho, "-an", "-vf", vf,
            "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
            "-threads", "1", dest, "-y"]
     return subprocess.run(cmd, capture_output=True, timeout=1800).returncode == 0
@@ -2324,40 +2403,67 @@ def _montar(body):
             raise MontagemErro("o projeto não tem nenhum b-roll")
         trechos[0]["ini"] = 0.0
 
-        t0 = time.time()
-        partes = []
+        # Primeiro quem entra e por quanto tempo; so depois o corte. Trecho
+        # curto demais e descartado, e as transicoes contam com a lista final.
+        planejados = []
         for i, tr in enumerate(trechos):
             ini = float(tr.get("ini") or 0)
             fim = float(trechos[i + 1]["ini"]) if i + 1 < len(trechos) else dur_total
-            dur = fim - ini
-            if dur < 0.05:
-                continue
+            if fim - ini >= 0.05:
+                planejados.append((tr, ini, fim - ini))
+        if not planejados:
+            return ({"error": "não consegui preparar nenhum b-roll"}, 500)
+
+        # Transicao cruzada obriga a recomprimir o video inteiro. So vale a
+        # pena quando alguem pediu de verdade.
+        cruzar = _precisa_cruzar([x[0] for x in planejados])
+        if cruzar:
+            print("[montador] transicao cruzada: o render vai demorar mais", flush=True)
+
+        t0 = time.time()
+        partes = []
+        duracoes = []
+        trechos_ok = []
+        for k, (tr, ini, dur) in enumerate(planejados):
+            # A sobra de cada pedaco e o cruzamento que vem DEPOIS dele.
+            sobra = (_cruzamento(planejados[k + 1][0].get("transicao"))[1]
+                     if (cruzar and k + 1 < len(planejados)) else 0.0)
             orig = baixar(tr["caminho"])
-            dest = os.path.join(tmp, "parte%03d.mp4" % i)
+            dest = os.path.join(tmp, "parte%03d.mp4" % k)
+            # Em cadeia cruzada o fade/flash vem do proprio cruzamento; aplicar
+            # tambem dentro do pedaco escureceria duas vezes.
+            trans = "corte" if cruzar else str(tr.get("transicao") or "corte")
             if _corta_broll(orig, float(tr.get("origem") or 0), dur, w, h, dest,
-                            str(tr.get("zoom") or "nenhum"),
-                            str(tr.get("transicao") or "corte"),
-                            tr.get("zoom_forca"), str(tr.get("zoom_direcao") or "centro")):
+                            str(tr.get("zoom") or "nenhum"), trans,
+                            tr.get("zoom_forca"), str(tr.get("zoom_direcao") or "centro"),
+                            sobra):
                 partes.append(dest)
+                duracoes.append(dur)
+                trechos_ok.append(tr)
             else:
-                print("[montador] falhou o trecho %d (%s)" % (i, tr["caminho"]), flush=True)
+                print("[montador] falhou o trecho %d (%s)" % (k, tr["caminho"]), flush=True)
             print("[montador] trecho %d %.2f-%.2f %s @%.2f"
-                  % (i, ini, fim, tr["caminho"], float(tr.get("origem") or 0)), flush=True)
+                  % (k, ini, ini + dur, tr["caminho"], float(tr.get("origem") or 0)), flush=True)
         if not partes:
             return ({"error": "não consegui preparar nenhum b-roll"}, 500)
+        # Se algum pedaco caiu, a cadeia tem que falar dos que sobraram.
+        cruzar = cruzar and _precisa_cruzar(trechos_ok)
         tempos["brolls"] = round(time.time() - t0, 1)
 
-        # 5. Emenda os trechos.
-        lista = os.path.join(tmp, "lista.txt")
-        with open(lista, "w", encoding="utf-8") as fh:
-            for caminho_parte in partes:
-                fh.write("file " + repr(caminho_parte.replace("\\", "/")) + "\n")
-        base = os.path.join(tmp, "base.mp4")
-        r = subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-f", "concat",
-                            "-safe", "0", "-i", lista, "-c", "copy", base, "-y"],
-                           capture_output=True, timeout=1800)
-        if r.returncode != 0:
-            return ({"error": _erro_ffmpeg(r)}, 500)
+        # 5. Emenda os trechos. Sem cruzamento, os pedacos sao colados sem
+        # recomprimir — e por isso que a montagem normal e rapida.
+        base = None
+        if not cruzar:
+            lista = os.path.join(tmp, "lista.txt")
+            with open(lista, "w", encoding="utf-8") as fh:
+                for caminho_parte in partes:
+                    fh.write("file " + repr(caminho_parte.replace("\\", "/")) + "\n")
+            base = os.path.join(tmp, "base.mp4")
+            r = subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-f", "concat",
+                                "-safe", "0", "-i", lista, "-c", "copy", base, "-y"],
+                               capture_output=True, timeout=1800)
+            if r.returncode != 0:
+                return ({"error": _erro_ffmpeg(r)}, 500)
 
         # 6. Legenda. Sem fonte instalada o libass não desenha nada, então a
         # fonte enviada é copiada pra uma pasta que o libass enxerga.
@@ -2416,24 +2522,48 @@ def _montar(body):
                 mus = None
         vol = _clamp(projeto.get("musica_volume", body.get("musica_volume")), 0.0, 1.0, 0.12)
 
+        # As entradas do ffmpeg, nesta ordem: os pedacos de video (um so, ja
+        # emendado, quando nao ha cruzamento), a locucao e, se houver, a trilha.
+        entradas = []
+        if cruzar:
+            for caminho_parte in partes:
+                entradas += ["-i", caminho_parte]
+            n_video = len(partes)
+        else:
+            entradas += ["-i", base]
+            n_video = 1
+        entradas += ["-i", loc]
+        i_loc = n_video
+        if mus and vol > 0:
+            entradas += ["-i", mus]
+        i_mus = n_video + 1
+
+        # A parte de video da cadeia: cruzar os pedacos (quando for o caso) e,
+        # por cima do resultado, a legenda e os cortes do editor.
+        if cruzar:
+            cadeia_v, _ = _cadeia_xfade(partes, duracoes, trechos_ok)
+            video = "%s;[vmix]%s[v]" % (cadeia_v, vf)
+        else:
+            video = "[0:v]%s[v]" % vf
+
         if mus and vol > 0:
             fade = min(1.5, esperado * 0.2)
             cadeia = (
-                "[0:v]%s[v];"
-                "[1:a]%s,asplit=2[voz][sc];"
+                "%s;"
+                "[%d:a]%s,asplit=2[voz][sc];"
                 # aloop em amostras: -1 repete pra sempre, o atrim corta no fim.
-                "[2:a]aloop=loop=-1:size=2147483647,atrim=0:%.3f,asetpts=N/SR/TB,"
+                "[%d:a]aloop=loop=-1:size=2147483647,atrim=0:%.3f,asetpts=N/SR/TB,"
                 "volume=%.3f,afade=t=in:st=0:d=0.8,afade=t=out:st=%.3f:d=%.3f[mus];"
                 # A voz manda: quando ela entra, a trilha recua.
                 "[mus][sc]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=350[duck];"
                 "[voz][duck]amix=inputs=2:duration=first:normalize=0[a]"
-            ) % (vf, af, esperado, vol, max(0.0, esperado - fade), fade)
-            cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error",
-                   "-i", base, "-i", loc, "-i", mus,
-                   "-filter_complex", cadeia, "-map", "[v]", "-map", "[a]"]
+            ) % (video, i_loc, af, i_mus, esperado, vol,
+                 max(0.0, esperado - fade), fade)
         else:
-            cmd = ["nice", "-n", "10", "ffmpeg", "-v", "error", "-i", base, "-i", loc,
-                   "-vf", vf, "-af", af, "-map", "0:v", "-map", "1:a", "-shortest"]
+            cadeia = "%s;[%d:a]%s[a]" % (video, i_loc, af)
+
+        cmd = (["nice", "-n", "10", "ffmpeg", "-v", "error"] + entradas
+               + ["-filter_complex", cadeia, "-map", "[v]", "-map", "[a]", "-shortest"])
         cmd += ["-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-pix_fmt", "yuv420p", "-threads", "1", "-r", "30",
                 "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", saida, "-y"]

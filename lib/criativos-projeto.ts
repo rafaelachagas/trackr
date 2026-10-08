@@ -8,7 +8,11 @@ export const PASTA_PROJETOS = 'projetos'
 export type Palavra = { t: string; ini: number; fim: number; enfase?: boolean; oculta?: boolean }
 export type Zoom = 'nenhum' | 'in' | 'out' | 'punch'
 export type ZoomDirecao = 'centro' | 'cima' | 'baixo' | 'esquerda' | 'direita'
-export type Transicao = 'corte' | 'fade' | 'flash'
+// As tres primeiras sao feitas dentro de cada pedaco (baratas). As outras
+// precisam dos dois clipes na tela ao mesmo tempo, e fazem o render inteiro
+// ser recomprimido — bem mais demorado.
+export type Transicao = 'corte' | 'fade' | 'flash' | 'whip' | 'slide' | 'zoom' | 'glitch' | 'dissolve'
+export const TRANSICOES_CRUZADAS: Transicao[] = ['whip', 'slide', 'zoom', 'glitch', 'dissolve']
 export type Trecho = {
   id: string
   caminho: string

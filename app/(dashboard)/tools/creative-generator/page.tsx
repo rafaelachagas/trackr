@@ -133,7 +133,7 @@ export default function CreativeGeneratorPage() {
   const [meu, setMeu] = useState({
     zoom: 'punch' as 'nenhum' | 'in' | 'out' | 'punch' | 'alternado',
     zoom_forca: 0.1,
-    transicao: 'corte' as 'corte' | 'fade' | 'flash',
+    transicao: 'corte' as 'corte' | 'fade' | 'flash' | 'whip' | 'slide' | 'zoom' | 'glitch' | 'dissolve',
     legenda_estilo: 'palavra' as EstiloId,
     legenda_destaque: '#FFFF00',
     ritmo_min: 2,
@@ -714,7 +714,9 @@ export default function CreativeGeneratorPage() {
                   </Campo>
                   <Campo rotulo="Entrada de cada b-roll">
                     <div className="flex flex-wrap gap-1">
-                      {([['corte', 'Corte seco'], ['fade', 'Fade'], ['flash', 'Flash branco']] as const).map(([id, rot]) => (
+                      {([['corte', 'Corte seco'], ['fade', 'Fade'], ['flash', 'Flash branco'],
+                         ['whip', 'Chicote'], ['slide', 'Desliza'], ['zoom', 'Estoura'],
+                         ['glitch', 'Falha'], ['dissolve', 'Dissolve']] as const).map(([id, rot]) => (
                         <Mini key={id} ativo={meu.transicao === id} onClick={() => setMeu((m) => ({ ...m, transicao: id }))}>{rot}</Mini>
                       ))}
                     </div>

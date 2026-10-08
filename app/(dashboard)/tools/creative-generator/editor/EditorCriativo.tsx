@@ -9,7 +9,7 @@ import {
 import {
   type Projeto, type Trecho, type Palavra, type Legenda,
   legendaCompleta, corpoRelativo, fimTrecho, trechoEm, corteEm, legendaEm, escalaPop, PUNCH_DUR,
-  textosEm, TEXTO_PADRAO, type TextoFixo,
+  textosEm, TEXTO_PADRAO, type TextoFixo, TRANSICOES_CRUZADAS, type Transicao,
   encaixaNaPalavra,
   ZOOM_FORCA, TRANSICAO_DUR,
 } from '@/lib/criativos-projeto'
@@ -1000,12 +1000,19 @@ function PainelTrecho({
       <div className="space-y-1">
         <span className="text-muted-foreground">Entrada</span>
         <div className="grid grid-cols-3 gap-1">
-          {(['corte', 'fade', 'flash'] as const).map((z) => (
+          {([['corte', 'Corte seco'], ['fade', 'Do preto'], ['flash', 'Flash'],
+             ['whip', 'Chicote'], ['slide', 'Desliza'], ['zoom', 'Estoura'],
+             ['glitch', 'Falha'], ['dissolve', 'Dissolve']] as const).map(([z, rot]) => (
             <Alternar key={z} ativo={(tr.transicao || 'corte') === z} onClick={() => onMudar((x) => { x.transicao = z })}>
-              {z === 'corte' ? 'Corte seco' : z === 'fade' ? 'Do preto' : 'Flash'}
+              {rot}
             </Alternar>
           ))}
         </div>
+        {TRANSICOES_CRUZADAS.includes(tr.transicao as Transicao) && (
+          <p className="text-[11px] text-amber-300/80">
+            Cruza os dois clipes — o vídeo inteiro é recomprimido e o render demora bem mais.
+          </p>
+        )}
       </div>
 
       <div className="space-y-1.5">
