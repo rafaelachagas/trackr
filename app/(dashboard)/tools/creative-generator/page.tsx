@@ -588,6 +588,13 @@ export default function CreativeGeneratorPage() {
         </p>
       )}
 
+      {/* Campo de arquivo da locução: fica fora dos modos de propósito. Ele é
+          acionado tanto pelo passo 1 do guiado quanto pela aba Voz, e um input
+          escondido dentro de uma aba fechada não existe no DOM — o botão
+          abriria coisa nenhuma, sem erro nenhum. */}
+      <input ref={locucaoRef} type="file" accept="audio/*,.ogg,.opus,.oga,.m4a" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f, 'locucao'); e.target.value = '' }} />
+
       {erro && (
         <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-rose-300 mt-0.5 shrink-0" />
@@ -610,7 +617,7 @@ export default function CreativeGeneratorPage() {
                 ? <span className="text-xs text-emerald-300/90 inline-flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5" /> {locucao.nome}
                   </span>
-                : <span className="text-xs text-muted-foreground">mp3, m4a, ogg ou wav</span>}
+                : <span className="text-xs text-muted-foreground">mp3, m4a, wav, ogg ou opus (o do WhatsApp serve)</span>}
             </div>
           </Passo>
 
@@ -952,7 +959,7 @@ export default function CreativeGeneratorPage() {
                 className="px-3 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:border-fuchsia-500/40 disabled:opacity-50 text-xs text-foreground inline-flex items-center gap-1.5">
                 <UploadCloud className="w-3.5 h-3.5" /> {musica ? 'Trocar a trilha' : 'Enviar uma trilha'}
               </button>
-              <input ref={musicaRef} type="file" accept="audio/*" className="hidden"
+              <input ref={musicaRef} type="file" accept="audio/*,.ogg,.opus,.oga,.m4a" className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f, 'musica'); e.target.value = '' }} />
               {musica && (
                 <>
@@ -984,7 +991,7 @@ export default function CreativeGeneratorPage() {
                   className="px-3 py-1.5 rounded-lg border border-border bg-white/[0.02] hover:border-fuchsia-500/40 disabled:opacity-50 text-xs text-foreground inline-flex items-center gap-1.5">
                   <UploadCloud className="w-3.5 h-3.5" /> Enviar efeitos
                 </button>
-                <input ref={sfxRef} type="file" accept="audio/*" multiple className="hidden"
+                <input ref={sfxRef} type="file" accept="audio/*,.ogg,.opus,.oga,.m4a" multiple className="hidden"
                   onChange={async (e) => {
                     for (const f of Array.from(e.target.files || [])) await subir(f, 'sfx')
                     e.target.value = ''
@@ -1646,8 +1653,6 @@ export default function CreativeGeneratorPage() {
                   </button>
                 </div>
               </div>
-              <input ref={locucaoRef} type="file" accept="audio/*" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f, 'locucao'); e.target.value = '' }} />
               <p className="text-[11px] text-muted-foreground">
                 O roteiro continua sendo usado pras marcações de b-roll — o áudio manda no tempo.
               </p>

@@ -16,7 +16,7 @@ export const MARCADOR = '.pasta'
 
 export const VIDEO_OK = /\.(mp4|mov|webm|m4v)$/i
 export const FONTE_OK = /\.(ttf|otf|woff2?)$/i
-export const AUDIO_OK = /\.(mp3|wav|m4a|aac|ogg)$/i
+export const AUDIO_OK = /\.(mp3|wav|m4a|aac|ogg|opus|oga|mp4|webm)$/i
 
 /** Nome de pasta/arquivo seguro pra usar como caminho no Storage. */
 export function nomeSeguro(s: string, max = 60): string {

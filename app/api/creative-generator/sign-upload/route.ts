@@ -19,19 +19,19 @@ export async function POST(req: Request) {
     let caminho: string
     if (tipo === 'locucao') {
       if (!AUDIO_OK.test(limpo)) {
-        return NextResponse.json({ error: 'use .mp3, .wav, .m4a ou .aac' }, { status: 400 })
+        return NextResponse.json({ error: 'formato de áudio não aceito — use mp3, wav, m4a, aac, ogg ou opus' }, { status: 400 })
       }
       caminho = `${RAIZ_LOCUCAO}/${Date.now()}-${limpo}`
     } else if (tipo === 'musica') {
       if (!AUDIO_OK.test(limpo)) {
-        return NextResponse.json({ error: 'use .mp3, .wav, .m4a ou .aac' }, { status: 400 })
+        return NextResponse.json({ error: 'formato de áudio não aceito — use mp3, wav, m4a, aac, ogg ou opus' }, { status: 400 })
       }
       // A trilha é reaproveitada entre criativos, então o nome dela é o
       // identificador: subir de novo o mesmo arquivo substitui.
       caminho = `${RAIZ_MUSICA}/${limpo}`
     } else if (tipo === 'sfx') {
       if (!AUDIO_OK.test(limpo)) {
-        return NextResponse.json({ error: 'use .mp3, .wav, .m4a ou .aac' }, { status: 400 })
+        return NextResponse.json({ error: 'formato de áudio não aceito — use mp3, wav, m4a, aac, ogg ou opus' }, { status: 400 })
       }
       // O nome e o identificador: reenviar o mesmo arquivo substitui.
       caminho = `${RAIZ_SFX}/${limpo}`
