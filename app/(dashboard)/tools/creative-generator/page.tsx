@@ -68,6 +68,8 @@ export default function CreativeGeneratorPage() {
   const [emBlocos, setEmBlocos] = useState(false)
   const [blocos, setBlocos] = useState('')
   const [lido, setLido] = useState<LeituraRoteiro | null>(null)
+  const [cenasExtra, setCenasExtra] = useState<{ transicao?: string; zoom?: string; enquadramento?: number }[]>([])
+  const [lendoIA, setLendoIA] = useState(false)
 
   // --- biblioteca ---
   const [pastas, setPastas] = useState<Pasta[]>([])
@@ -184,9 +186,30 @@ export default function CreativeGeneratorPage() {
   // A fila de b-rolls espalhada pela fala: cada clipe entra num ponto do
   // texto, em partes iguais. Não é escolha fina — é o começo. O ajuste de
   // tempo acontece depois, arrastando na linha do tempo do editor.
+  /** Leitura só com regra: rápida, sem custo, e nunca inventa nada. */
   function aplicarBlocos() {
-    const r = lerRoteiroEmBlocos(blocos)
+    usarLeitura(lerRoteiroEmBlocos(blocos), [])
+  }
+
+  /** Leitura com IA por cima: ela lê as instruções em prosa do "Context:". */
+  async function aplicarBlocosComIA() {
+    setLendoIA(true); setErro(null)
+    try {
+      const j = await fetch('/api/creative-generator/decupagem', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ texto: blocos }),
+      }).then(json)
+      if (j.error) throw new Error(j.error)
+      usarLeitura(j as LeituraRoteiro, j.porCena || [])
+      if (j.ia === false && j.motivoIA) setErro(`Li sem a IA: ${j.motivoIA}`)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : `${e}`)
+    } finally { setLendoIA(false) }
+  }
+
+  function usarLeitura(r: LeituraRoteiro, porCena: { transicao?: string; zoom?: string; enquadramento?: number }[]) {
     setLido(r)
+    setCenasExtra(porCena)
     if (!r.cenas.length) return
     // O roteiro já sai com as marcações prontas; a fila vira só o espelho
     // visual delas, pra você conferir a ordem sem ler código.
@@ -412,6 +435,7 @@ export default function CreativeGeneratorPage() {
             legenda_estilo: meu.legenda_estilo, legenda_destaque: meu.legenda_destaque,
             intervalo_broll: [meu.ritmo_min, meu.ritmo_max],
           } : null,
+          cenas: emBlocos && cenasExtra.length ? cenasExtra : null,
           musicaPath: musica?.caminho || null,
           musicaVolume: musicaVol,
           fontePath: fonteEscolhida || fontes[0]?.caminho || null,
@@ -613,10 +637,20 @@ export default function CreativeGeneratorPage() {
                     'Não precisa gastar nada,',
                   ].join('\n')}
                   className="w-full rounded-lg bg-black/30 border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-fuchsia-500/50" />
-                <button onClick={aplicarBlocos} disabled={!blocos.trim()}
-                  className="px-3 py-1.5 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white text-xs font-medium">
-                  Ler a decupagem
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={aplicarBlocosComIA} disabled={!blocos.trim() || lendoIA}
+                    className="px-3 py-1.5 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white text-xs font-medium inline-flex items-center gap-1.5">
+                    {lendoIA ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    {lendoIA ? 'Lendo...' : 'Ler com IA'}
+                  </button>
+                  <button onClick={aplicarBlocos} disabled={!blocos.trim() || lendoIA}
+                    className="px-3 py-1.5 rounded-lg border border-border hover:border-fuchsia-500/40 disabled:opacity-40 text-xs text-foreground">
+                    Ler só os tempos
+                  </button>
+                  <span className="text-[11px] text-muted-foreground">
+                    A IA lê as instruções em prosa; a outra só pesca os tempos escritos.
+                  </span>
+                </div>
 
                 {lido && (
                   <div className="space-y-1.5 text-[11px] rounded-lg border border-border bg-black/20 px-3 py-2">

@@ -1963,7 +1963,7 @@ FADE_EMENDA = 0.03    # respiro de áudio nas emendas, pra não estalar
 
 
 def _corta_broll(caminho, ini, dur, w, h, dest, zoom="nenhum", transicao="corte",
-                 forca=None, direcao="centro", sobra=0.0):
+                 forca=None, direcao="centro", sobra=0.0, subir=0.0):
     """Um trecho do b-roll no formato de saída: recorte central, sem áudio.
 
     zoom:
@@ -1980,6 +1980,18 @@ def _corta_broll(caminho, ini, dur, w, h, dest, zoom="nenhum", transicao="corte"
     filtros = ["scale=%d:%d:force_original_aspect_ratio=increase" % (w, h),
                "crop=%d:%d" % (w, h), "fps=30"]
     d = max(0.1, float(dur))
+    # Enquadramento: "sobe a pessoa, que a legenda vai embaixo". Num clipe que
+    # ja esta na proporcao da saida nao sobra imagem pra deslocar, entao a
+    # gente amplia o minimo necessario pra criar essa folga. Sem isso o pedido
+    # simplesmente nao teria efeito, que e pior do que ampliar um pouco.
+    subir = _clamp(subir, -1.0, 1.0, 0.0)
+    if abs(subir) > 0.01:
+        folga = 1.0 + abs(subir) * 0.22
+        lw, lh = int(w * folga) // 2 * 2, int(h * folga) // 2 * 2
+        # subir = 1 -> mostra a parte de CIMA do quadro (desce o recorte pra 0).
+        desloc = (1.0 - subir) / 2.0
+        filtros += ["scale=%d:%d" % (lw, lh),
+                    "crop=%d:%d:x=(iw-%d)/2:y=(ih-%d)*%.4f" % (w, h, w, h, desloc)]
     f = _clamp(forca, 0.02, 0.40, ZOOM_FORCA)
     if zoom in ("in", "out", "punch"):
         # prog vai de 0 a 1 e diz "o quanto estou ampliado agora".
@@ -2299,6 +2311,10 @@ def _projeto_automatico(body, baixar, tmp, tempos):
     ritmo_min, ritmo_max = tpl["intervalo_broll"]
     usados = {}
     trechos = []
+    # Ajustes por cena vindos do site (o que a IA leu do "Context:"). A ordem e
+    # a das marcacoes de clipe, que e a mesma ordem das cenas escritas.
+    cenas_extra = body.get("cenas") or []
+    i_cena = 0
     for i, p in enumerate(plano):
         ini = p["quando"]
         fim = plano[i + 1]["quando"] if i + 1 < len(plano) else dur_total
@@ -2331,10 +2347,16 @@ def _projeto_automatico(body, baixar, tmp, tempos):
         if not escolhidos:
             continue
         fatia = (fim - ini) / len(escolhidos)
+        extra = {}
+        if p["tipo"] == "clipe":
+            if i_cena < len(cenas_extra) and isinstance(cenas_extra[i_cena], dict):
+                extra = cenas_extra[i_cena]
+            i_cena += 1
         for k, c in enumerate(escolhidos):
             trechos.append({"caminho": c, "ini": ini + k * fatia, "dur": fatia,
                             # So a marcacao de clipe traz janela: "$broll3@1:00-1:02".
-                            "janela": p.get("janela_ini") if p["tipo"] == "clipe" else None})
+                            "janela": p.get("janela_ini") if p["tipo"] == "clipe" else None,
+                            "extra": extra})
 
     if not trechos:
         raise MontagemErro("nenhuma marcação de b-roll válida no roteiro")
@@ -2391,9 +2413,16 @@ def _projeto_automatico(body, baixar, tmp, tempos):
         tr["zoom"] = (("in", "out")[i % 2]) if z == "alternado" else z
         tr["zoom_forca"] = tpl.get("zoom_forca", ZOOM_FORCA)
         tr["zoom_direcao"] = "centro"
+        # O que veio da cena manda sobre o template — e o usuario quem escreveu.
+        extra = tr.pop("extra", None) or {}
+        if extra.get("zoom") in ("nenhum", "in", "out", "punch"):
+            tr["zoom"] = extra["zoom"]
+        tr["enquadramento"] = _clamp(extra.get("enquadramento"), -1.0, 1.0, 0.0)
         # O primeiro trecho entra sempre em corte seco: fade/flash no segundo
         # zero come o hook, que e onde o criativo ganha ou perde a pessoa.
         tr["transicao"] = "corte" if i == 0 else tpl["transicao"]
+        if i > 0 and extra.get("transicao") in ("corte", "fade", "flash") + tuple(TRANSICOES_CRUZADAS):
+            tr["transicao"] = extra["transicao"]
         tr["ini"] = round(tr.pop("ini"), 3)
         tr.pop("dur", None)
     tempos["analise"] = round(time.time() - t0, 1)
@@ -2507,7 +2536,7 @@ def _montar(body):
             if _corta_broll(orig, float(tr.get("origem") or 0), dur, w, h, dest,
                             str(tr.get("zoom") or "nenhum"), trans,
                             tr.get("zoom_forca"), str(tr.get("zoom_direcao") or "centro"),
-                            sobra):
+                            sobra, tr.get("enquadramento")):
                 partes.append(dest)
                 duracoes.append(dur)
                 trechos_ok.append(tr)
