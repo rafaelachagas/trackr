@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { X, Copy, Check, ChevronDown, Loader2 } from 'lucide-react'
+import { LP_PADRAO, FASE_CFG, slug, parseBase, extrairAdCodes, gerarNomenclatura, type Fase, type Versao } from '@/lib/nomenclatura'
 
 /**
  * GERADOR DE NOMENCLATURA
@@ -26,40 +27,13 @@ import { X, Copy, Check, ChevronDown, Loader2 } from 'lucide-react'
  *   flagsToken (performance-v2) ser estendido.
  */
 
-const LP_PADRAO = 'https://lp.rafaelachagas.com.br/fpf-vsl-v1'
 const LP_STORAGE_KEY = 'gerador-nomenclatura-lp'
 const HPID_STORAGE_KEY = 'gerador-nomenclatura-hpid'
 
-type Fase = 'FASE01' | 'FASE02' | 'FASE03'
-const FASE_CFG: Record<Fase, { tipoDisplay: string; tipoSck: string; label: string | null; slug: string | null }> = {
-  FASE01: { tipoDisplay: 'CBO',  tipoSck: 'cbo', label: null,          slug: null },
-  FASE02: { tipoDisplay: 'ADV+', tipoSck: 'adv', label: 'Pré Escala',  slug: 'pre-escala' },
-  FASE03: { tipoDisplay: 'ADV+', tipoSck: 'adv', label: 'Escala',      slug: 'escala' },
-}
-
-type Versao = 'v1' | 'v2'
 type ContaMeta = { id: string; name: string; currency?: string }
 
 // Superfície neutra (o --background do tema é azul-marinho e sai da identidade).
 const inputClass = 'bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 w-full transition-all'
-
-function slug(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-}
-
-function parseBase(base: string): { codigo: string; slug: string } | null {
-  const t = base.trim().toLowerCase()
-  const m = t.match(/^(ad\d+)[-_ ]*(.*)$/)
-  if (!m) return null
-  const sl = m[2].replace(/^[-_\s]+/, '').replace(/[\s_]+/g, '-').replace(/-+/g, '-').replace(/-$/, '')
-  return { codigo: m[1], slug: sl }
-}
-
-// Aceita vírgula, espaço ou pipe. Preserva a ordem digitada e remove repetidos.
-function extrairAdCodes(texto: string): string[] {
-  const m = texto.toLowerCase().match(/ad\d+/g)
-  return m ? Array.from(new Set(m)) : []
-}
 
 function CopyBtn({ value }: { value: string }) {
   const [ok, setOk] = useState(false)
@@ -174,34 +148,19 @@ export default function GeradorNomenclatura({ onClose, inline }: { onClose?: () 
 
   const res = useMemo(() => {
     if (!parsed || adCodes.length === 0) return null
-    const cfg = FASE_CFG[fase]
-    const bm = mk ? [mk] : []          // conta (antes da fase)
-    const temV2 = versao === 'v2'      // versão (no fim)
+    const n = gerarNomenclatura({ base: parsed, fase, conjunto, versao, marcador: mk, adCodes, lp, hpid })
+    const tudo = `Campanha:
+${n.campDisplay}
 
-    const adName = [`${parsed.codigo}-${parsed.slug}`, ...bm, cfg.slug, temV2 ? 'v2' : null]
-      .filter(Boolean).join('-')
+Conjunto:
+${n.cjDisplay}
 
-    const cj = String(conjunto).padStart(2, '0')
-    const cjDisplay = `CJ${cj}`
-    const cjSck = `cj${cj}`
+Criativo:
+${n.adName}
 
-    const campSck = ['iz', cfg.tipoSck, 'vendas', 'f', fase.toLowerCase(), ...bm, cfg.slug, ...adCodes, temV2 ? 'v2' : null]
-      .filter(Boolean).join('-')
-
-    const brackets = `[IZ][${cfg.tipoDisplay}][VENDAS][F][${fase}]`
-      + bm.map(m => `[${m.toUpperCase()}]`).join('')
-      + (temV2 ? '[V2]' : '')
-    const adsUpper = adCodes.map(c => c.toUpperCase()).join(' | ')
-    const campDisplay = brackets + (cfg.label ? ` ${cfg.label} - ${adsUpper}` : ` ${adsUpper}`)
-
-    const sck = `${campSck}|${cjSck}|${adName}`
-    // Aceita colar "&hpid=abc", "hpid=abc" ou só o hash — guarda só o valor.
-    const hash = hpid.trim().replace(/^[?&]?hpid=/i, '').trim()
-    const link = `${(lp.trim() || LP_PADRAO).replace(/\?.*$/, '')}?sck=${sck}`
-      + (hash ? `&hpid=${hash}` : '')
-
-    const tudo = `Campanha:\n${campDisplay}\n\nConjunto:\n${cjDisplay}\n\nCriativo:\n${adName}\n\nLink:\n${link}`
-    return { campDisplay, cjDisplay, adName, sck, link, tudo }
+Link:
+${n.link}`
+    return { ...n, tudo }
   }, [parsed, adCodes, fase, conjunto, mk, versao, lp, hpid])
 
   const conteudo = (

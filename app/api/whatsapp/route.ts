@@ -17,6 +17,7 @@ import {
   CHAVE_SAUDE, CMD_SAUDE_START, CMD_SAUDE_STOP, CMD_SAUDE_AGORA, DONO_SAUDE, responderSaudeAgora,
 } from '@/lib/whatsapp-saude'
 import { ligarNoGrupo, desligarNoGrupo, grupoLigado, enviarTexto } from '@/lib/whatsapp-grupos'
+import { tratarSubirAnuncio } from '@/lib/whatsapp-subir-anuncio'
 
 // Funções de grupo ligadas por comando (fora do /relatorio configurável).
 const COMANDOS_GRUPO = [CMD_START, CMD_STOP, CMD_RESUMO_START, CMD_RESUMO_STOP, CMD_RESUMO_AGORA]
@@ -449,6 +450,17 @@ export async function POST(request: NextRequest) {
         after(() => responderSaudeAgora())
       }
       return NextResponse.json({ ok: true, comando: texto })
+    }
+
+    // —— Subir anúncio pela conversa (só no privado do dono; monta PAUSADO) ——
+    if (isDM && EVOLUTION_APIKEY) {
+      try {
+        if (await tratarSubirAnuncio(data)) return NextResponse.json({ ok: true, fluxo: 'subir-anuncio' })
+      } catch (e) {
+        console.error('[whatsapp/subir-anuncio]', e)
+        await enviarTexto(DONO_SAUDE, `❌ Erro no fluxo de subir anúncio: ${e instanceof Error ? e.message : e}`).catch(() => {})
+        return NextResponse.json({ ok: false, fluxo: 'subir-anuncio' })
+      }
     }
 
     // Resolve o "alvo" (grupo ou número) e checa se pode responder.

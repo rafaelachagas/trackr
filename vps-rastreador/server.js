@@ -251,6 +251,39 @@ app.get('/screenshot', async (req, res) => {
   }
 })
 
+// Print de HTML montado pelo The Track (os "prints" do bot que sobe anúncio:
+// ficha da campanha/conjunto e as prévias oficiais da Meta em iframe).
+// POST /screenshot-html  { html, width?, wait_ms? }  header x-api-key → image/jpeg
+// Espera os iframes (prévia da Meta) carregarem antes de fotografar.
+app.post('/screenshot-html', async (req, res) => {
+  const key = req.query.key || req.headers['x-api-key']
+  if (APIKEY && key !== APIKEY) return res.status(401).json({ error: 'unauthorized' })
+  const html = String((req.body && req.body.html) || '')
+  if (!html) return res.status(400).json({ error: 'html ausente' })
+  const width = Math.min(Math.max(Number(req.body.width) || 900, 320), 2400)
+  const waitMs = Math.min(Number(req.body.wait_ms) || 2500, 15000)
+  let ctx = null
+  try {
+    const b = await getBrowser()
+    ctx = await b.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      viewport: { width, height: 800 },
+      deviceScaleFactor: 2,
+      locale: 'pt-BR',
+    })
+    const page = await ctx.newPage()
+    await page.setContent(html, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {})
+    await page.waitForTimeout(waitMs)
+    const buf = await page.screenshot({ fullPage: true, type: 'jpeg', quality: 80 })
+    res.set('Content-Type', 'image/jpeg').send(buf)
+  } catch (err) {
+    console.error('[screenshot-html]', err)
+    res.status(500).json({ error: String(err && err.message || err) })
+  } finally {
+    if (ctx) await ctx.close().catch(() => {})
+  }
+})
+
 // Amostrador de headlines (teste A/B de página): abre a página em N sessões
 // NOVAS (contexto limpo, sem cookie/cache) e, em cada uma, deixa o JS do
 // construtor (GreatPages/Elementor/etc.) rodar e injetar as imagens. A headline
