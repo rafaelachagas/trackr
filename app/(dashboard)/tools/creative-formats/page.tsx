@@ -93,7 +93,7 @@ export default function FormatosPage() {
           <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
         </p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {lista.map(({ f, n }) => (
             <Cartao key={f.id} formato={f} numero={n} dados={mapa[f.id]}
               onAbrir={() => setAberto(f)} />
@@ -123,18 +123,18 @@ function Cartao({ formato, numero, dados, onAbrir }: {
 }) {
   return (
     <button onClick={onAbrir}
-      className="group text-left rounded-xl border border-border bg-card overflow-hidden
+      className="group h-full flex flex-col text-left rounded-xl border border-border bg-card overflow-hidden
                  transition hover:border-primary/60 hover:shadow-[0_0_20px_-8px] hover:shadow-primary/50">
-      <div className="p-2.5 space-y-1.5">
+      <div className="flex-1 p-3.5 space-y-2">
         <div className="flex items-center gap-2">
           {/* Selo numerado: o mesmo papel do da referência, feito com clip-path
               pra não precisar de imagem. */}
-          <span className="relative w-7 h-7 shrink-0 grid place-items-center">
+          <span className="relative w-8 h-8 shrink-0 grid place-items-center">
             <span className="absolute inset-0 bg-primary"
               style={{ clipPath: 'polygon(50% 0%, 61% 10%, 76% 6%, 82% 20%, 97% 24%, 95% 39%, 108% 50%, 95% 61%, 97% 76%, 82% 80%, 76% 94%, 61% 90%, 50% 100%, 39% 90%, 24% 94%, 18% 80%, 3% 76%, 5% 61%, -8% 50%, 5% 39%, 3% 24%, 18% 20%, 24% 6%, 39% 10%)' }} />
             <span className="relative text-[10px] font-black text-white">{dois(numero)}</span>
           </span>
-          <span className="text-[13px] font-black text-foreground leading-tight flex-1">{formato.nome}</span>
+          <span className="text-sm font-black text-foreground leading-tight flex-1">{formato.nome}</span>
           {dados?.favorito && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />}
           {dados?.testado && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
         </div>
@@ -142,7 +142,7 @@ function Cartao({ formato, numero, dados, onAbrir }: {
           {formato.resumo}
         </p>
       </div>
-      <div className="px-2.5 py-1.5 bg-primary/15 group-hover:bg-primary
+      <div className="px-3.5 py-2 bg-primary/15 group-hover:bg-primary
                       border-t border-primary/20 flex items-center justify-between transition">
         <span className="text-[9px] font-black tracking-[0.14em] uppercase text-primary group-hover:text-white transition">
           Clique para ver
