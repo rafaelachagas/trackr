@@ -1,9 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  LayoutGrid, Search, Star, Check, Link2, Trash2, Plus, X, ExternalLink, Loader2,
+  LayoutGrid, Search, Star, Check, Trash2, Plus, X, ExternalLink, Loader2,
+  UploadCloud, Play, ArrowUpRight, Link2,
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { FORMATOS, type Formato } from '@/lib/criativos-formatos'
 import {
   listarFormatos, salvarReferencia, removerReferencia, atualizarFormato,
@@ -11,11 +13,14 @@ import {
 } from '@/app/actions/formatos'
 
 // Formatos de Criativo — o catálogo de MOLDES, separado da copy e do ângulo.
-// A tela existe pra responder duas perguntas na hora de criar: "que formato eu
-// ainda não testei?" e "quem já fez isso bem?". Por isso o que o usuário salva
-// (referência, anotação, testado) fica junto do formato, não numa pasta à parte.
+// A tela responde duas perguntas na hora de criar: "que formato eu ainda não
+// testei?" e "como é isso na prática?". A segunda só tem resposta com vídeo:
+// formato descrito em texto continua abstrato até você ver três anúncios.
 
 type Filtro = 'todos' | 'favoritos' | 'testados' | 'nao-testados'
+type Exemplo = { nome: string; caminho: string; url: string | null }
+
+const dois = (n: number) => String(n).padStart(2, '0')
 
 export default function FormatosPage() {
   const [mapa, setMapa] = useState<MapaFormatos>({})
@@ -23,6 +28,8 @@ export default function FormatosPage() {
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('todos')
   const [aberto, setAberto] = useState<Formato | null>(null)
+  // Quantos exemplos cada formato tem — o card mostra isso sem abrir.
+  const [contagem, setContagem] = useState<Record<string, number>>({})
 
   const carregar = useCallback(async () => {
     const r = await listarFormatos()
@@ -33,7 +40,7 @@ export default function FormatosPage() {
 
   const lista = useMemo(() => {
     const termo = busca.trim().toLowerCase()
-    return FORMATOS.filter((f) => {
+    return FORMATOS.map((f, i) => ({ f, n: i + 1 })).filter(({ f }) => {
       const d = mapa[f.id]
       if (filtro === 'favoritos' && !d?.favorito) return false
       if (filtro === 'testados' && !d?.testado) return false
@@ -43,13 +50,7 @@ export default function FormatosPage() {
     })
   }, [busca, filtro, mapa])
 
-  const totais = useMemo(() => {
-    const vals = Object.values(mapa)
-    return {
-      testados: vals.filter((d) => d.testado).length,
-      refs: vals.reduce((n, d) => n + (d.referencias?.length || 0), 0),
-    }
-  }, [mapa])
+  const testados = useMemo(() => Object.values(mapa).filter((d) => d.testado).length, [mapa])
 
   return (
     <div className="space-y-5">
@@ -60,8 +61,8 @@ export default function FormatosPage() {
         <div>
           <h1 className="text-xl font-black tracking-tight">Formatos de Criativo</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {FORMATOS.length} moldes de vídeo, cada um com referências que você salva.
-            O formato é a forma de apresentar — a mesma oferta vira outro anúncio em outro molde.
+            {FORMATOS.length} moldes de vídeo. O formato é a forma de apresentar —
+            a mesma oferta vira outro anúncio em outro molde.
           </p>
         </div>
       </div>
@@ -76,7 +77,7 @@ export default function FormatosPage() {
         {([
           ['todos', `Todos ${FORMATOS.length}`],
           ['favoritos', 'Favoritos'],
-          ['testados', `Já testei ${totais.testados}`],
+          ['testados', `Já testei ${testados}`],
           ['nao-testados', 'Nunca testei'],
         ] as const).map(([id, rotulo]) => (
           <button key={id} onClick={() => setFiltro(id)}
@@ -91,67 +92,121 @@ export default function FormatosPage() {
 
       {carregando ? (
         <p className="text-sm text-muted-foreground flex items-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" /> Carregando o que você salvou...
+          <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
         </p>
       ) : (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
-            {lista.map((f) => {
-              const d = mapa[f.id]
-              const n = d?.referencias?.length || 0
-              return (
-                <button key={f.id} onClick={() => setAberto(f)}
-                  className="text-left rounded-xl border border-border bg-card hover:border-primary/40 transition p-3 space-y-1.5">
-                  <div className="flex items-start gap-2">
-                    <span className="text-sm font-black text-foreground flex-1">{f.nome}</span>
-                    {d?.favorito && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />}
-                    {d?.testado && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">{f.resumo}</p>
-                  <div className="flex items-center gap-1.5 pt-0.5">
-                    <span className={`text-[10px] inline-flex items-center gap-1 ${n ? 'text-primary' : 'text-muted-foreground/60'}`}>
-                      <Link2 className="w-3 h-3" /> {n || 'sem'} referência{n === 1 ? '' : 's'}
-                    </span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {lista.map(({ f, n }) => (
+            <Cartao key={f.id} formato={f} numero={n} dados={mapa[f.id]}
+              exemplos={contagem[f.id]} onAbrir={() => setAberto(f)} />
+          ))}
           {lista.length === 0 && (
-            <p className="text-sm text-muted-foreground">Nenhum formato com esse filtro.</p>
+            <p className="text-sm text-muted-foreground col-span-full">Nenhum formato com esse filtro.</p>
           )}
-          <p className="text-[11px] text-muted-foreground">
-            {totais.refs} referência(s) salva(s) no total.
-          </p>
-        </>
+        </div>
       )}
 
       {aberto && (
-        <Detalhe formato={aberto} dados={mapa[aberto.id]} onFechar={() => setAberto(null)}
-          onMudou={(m) => setMapa(m)} />
+        <Detalhe
+          formato={aberto}
+          numero={FORMATOS.findIndex((x) => x.id === aberto.id) + 1}
+          dados={mapa[aberto.id]}
+          onFechar={() => setAberto(null)}
+          onMudou={setMapa}
+          onContagem={(n) => setContagem((c) => ({ ...c, [aberto.id]: n }))}
+        />
       )}
     </div>
   )
 }
 
-function Detalhe({ formato, dados, onFechar, onMudou }: {
-  formato: Formato
-  dados?: MapaFormatos[string]
-  onFechar: () => void
-  onMudou: (m: MapaFormatos) => void
+/** O cartão: selo numerado, o nome, e a barra de ação embaixo. */
+function Cartao({ formato, numero, dados, exemplos, onAbrir }: {
+  formato: Formato; numero: number; dados?: MapaFormatos[string]
+  exemplos?: number; onAbrir: () => void
 }) {
-  const [url, setUrl] = useState('')
-  const [nota, setNota] = useState('')
-  const [anotacoes, setAnotacoes] = useState(dados?.anotacoes || '')
-  const [erro, setErro] = useState<string | null>(null)
-  const [ocupado, setOcupado] = useState(false)
+  return (
+    <button onClick={onAbrir}
+      className="group text-left rounded-2xl border border-primary/25 bg-card overflow-hidden
+                 transition hover:border-primary/70 hover:shadow-[0_0_24px_-6px] hover:shadow-primary/40">
+      <div className="p-3.5 space-y-2">
+        <div className="flex items-center gap-2.5">
+          {/* Selo numerado: o mesmo papel do da referência, feito com clip-path
+              pra não precisar de imagem. */}
+          <span className="relative w-9 h-9 shrink-0 grid place-items-center">
+            <span className="absolute inset-0 bg-primary"
+              style={{ clipPath: 'polygon(50% 0%, 61% 10%, 76% 6%, 82% 20%, 97% 24%, 95% 39%, 108% 50%, 95% 61%, 97% 76%, 82% 80%, 76% 94%, 61% 90%, 50% 100%, 39% 90%, 24% 94%, 18% 80%, 3% 76%, 5% 61%, -8% 50%, 5% 39%, 3% 24%, 18% 20%, 24% 6%, 39% 10%)' }} />
+            <span className="relative text-[11px] font-black text-white">{dois(numero)}</span>
+          </span>
+          <span className="text-sm font-black text-foreground leading-tight flex-1">{formato.nome}</span>
+          {dados?.favorito && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />}
+          {dados?.testado && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2 min-h-[2rem]">
+          {formato.resumo}
+        </p>
+      </div>
+      <div className="px-3.5 py-2.5 bg-gradient-to-r from-primary/90 to-primary
+                      flex items-center justify-between">
+        <span className="text-[11px] font-black tracking-widest text-white uppercase">
+          Clique para ver
+        </span>
+        <ArrowUpRight className="w-3.5 h-3.5 text-white/90 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+      </div>
+    </button>
+  )
+}
 
-  async function adicionar() {
-    setOcupado(true); setErro(null)
-    const r = await salvarReferencia(formato.id, url, nota)
-    if (r.success && r.data) { onMudou(r.data); setUrl(''); setNota('') }
-    else setErro(r.error || 'não consegui salvar')
-    setOcupado(false)
+function Detalhe({ formato, numero, dados, onFechar, onMudou, onContagem }: {
+  formato: Formato; numero: number; dados?: MapaFormatos[string]
+  onFechar: () => void; onMudou: (m: MapaFormatos) => void; onContagem: (n: number) => void
+}) {
+  const [exemplos, setExemplos] = useState<Exemplo[] | null>(null)
+  const [atual, setAtual] = useState(0)
+  const [enviando, setEnviando] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [url, setUrl] = useState('')
+  const [anotacoes, setAnotacoes] = useState(dados?.anotacoes || '')
+  const arquivoRef = useRef<HTMLInputElement>(null)
+
+  const carregar = useCallback(async () => {
+    try {
+      const j = await fetch(`/api/creative-formats/examples?formato=${formato.id}`, { cache: 'no-store' })
+        .then((r) => r.json())
+      const lista: Exemplo[] = j.exemplos || []
+      setExemplos(lista)
+      setAtual((i) => Math.min(i, Math.max(0, lista.length - 1)))
+      onContagem(lista.length)
+    } catch { setExemplos([]) }
+  }, [formato.id, onContagem])
+  useEffect(() => { carregar() }, [carregar])
+
+  async function subir(lista: FileList | null) {
+    if (!lista?.length) return
+    setErro(null)
+    for (const f of Array.from(lista)) {
+      setEnviando(f.name)
+      try {
+        const sign = await fetch('/api/creative-formats/examples', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ formato: formato.id, nome: f.name }),
+        }).then((r) => r.json())
+        if (sign.error) throw new Error(sign.error)
+        const { error } = await supabase.storage.from('criativos')
+          .uploadToSignedUrl(sign.path, sign.token, f)
+        if (error) throw new Error(error.message)
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : `${e}`)
+        break
+      }
+    }
+    setEnviando(null)
+    carregar()
+  }
+
+  async function apagar(caminho: string) {
+    await fetch(`/api/creative-formats/examples?caminho=${encodeURIComponent(caminho)}`, { method: 'DELETE' })
+    carregar()
   }
 
   async function alternar(campo: 'testado' | 'favorito') {
@@ -159,41 +214,110 @@ function Detalhe({ formato, dados, onFechar, onMudou }: {
     if (r.success && r.data) onMudou(r.data)
   }
 
-  async function salvarAnotacoes() {
-    const r = await atualizarFormato(formato.id, { anotacoes })
-    if (r.success && r.data) onMudou(r.data)
+  async function adicionarLink() {
+    const r = await salvarReferencia(formato.id, url)
+    if (r.success && r.data) { onMudou(r.data); setUrl('') }
+    else setErro(r.error || 'não consegui salvar')
   }
 
   const refs = dados?.referencias || []
+  const atualEx = exemplos?.[atual]
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center overflow-y-auto p-4"
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4"
       onClick={onFechar}>
-      <div className="w-full max-w-2xl rounded-2xl border border-border bg-card my-8"
+      <div className="w-full max-w-xl rounded-3xl border-2 border-primary/50 bg-card my-6
+                      shadow-[0_0_60px_-12px] shadow-primary/40"
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start gap-3 p-5 border-b border-border">
-          <div className="flex-1">
-            <h2 className="text-lg font-black text-foreground">{formato.nome}</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">{formato.resumo}</p>
-          </div>
-          <button onClick={onFechar} className="text-muted-foreground hover:text-foreground">
+
+        <div className="flex items-start gap-3 p-5 pb-3">
+          <span className="relative w-11 h-11 shrink-0 grid place-items-center">
+            <span className="absolute inset-0 bg-primary"
+              style={{ clipPath: 'polygon(50% 0%, 61% 10%, 76% 6%, 82% 20%, 97% 24%, 95% 39%, 108% 50%, 95% 61%, 97% 76%, 82% 80%, 76% 94%, 61% 90%, 50% 100%, 39% 90%, 24% 94%, 18% 80%, 3% 76%, 5% 61%, -8% 50%, 5% 39%, 3% 24%, 18% 20%, 24% 6%, 39% 10%)' }} />
+            <span className="relative text-sm font-black text-white">{dois(numero)}</span>
+          </span>
+          <h2 className="text-2xl font-black text-foreground flex-1 leading-tight">{formato.nome}</h2>
+          <button onClick={onFechar} className="text-muted-foreground hover:text-foreground mt-1">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-5 space-y-4 text-sm">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="rounded-lg border border-border bg-black/20 p-3">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Como fazer</p>
-              <p className="text-xs text-foreground leading-relaxed">{formato.comoFazer}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-black/20 p-3">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Bom para</p>
-              <p className="text-xs text-foreground leading-relaxed">{formato.bomPara}</p>
-            </div>
+        <div className="px-5 pb-4 space-y-1.5">
+          <p className="text-sm text-foreground/90 leading-relaxed">{formato.resumo}</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">{formato.comoFazer}</p>
+          <p className="text-xs text-primary/90 pt-1">
+            <span className="font-bold">Bom para:</span> {formato.bomPara}
+          </p>
+        </div>
+
+        {/* Exemplos */}
+        <div className="px-5 pb-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-black text-primary">Exemplos:</p>
+            <button onClick={() => arquivoRef.current?.click()} disabled={!!enviando}
+              className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-50">
+              {enviando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+              {enviando ? `enviando ${enviando.slice(0, 18)}...` : 'Subir vídeo'}
+            </button>
+            <input ref={arquivoRef} type="file" accept="video/*" multiple className="hidden"
+              onChange={(e) => { subir(e.target.files); e.target.value = '' }} />
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="rounded-2xl border-2 border-primary/40 p-3">
+            {exemplos === null ? (
+              <div className="h-56 grid place-items-center text-xs text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </div>
+            ) : exemplos.length === 0 ? (
+              <button onClick={() => arquivoRef.current?.click()}
+                className="w-full h-56 grid place-items-center rounded-xl border border-dashed border-border
+                           text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 gap-2">
+                <Play className="w-7 h-7 opacity-50" />
+                Nenhum exemplo ainda — suba um vídeo deste formato
+              </button>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="relative">
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video key={atualEx?.caminho} src={atualEx?.url || undefined} controls playsInline
+                    preload="metadata" className="w-full max-h-[60vh] rounded-xl bg-black" />
+                  <button onClick={() => atualEx && apagar(atualEx.caminho)}
+                    title="apagar este exemplo"
+                    className="absolute top-2 right-2 w-7 h-7 grid place-items-center rounded-lg
+                               bg-black/70 text-white/80 hover:text-rose-300">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {exemplos.length > 1 && (
+                  <div className="flex justify-center gap-1.5">
+                    {exemplos.map((_, i) => (
+                      <button key={i} onClick={() => setAtual(i)}
+                        className={`h-1.5 rounded-full transition-all ${
+                          i === atual ? 'w-5 bg-primary' : 'w-1.5 bg-border hover:bg-primary/40'
+                        }`} aria-label={`Exemplo ${i + 1}`} />
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {exemplos.map((_, i) => (
+                    <button key={i} onClick={() => setAtual(i)}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-black tracking-wide uppercase transition ${
+                        i === atual ? 'bg-primary text-white' : 'border border-border text-muted-foreground hover:text-foreground'
+                      }`}>
+                      Exemplo {i + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {erro && <p className="text-[11px] text-rose-300">{erro}</p>}
+
+          {/* Links e anotações ficam depois do vídeo: são apoio, não o conteúdo. */}
+          <div className="flex flex-wrap gap-2 pt-1">
             <button onClick={() => alternar('favorito')}
               className={`px-3 py-1.5 rounded-lg border text-xs inline-flex items-center gap-1.5 ${
                 dados?.favorito ? 'border-amber-400/60 bg-amber-400/10 text-amber-200' : 'border-border text-muted-foreground hover:text-foreground'
@@ -208,31 +332,24 @@ function Detalhe({ formato, dados, onFechar, onMudou }: {
             </button>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-foreground">
-              Referências <span className="text-muted-foreground font-normal">({refs.length})</span>
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              Cole o link de um anúncio ou vídeo que usa este formato. É o seu swipe file,
-              organizado por molde em vez de por pessoa.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <input value={url} onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://..." onKeyDown={(e) => e.key === 'Enter' && url.trim() && adicionar()}
-                className="flex-1 min-w-[200px] rounded-lg bg-black/30 border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50" />
-              <input value={nota} onChange={(e) => setNota(e.target.value)}
-                placeholder="nota (opcional)"
-                className="w-36 rounded-lg bg-black/30 border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50" />
-              <button onClick={adicionar} disabled={!url.trim() || ocupado}
-                className="px-3 py-2 rounded-lg bg-primary hover:opacity-90 disabled:opacity-40 text-white text-xs font-bold inline-flex items-center gap-1.5">
-                {ocupado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Salvar
-              </button>
-            </div>
-            {erro && <p className="text-[11px] text-rose-300">{erro}</p>}
-
-            <div className="space-y-1">
+          <details className="group/d">
+            <summary className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer inline-flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5" /> Links e anotações
+              {refs.length > 0 && <span className="text-primary">({refs.length})</span>}
+            </summary>
+            <div className="pt-2 space-y-2">
+              <div className="flex gap-2">
+                <input value={url} onChange={(e) => setUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && url.trim() && adicionarLink()}
+                  placeholder="https://... (anúncio que usa este formato)"
+                  className="flex-1 rounded-lg bg-black/30 border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50" />
+                <button onClick={adicionarLink} disabled={!url.trim()}
+                  className="px-3 py-2 rounded-lg bg-primary hover:opacity-90 disabled:opacity-40 text-white text-xs font-bold">
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
               {refs.map((r) => (
-                <div key={r.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+                <div key={r.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5">
                   <a href={r.url} target="_blank" rel="noopener noreferrer"
                     className="text-xs text-primary hover:underline truncate flex-1 inline-flex items-center gap-1.5">
                     <ExternalLink className="w-3 h-3 shrink-0" />
@@ -246,20 +363,15 @@ function Detalhe({ formato, dados, onFechar, onMudou }: {
                   </button>
                 </div>
               ))}
-              {refs.length === 0 && (
-                <p className="text-[11px] text-muted-foreground/70">Nenhuma referência ainda.</p>
-              )}
+              <textarea value={anotacoes} onChange={(e) => setAnotacoes(e.target.value)}
+                onBlur={async () => {
+                  const r = await atualizarFormato(formato.id, { anotacoes })
+                  if (r.success && r.data) onMudou(r.data)
+                }}
+                rows={3} placeholder="O que funcionou, qual oferta combina..."
+                className="w-full rounded-lg bg-black/30 border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50" />
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold text-foreground">Suas anotações</p>
-            <textarea value={anotacoes} onChange={(e) => setAnotacoes(e.target.value)}
-              onBlur={salvarAnotacoes} rows={3}
-              placeholder="O que funcionou, o que não funcionou, qual oferta combina..."
-              className="w-full rounded-lg bg-black/30 border border-border px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50" />
-            <p className="text-[10px] text-muted-foreground">Salva sozinho quando você clica fora.</p>
-          </div>
+          </details>
         </div>
       </div>
     </div>
