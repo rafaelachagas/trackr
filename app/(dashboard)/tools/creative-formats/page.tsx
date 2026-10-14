@@ -28,8 +28,6 @@ export default function FormatosPage() {
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('todos')
   const [aberto, setAberto] = useState<Formato | null>(null)
-  // Quantos exemplos cada formato tem — o card mostra isso sem abrir.
-  const [contagem, setContagem] = useState<Record<string, number>>({})
 
   const carregar = useCallback(async () => {
     const r = await listarFormatos()
@@ -95,10 +93,10 @@ export default function FormatosPage() {
           <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
         </p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
           {lista.map(({ f, n }) => (
             <Cartao key={f.id} formato={f} numero={n} dados={mapa[f.id]}
-              exemplos={contagem[f.id]} onAbrir={() => setAberto(f)} />
+              onAbrir={() => setAberto(f)} />
           ))}
           {lista.length === 0 && (
             <p className="text-sm text-muted-foreground col-span-full">Nenhum formato com esse filtro.</p>
@@ -113,7 +111,6 @@ export default function FormatosPage() {
           dados={mapa[aberto.id]}
           onFechar={() => setAberto(null)}
           onMudou={setMapa}
-          onContagem={(n) => setContagem((c) => ({ ...c, [aberto.id]: n }))}
         />
       )}
     </div>
@@ -121,45 +118,44 @@ export default function FormatosPage() {
 }
 
 /** O cartão: selo numerado, o nome, e a barra de ação embaixo. */
-function Cartao({ formato, numero, dados, exemplos, onAbrir }: {
-  formato: Formato; numero: number; dados?: MapaFormatos[string]
-  exemplos?: number; onAbrir: () => void
+function Cartao({ formato, numero, dados, onAbrir }: {
+  formato: Formato; numero: number; dados?: MapaFormatos[string]; onAbrir: () => void
 }) {
   return (
     <button onClick={onAbrir}
-      className="group text-left rounded-2xl border border-primary/25 bg-card overflow-hidden
-                 transition hover:border-primary/70 hover:shadow-[0_0_24px_-6px] hover:shadow-primary/40">
-      <div className="p-3.5 space-y-2">
-        <div className="flex items-center gap-2.5">
+      className="group text-left rounded-xl border border-border bg-card overflow-hidden
+                 transition hover:border-primary/60 hover:shadow-[0_0_20px_-8px] hover:shadow-primary/50">
+      <div className="p-2.5 space-y-1.5">
+        <div className="flex items-center gap-2">
           {/* Selo numerado: o mesmo papel do da referência, feito com clip-path
               pra não precisar de imagem. */}
-          <span className="relative w-9 h-9 shrink-0 grid place-items-center">
+          <span className="relative w-7 h-7 shrink-0 grid place-items-center">
             <span className="absolute inset-0 bg-primary"
               style={{ clipPath: 'polygon(50% 0%, 61% 10%, 76% 6%, 82% 20%, 97% 24%, 95% 39%, 108% 50%, 95% 61%, 97% 76%, 82% 80%, 76% 94%, 61% 90%, 50% 100%, 39% 90%, 24% 94%, 18% 80%, 3% 76%, 5% 61%, -8% 50%, 5% 39%, 3% 24%, 18% 20%, 24% 6%, 39% 10%)' }} />
-            <span className="relative text-[11px] font-black text-white">{dois(numero)}</span>
+            <span className="relative text-[10px] font-black text-white">{dois(numero)}</span>
           </span>
-          <span className="text-sm font-black text-foreground leading-tight flex-1">{formato.nome}</span>
+          <span className="text-[13px] font-black text-foreground leading-tight flex-1">{formato.nome}</span>
           {dados?.favorito && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />}
           {dados?.testado && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
         </div>
-        <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2 min-h-[2rem]">
+        <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
           {formato.resumo}
         </p>
       </div>
-      <div className="px-3.5 py-2.5 bg-gradient-to-r from-primary/90 to-primary
-                      flex items-center justify-between">
-        <span className="text-[11px] font-black tracking-widest text-white uppercase">
+      <div className="px-2.5 py-1.5 bg-primary/15 group-hover:bg-primary
+                      border-t border-primary/20 flex items-center justify-between transition">
+        <span className="text-[9px] font-black tracking-[0.14em] uppercase text-primary group-hover:text-white transition">
           Clique para ver
         </span>
-        <ArrowUpRight className="w-3.5 h-3.5 text-white/90 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        <ArrowUpRight className="w-3 h-3 text-primary group-hover:text-white transition" />
       </div>
     </button>
   )
 }
 
-function Detalhe({ formato, numero, dados, onFechar, onMudou, onContagem }: {
+function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
   formato: Formato; numero: number; dados?: MapaFormatos[string]
-  onFechar: () => void; onMudou: (m: MapaFormatos) => void; onContagem: (n: number) => void
+  onFechar: () => void; onMudou: (m: MapaFormatos) => void
 }) {
   const [exemplos, setExemplos] = useState<Exemplo[] | null>(null)
   const [atual, setAtual] = useState(0)
@@ -176,9 +172,8 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou, onContagem }: {
       const lista: Exemplo[] = j.exemplos || []
       setExemplos(lista)
       setAtual((i) => Math.min(i, Math.max(0, lista.length - 1)))
-      onContagem(lista.length)
     } catch { setExemplos([]) }
-  }, [formato.id, onContagem])
+  }, [formato.id])
   useEffect(() => { carregar() }, [carregar])
 
   async function subir(lista: FileList | null) {
