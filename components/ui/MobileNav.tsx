@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import {
+import { LayoutGrid,
   LayoutDashboard, TrendingUp, Settings, Zap, RefreshCw, LogOut,
   ShoppingBag, ShoppingCart, PlusCircle, Film, Database, DollarSign,
   CreditCard, Menu as MenuIcon, X, Eye, EyeOff, Sun, Moon, Trophy, MessageCircle,
@@ -44,6 +44,7 @@ const ferramentas = [
   { href: '/tools/simulator', label: 'Simulador de Funil', icon: TrendingUp },
   { href: '/tools/ad-naming', label: 'Gerador de Nomenclatura', icon: Tags },
   { href: '/tools/audio-camouflage', label: 'Camuflagem de Criativos', icon: AudioLines },
+  { href: '/tools/creative-formats', label: 'Formatos de Criativo', icon: LayoutGrid },
   { href: '/tools/creative-generator', label: 'Gerador de Criativos', icon: Video },
   { href: '/tools/tasks', label: 'Afazeres', icon: ListTodo },
 ]

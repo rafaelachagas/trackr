@@ -43,7 +43,7 @@ const GATILHO = /\b(subir|criar|montar|lan[cç]ar)\b.*\b(an[uú]ncios?|campanhas
 // montadas à mão já trazem desligado (lido da Meta em 09/10/2026).
 const DOF_OPT_OUT = [
   'ads_with_benefits', 'advantage_plus_creative', 'creative_stickers', 'enhance_cta', 'inline_comment',
-  'product_browsing', 'show_destination_blurbs', 'site_extensions', 'standard_enhancements',
+  'product_browsing', 'show_destination_blurbs', 'site_extensions',
   'text_optimizations', 'video_auto_crop', 'video_filtering', 'video_uncrop',
 ]
 function degreesOfFreedom() {
