@@ -18,7 +18,7 @@ import {
 // formato descrito em texto continua abstrato até você ver três anúncios.
 
 type Filtro = 'todos' | 'favoritos' | 'testados' | 'nao-testados'
-type Exemplo = { nome: string; caminho: string; url: string | null }
+type Exemplo = { nome: string; caminho: string; url: string | null; imagem?: boolean }
 
 const dois = (n: number) => String(n).padStart(2, '0')
 
@@ -252,9 +252,9 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
             <button onClick={() => arquivoRef.current?.click()} disabled={!!enviando}
               className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-50">
               {enviando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-              {enviando ? `enviando ${enviando.slice(0, 18)}...` : 'Subir vídeo'}
+              {enviando ? `enviando ${enviando.slice(0, 18)}...` : 'Subir exemplo'}
             </button>
-            <input ref={arquivoRef} type="file" accept="video/*" multiple className="hidden"
+            <input ref={arquivoRef} type="file" accept="video/*,image/*" multiple className="hidden"
               onChange={(e) => { subir(e.target.files); e.target.value = '' }} />
           </div>
 
@@ -268,14 +268,20 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
                 className="w-full h-56 grid place-items-center rounded-xl border border-dashed border-border
                            text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 gap-2">
                 <Play className="w-7 h-7 opacity-50" />
-                Nenhum exemplo ainda — suba um vídeo deste formato
+                Nenhum exemplo ainda — suba um vídeo ou print deste formato
               </button>
             ) : (
               <div className="space-y-2.5">
                 <div className="relative">
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video key={atualEx?.caminho} src={atualEx?.url || undefined} controls playsInline
-                    preload="metadata" className="w-full max-h-[60vh] rounded-xl bg-black" />
+                  {atualEx?.imagem ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={atualEx.caminho} src={atualEx.url || undefined} alt={atualEx.nome}
+                      className="w-full max-h-[60vh] object-contain rounded-xl bg-black" />
+                  ) : (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <video key={atualEx?.caminho} src={atualEx?.url || undefined} controls playsInline
+                      preload="metadata" className="w-full max-h-[60vh] rounded-xl bg-black" />
+                  )}
                   <button onClick={() => atualEx && apagar(atualEx.caminho)}
                     title="apagar este exemplo"
                     className="absolute top-2 right-2 w-7 h-7 grid place-items-center rounded-lg

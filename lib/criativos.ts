@@ -15,6 +15,7 @@ export const RAIZ_SFX = 'sfx'
 export const MARCADOR = '.pasta'
 
 export const VIDEO_OK = /\.(mp4|mov|webm|m4v)$/i
+export const IMAGEM_OK = /\.(png|jpe?g|webp|gif|avif)$/i
 export const FONTE_OK = /\.(ttf|otf|woff2?)$/i
 export const AUDIO_OK = /\.(mp3|wav|m4a|aac|ogg|opus|oga|mp4|webm)$/i
 

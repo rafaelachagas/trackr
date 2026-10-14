@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { BUCKET_CRIATIVOS, VIDEO_OK, nomeSeguro } from '@/lib/criativos'
+import { BUCKET_CRIATIVOS, VIDEO_OK, IMAGEM_OK, nomeSeguro } from '@/lib/criativos'
 
-// Vídeos de exemplo de cada formato de criativo. Um formato é uma ideia
-// abstrata até você ver três anúncios que a usaram — por isso o exemplo é
-// vídeo de verdade, guardado no Storage, e não um link que some.
+// Exemplos de cada formato de criativo. Um formato é uma ideia abstrata até
+// você ver três anúncios que o usaram — por isso o exemplo é arquivo de
+// verdade, guardado no Storage, e não um link que some.
+//
+// Vídeo e imagem, porque metade dos formatos não é vídeo: Tweet, Mensagem,
+// Choquei e Copy no papel se explicam com um print.
 //
 // Caminho: formatos/<id-do-formato>/<arquivo>
 export const dynamic = 'force-dynamic'
@@ -41,6 +44,7 @@ export async function GET(req: Request) {
         nome: f.name.replace(/\.[^.]+$/, ''),
         caminho: caminhos[i],
         url: urlDe.get(caminhos[i]) || null,
+        imagem: IMAGEM_OK.test(f.name),
       })),
     })
   } catch (e) {
@@ -56,8 +60,9 @@ export async function POST(req: Request) {
     const p = pasta(formato || '')
     if (!p) return NextResponse.json({ error: 'formato inválido' }, { status: 400 })
     const limpo = nomeSeguro(nome, 80)
-    if (!limpo || !VIDEO_OK.test(limpo)) {
-      return NextResponse.json({ error: 'use .mp4, .mov, .webm ou .m4v' }, { status: 400 })
+    if (!limpo || !(VIDEO_OK.test(limpo) || IMAGEM_OK.test(limpo))) {
+      return NextResponse.json(
+        { error: 'use vídeo (mp4, mov, webm) ou imagem (png, jpg, webp)' }, { status: 400 })
     }
 
     const { data: existentes } = await supabaseAdmin.storage
