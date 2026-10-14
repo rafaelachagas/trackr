@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutGrid, Search, Star, Check, Trash2, Plus, X, ExternalLink, Loader2,
-  UploadCloud, Play, ArrowUpRight, Link2,
+  UploadCloud, Play, ArrowUpRight, Link2, FileText, Copy,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { FORMATOS, type Formato } from '@/lib/criativos-formatos'
 import {
-  listarFormatos, salvarReferencia, removerReferencia, atualizarFormato,
+  listarFormatos, salvarReferencia, removerReferencia, atualizarFormato, salvarTranscricao,
   type MapaFormatos,
 } from '@/app/actions/formatos'
 
@@ -163,6 +163,8 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
   const [erro, setErro] = useState<string | null>(null)
   const [url, setUrl] = useState('')
   const [anotacoes, setAnotacoes] = useState(dados?.anotacoes || '')
+  const [transcrevendo, setTranscrevendo] = useState(false)
+  const [fase, setFase] = useState('')
   const arquivoRef = useRef<HTMLInputElement>(null)
 
   const carregar = useCallback(async () => {
@@ -204,6 +206,37 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
     carregar()
   }
 
+  /** Manda o exemplo pro transcritor da VPS e guarda o texto no formato. */
+  async function transcrever() {
+    if (!atualEx?.url || !atualEx.caminho) return
+    setTranscrevendo(true); setErro(null); setFase('enviando pro transcritor...')
+    try {
+      const ini = await fetch('/api/rastreador/transcrever-async', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ video_url: atualEx.url }),
+      }).then((r) => r.json())
+      if (!ini?.job_id) throw new Error(ini?.error || 'o transcritor não aceitou o vídeo')
+
+      for (let i = 0; i < 180; i++) {
+        await new Promise((r) => setTimeout(r, 4000))
+        const j = await fetch(`/api/rastreador/transcrever-async?id=${ini.job_id}`, { cache: 'no-store' })
+          .then((r) => r.json()).catch(() => ({ status: 'rodando' }))
+        if (j.status === 'erro') throw new Error(j.erro || 'falhou ao transcrever')
+        if (j.status === 'ok') {
+          const r = await salvarTranscricao(formato.id, atualEx.caminho, j.texto || '')
+          if (r.success && r.data) onMudou(r.data)
+          setFase('')
+          return
+        }
+        setFase(`transcrevendo... ${(i + 1) * 4}s`)
+      }
+      throw new Error('demorou demais')
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : `${e}`)
+      setFase('')
+    } finally { setTranscrevendo(false) }
+  }
+
   async function alternar(campo: 'testado' | 'favorito') {
     const r = await atualizarFormato(formato.id, { [campo]: !dados?.[campo] })
     if (r.success && r.data) onMudou(r.data)
@@ -217,6 +250,7 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
 
   const refs = dados?.referencias || []
   const atualEx = exemplos?.[atual]
+  const transcricao = atualEx ? dados?.transcricoes?.[atualEx.caminho] : undefined
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4"
@@ -298,6 +332,36 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
                           i === atual ? 'w-5 bg-primary' : 'w-1.5 bg-border hover:bg-primary/40'
                         }`} aria-label={`Exemplo ${i + 1}`} />
                     ))}
+                  </div>
+                )}
+
+                {/* Transcrição do exemplo que está na tela. Vale pro vídeo:
+                    print não tem o que transcrever. */}
+                {atualEx && !atualEx.imagem && (
+                  <div className="space-y-1.5">
+                    {transcricao ? (
+                      <div className="rounded-lg border border-border bg-black/20 p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                          <span className="text-[11px] font-bold text-foreground flex-1">Copy deste exemplo</span>
+                          <button onClick={() => navigator.clipboard?.writeText(transcricao)}
+                            className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+                            <Copy className="w-3 h-3" /> copiar
+                          </button>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">
+                          {transcricao}
+                        </p>
+                      </div>
+                    ) : (
+                      <button onClick={transcrever} disabled={transcrevendo}
+                        className="w-full rounded-lg border border-dashed border-border py-2 text-[11px]
+                                   text-muted-foreground hover:text-foreground hover:border-primary/50
+                                   disabled:opacity-60 inline-flex items-center justify-center gap-1.5">
+                        {transcrevendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                        {transcrevendo ? (fase || 'transcrevendo...') : 'Transcrever a copy deste exemplo'}
+                      </button>
+                    )}
                   </div>
                 )}
 

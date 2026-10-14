@@ -22,6 +22,9 @@ export interface DadosFormato {
   anotacoes?: string
   testado?: boolean
   favorito?: boolean
+  // Transcrição de cada exemplo, pela chave do arquivo no Storage. Guardada
+  // porque transcrever custa minutos de VPS: a segunda vez tem que ser grátis.
+  transcricoes?: Record<string, string>
 }
 
 export type MapaFormatos = Record<string, DadosFormato>
@@ -90,6 +93,19 @@ export async function removerReferencia(
   const atual = mapa[formatoId]
   if (!atual) return { success: true, data: mapa }
   atual.referencias = atual.referencias.filter((r) => r.id !== refId)
+  mapa[formatoId] = atual
+  await gravar(orgId, mapa)
+  return { success: true, data: mapa }
+}
+
+export async function salvarTranscricao(
+  formatoId: string, caminho: string, texto: string,
+): Promise<{ success: boolean; data?: MapaFormatos }> {
+  const orgId = await resolveOrgId()
+  if (!orgId) return { success: false }
+  const mapa = await ler(orgId)
+  const atual = mapa[formatoId] || vazio()
+  atual.transcricoes = { ...(atual.transcricoes || {}), [caminho]: texto.slice(0, 20000) }
   mapa[formatoId] = atual
   await gravar(orgId, mapa)
   return { success: true, data: mapa }
