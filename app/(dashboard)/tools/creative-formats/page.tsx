@@ -160,6 +160,7 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
   const [exemplos, setExemplos] = useState<Exemplo[] | null>(null)
   const [atual, setAtual] = useState(0)
   const [enviando, setEnviando] = useState<string | null>(null)
+  const [progresso, setProgresso] = useState<Record<string, number>>({})
   const [erro, setErro] = useState<string | null>(null)
   const [url, setUrl] = useState('')
   const [anotacoes, setAnotacoes] = useState(dados?.anotacoes || '')
@@ -178,26 +179,61 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
   }, [formato.id])
   useEffect(() => { carregar() }, [carregar])
 
+  /** Envia um arquivo mostrando quanto já subiu.
+   *
+   *  O cliente do Supabase não informa progresso, e sem barra um vídeo de
+   *  20 MB numa internet de upload lento parece travado. XHR informa. */
+  function enviarUm(f: File, aoProgresso: (pct: number) => void) {
+    return new Promise<void>((resolve, reject) => {
+      fetch('/api/creative-formats/examples', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ formato: formato.id, nome: f.name }),
+      }).then((r) => r.json()).then((sign) => {
+        if (sign.error) return reject(new Error(sign.error))
+        const base = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const alvo = sign.signedUrl
+          ? `${base}/storage/v1${sign.signedUrl.startsWith('/') ? '' : '/'}${sign.signedUrl}`
+          : `${base}/storage/v1/object/upload/sign/criativos/${sign.path}?token=${sign.token}`
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', alvo, true)
+        xhr.setRequestHeader('x-upsert', 'true')
+        if (f.type) xhr.setRequestHeader('content-type', f.type)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) aoProgresso(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300
+          ? resolve()
+          : reject(new Error(`o envio falhou (${xhr.status})`)))
+        xhr.onerror = () => reject(new Error('conexão caiu no meio do envio'))
+        xhr.send(f)
+      }).catch(reject)
+    })
+  }
+
   async function subir(lista: FileList | null) {
     if (!lista?.length) return
     setErro(null)
-    for (const f of Array.from(lista)) {
-      setEnviando(f.name)
-      try {
-        const sign = await fetch('/api/creative-formats/examples', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ formato: formato.id, nome: f.name }),
-        }).then((r) => r.json())
-        if (sign.error) throw new Error(sign.error)
-        const { error } = await supabase.storage.from('criativos')
-          .uploadToSignedUrl(sign.path, sign.token, f)
-        if (error) throw new Error(error.message)
-      } catch (e) {
-        setErro(e instanceof Error ? e.message : `${e}`)
-        break
+    const fila = Array.from(lista)
+    setProgresso(Object.fromEntries(fila.map((f) => [f.name, 0])))
+    // Dois de cada vez: em fila única cada arquivo espera o anterior inteiro,
+    // e mandar cinco juntos divide a banda e nenhum termina.
+    let i = 0
+    const trabalhador = async () => {
+      while (i < fila.length) {
+        const f = fila[i++]
+        setEnviando(f.name)
+        try {
+          await enviarUm(f, (pct) => setProgresso((p) => ({ ...p, [f.name]: pct })))
+          setProgresso((p) => ({ ...p, [f.name]: 100 }))
+        } catch (e) {
+          setErro(e instanceof Error ? e.message : `${e}`)
+          i = fila.length
+        }
       }
     }
+    await Promise.all([trabalhador(), trabalhador()])
     setEnviando(null)
+    setProgresso({})
     carregar()
   }
 
@@ -286,11 +322,27 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
             <button onClick={() => arquivoRef.current?.click()} disabled={!!enviando}
               className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 disabled:opacity-50">
               {enviando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-              {enviando ? `enviando ${enviando.slice(0, 18)}...` : 'Subir exemplo'}
+              {enviando ? 'enviando...' : 'Subir exemplo'}
             </button>
             <input ref={arquivoRef} type="file" accept="video/*,image/*" multiple className="hidden"
               onChange={(e) => { subir(e.target.files); e.target.value = '' }} />
           </div>
+
+          {Object.keys(progresso).length > 0 && (
+            <div className="space-y-1.5">
+              {Object.entries(progresso).map(([nome, pct]) => (
+                <div key={nome} className="space-y-1">
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span className="truncate flex-1">{nome}</span>
+                    <span className="tabular-nums">{pct}%</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-border overflow-hidden">
+                    <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="rounded-2xl border-2 border-primary/40 p-3">
             {exemplos === null ? (

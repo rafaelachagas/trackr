@@ -76,7 +76,11 @@ export async function POST(req: Request) {
     const { data, error } = await supabaseAdmin.storage
       .from(BUCKET_CRIATIVOS).createSignedUploadUrl(caminho, { upsert: true })
     if (error || !data) throw new Error(error?.message || 'falha ao assinar')
-    return NextResponse.json({ path: data.path, token: data.token, caminho })
+    // signedUrl vem junto porque o envio é feito com XHR (pra ter progresso),
+    // e não pelo cliente do Supabase, que não informa quanto já subiu.
+    return NextResponse.json({
+      path: data.path, token: data.token, caminho, signedUrl: data.signedUrl,
+    })
   } catch (e) {
     return NextResponse.json({ error: `${e}` }, { status: 500 })
   }
