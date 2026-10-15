@@ -21,10 +21,17 @@ export const AUDIO_OK = /\.(mp3|wav|m4a|aac|ogg|opus|oga|mp4|webm)$/i
 
 /** Nome de pasta/arquivo seguro pra usar como caminho no Storage. */
 export function nomeSeguro(s: string, max = 60): string {
-  return String(s || '')
+  const limpo = String(s || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w.\- ]+/g, '')
     .trim()
     .replace(/\s+/g, '-')
-    .slice(0, max)
+  // Encurta o NOME, nunca a extens\u00e3o. Cortando o texto inteiro, um arquivo
+  // baixado da Biblioteca de An\u00fancios (que vem com a copy inteira no nome, e
+  // passa f\u00e1cil dos 80 caracteres) perdia o ".mp4" e era recusado como
+  // formato inv\u00e1lido \u2014 sendo um mp4 leg\u00edtimo.
+  const ponto = limpo.lastIndexOf('.')
+  const ext = ponto > 0 && limpo.length - ponto <= 6 ? limpo.slice(ponto) : ''
+  const base = ext ? limpo.slice(0, ponto) : limpo
+  return base.slice(0, Math.max(1, max - ext.length)) + ext
 }
