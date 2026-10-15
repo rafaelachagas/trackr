@@ -217,6 +217,8 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
     setErro(null)
     const fila = Array.from(lista)
     setProgresso(Object.fromEntries(fila.map((f) => [f.name, 0])))
+    const falhas: string[] = []
+
     // Dois de cada vez: em fila única cada arquivo espera o anterior inteiro,
     // e mandar cinco juntos divide a banda e nenhum termina.
     let i = 0
@@ -224,18 +226,36 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
       while (i < fila.length) {
         const f = fila[i++]
         setEnviando(f.name)
-        try {
-          await enviarUm(f, (pct) => setProgresso((p) => ({ ...p, [f.name]: pct })))
-          setProgresso((p) => ({ ...p, [f.name]: 100 }))
-        } catch (e) {
-          setErro(e instanceof Error ? e.message : `${e}`)
-          i = fila.length
+        // Três tentativas: o 520 do Cloudflare na frente do Storage é
+        // passageiro e some sozinho na repetição. Desistir na primeira
+        // obrigava a reenviar tudo na mão.
+        let ultimo = ''
+        let ok = false
+        for (let tentativa = 1; tentativa <= 3 && !ok; tentativa++) {
+          try {
+            await enviarUm(f, (pct) => setProgresso((p) => ({ ...p, [f.name]: pct })))
+            ok = true
+          } catch (e) {
+            ultimo = e instanceof Error ? e.message : `${e}`
+            if (tentativa < 3) {
+              setProgresso((p) => ({ ...p, [f.name]: 0 }))
+              await new Promise((r) => setTimeout(r, tentativa * 1500))
+            }
+          }
         }
+        // Um arquivo que falha não pode derrubar os outros da fila: antes o
+        // primeiro erro parava tudo e só o arquivo anterior tinha subido.
+        if (ok) setProgresso((p) => ({ ...p, [f.name]: 100 }))
+        else falhas.push(`${f.name.slice(0, 28)} (${ultimo})`)
       }
     }
     await Promise.all([trabalhador(), trabalhador()])
+
     setEnviando(null)
     setProgresso({})
+    if (falhas.length) {
+      setErro(`${falhas.length} de ${fila.length} não subiram: ${falhas.join(' · ')}`)
+    }
     carregar()
   }
 
