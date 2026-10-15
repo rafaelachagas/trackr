@@ -190,9 +190,11 @@ function Detalhe({ formato, numero, dados, onFechar, onMudou }: {
         body: JSON.stringify({ formato: formato.id, nome: f.name }),
       }).then((r) => r.json()).then((sign) => {
         if (sign.error) return reject(new Error(sign.error))
+        // O signedUrl do Supabase ja vem absoluto. Colar o endereco do
+        // servidor na frente dele gera uma URL invalida e o envio morre.
         const base = process.env.NEXT_PUBLIC_SUPABASE_URL
-        const alvo = sign.signedUrl
-          ? `${base}/storage/v1${sign.signedUrl.startsWith('/') ? '' : '/'}${sign.signedUrl}`
+        const alvo: string = typeof sign.signedUrl === 'string' && sign.signedUrl.startsWith('http')
+          ? sign.signedUrl
           : `${base}/storage/v1/object/upload/sign/criativos/${sign.path}?token=${sign.token}`
         const xhr = new XMLHttpRequest()
         xhr.open('PUT', alvo, true)
