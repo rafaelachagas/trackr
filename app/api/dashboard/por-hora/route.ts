@@ -99,9 +99,16 @@ export async function GET(request: NextRequest) {
 
     // Gasto por hora da Meta (se configurada). Falha → investimento zerado, mas o
     // faturamento por hora ainda aparece (não quebra o gráfico).
+    // Guarda POR QUE o gasto não veio. Sem isso o gráfico mostra faturamento
+    // no lugar de lucro e parece certo: todas as barras positivas, nenhuma
+    // vermelha, números grandes. É o pior defeito possível num painel.
+    let gastoIndisponivel: string | null = null
     const investPromise: Promise<number[]> = (async () => {
       const acc = new Array(24).fill(0)
-      if (!accessToken || adAccountIds.length === 0) return acc
+      if (!accessToken || adAccountIds.length === 0) {
+        gastoIndisponivel = 'A Meta não está conectada.'
+        return acc
+      }
       try {
         const { fatores } = await resolverFatoresGasto(accessToken, adAccountIds, configMap)
         const listas = await Promise.all(
@@ -113,6 +120,10 @@ export async function GET(request: NextRequest) {
         for (const horas of listas) for (let h = 0; h < 24; h++) acc[h] += horas[h]
       } catch (e) {
         console.error('[por-hora] gasto Meta', e)
+        const msg = e instanceof Error ? e.message : `${e}`
+        gastoIndisponivel = /token|session has expired|oauth/i.test(msg)
+          ? 'O token da Meta expirou — reconecte em Fontes de dados.'
+          : `A Meta não devolveu o gasto por hora: ${msg.slice(0, 120)}`
       }
       return acc
     })()
@@ -147,7 +158,7 @@ export async function GET(request: NextRequest) {
       else { pontos[h].fatOrgLiq += liq; pontos[h].fatOrgBru += bru }
     }
 
-    return NextResponse.json({ pontos, periodo: { dInicio, dFim } })
+    return NextResponse.json({ pontos, periodo: { dInicio, dFim }, gastoIndisponivel })
   } catch (err) {
     console.error('[por-hora]', err)
     return NextResponse.json({ error: `Erro interno: ${err}` }, { status: 500 })

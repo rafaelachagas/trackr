@@ -5,7 +5,7 @@ import {
   ComposedChart, Line, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LabelList,
 } from 'recharts'
-import { EyeOff, Info } from 'lucide-react'
+import { EyeOff, Info, AlertTriangle } from 'lucide-react'
 import { formatarMoeda } from '@/lib/utils'
 import { useDashboard } from '@/context/DashboardContext'
 import { formatInTimeZone } from 'date-fns-tz'
@@ -174,7 +174,9 @@ function GraficoAcumulado({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[
   )
 }
 
-function GraficoLucroPorHorario({ pontos, isPrivate, corteHora }: { pontos: HoraPonto[]; isPrivate: boolean; corteHora: number | null }) {
+function GraficoLucroPorHorario({ pontos, isPrivate, corteHora, semGasto }: {
+  pontos: HoraPonto[]; isPrivate: boolean; corteHora: number | null; semGasto?: boolean
+}) {
   const [fonte, setFonte] = useState<Fonte>('geral')
   const [valor, setValor] = useState<Valor>('liquido')
   const isMobile = useIsMobile()
@@ -217,6 +219,8 @@ function GraficoLucroPorHorario({ pontos, isPrivate, corteHora }: { pontos: Hora
 export default function GraficosPorHora() {
   const { dateRange, lastUpdate, isPrivate } = useDashboard()
   const [pontos, setPontos] = useState<HoraPonto[]>([])
+  // Por que o gasto não veio. Sem gasto, "lucro" é faturamento com outro nome.
+  const [semGasto, setSemGasto] = useState<string | null>(null)
 
   // Corte de horas futuras: só faz sentido quando o período é exatamente HOJE
   // (dia único = hoje em SP). Em período de vários dias, todas as horas somam
@@ -241,14 +245,24 @@ export default function GraficosPorHora() {
 
     fetch(`/api/dashboard/por-hora?${params}`)
       .then((r) => r.json())
-      .then((j) => setPontos(j.pontos ?? []))
+      .then((j) => { setPontos(j.pontos ?? []); setSemGasto(j.gastoIndisponivel ?? null) })
       .catch(() => {})
   }, [lastUpdate, dateRange])
 
   return (
     <div className="space-y-6">
+      {semGasto && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-100">
+            <b>Sem o gasto da Meta, estes gráficos mostram faturamento, não lucro.</b>{' '}
+            {semGasto} Enquanto isso, nenhuma barra fica vermelha — não porque não houve
+            prejuízo, mas porque o investimento está entrando como zero.
+          </p>
+        </div>
+      )}
       <GraficoAcumulado pontos={pontos} isPrivate={isPrivate} corteHora={corteHora} />
-      <GraficoLucroPorHorario pontos={pontos} isPrivate={isPrivate} corteHora={corteHora} />
+      <GraficoLucroPorHorario pontos={pontos} isPrivate={isPrivate} corteHora={corteHora} semGasto={!!semGasto} />
     </div>
   )
 }
