@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { X, Copy, Check, ChevronDown, Loader2 } from 'lucide-react'
+import { X, Copy, Check, ChevronDown, Loader2, Search } from 'lucide-react'
 import { LP_PADRAO, FASE_CFG, slug, parseBase, extrairAdCodes, gerarNomenclatura, type Fase, type Versao } from '@/lib/nomenclatura'
 
 /**
@@ -106,6 +106,19 @@ export default function GeradorNomenclatura({ onClose, inline }: { onClose?: () 
   const [contasOpen, setContasOpen] = useState(false)
   const [contasLoading, setContasLoading] = useState(false)
   const [contasErro, setContasErro] = useState<string | null>(null)
+  const [contasBusca, setContasBusca] = useState('')
+
+  // Busca ignora acento e caixa; também casa pelo ID da conta.
+  const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const contasFiltradas = useMemo(() => {
+    const q = norm(contasBusca.trim())
+    if (!contas || !q) return contas
+    return contas.filter(c => norm(c.name).includes(q) || c.id.includes(q))
+  }, [contas, contasBusca])
+
+  function escolherConta(c: ContaMeta) {
+    setContaMarker(slug(c.name)); setContasOpen(false); setContasBusca('')
+  }
 
   const parsed = parseBase(base)
   const baseInvalida = base.trim().length > 0 && !parsed
@@ -240,17 +253,35 @@ ${n.link}`
             </div>
 
             {contasOpen && (
-              <div className="mt-2 rounded-lg border border-white/10 bg-white/5 max-h-44 overflow-y-auto">
+              <div className="mt-2 rounded-lg border border-white/10 bg-white/5 overflow-hidden">
+                {contas && contas.length > 0 && !contasLoading && !contasErro && (
+                  <div className="flex items-center gap-2 px-3 border-b border-white/10">
+                    <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <input
+                      type="text"
+                      value={contasBusca}
+                      onChange={e => setContasBusca(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && contasFiltradas?.length) { e.preventDefault(); escolherConta(contasFiltradas[0]) }
+                        if (e.key === 'Escape') { setContasOpen(false); setContasBusca('') }
+                      }}
+                      placeholder="Buscar conta…"
+                      className="w-full bg-transparent py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                <div className="max-h-44 overflow-y-auto">
                 {contasLoading ? (
                   <div className="flex items-center justify-center py-6 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /></div>
                 ) : contasErro ? (
                   <p className="text-[11px] text-amber-400 px-3 py-3">{contasErro}</p>
-                ) : contas && contas.length > 0 ? (
-                  contas.map(c => (
+                ) : contasFiltradas && contasFiltradas.length > 0 ? (
+                  contasFiltradas.map(c => (
                     <button
                       key={c.id}
                       type="button"
-                      onClick={() => { setContaMarker(slug(c.name)); setContasOpen(false) }}
+                      onClick={() => escolherConta(c)}
                       className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/10 transition"
                     >
                       <span className="text-xs text-foreground truncate" translate="no">{c.name}</span>
@@ -260,6 +291,7 @@ ${n.link}`
                 ) : (
                   <p className="text-[11px] text-muted-foreground px-3 py-3">Nenhuma conta encontrada.</p>
                 )}
+                </div>
               </div>
             )}
 
