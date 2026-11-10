@@ -22,6 +22,16 @@ export default function BlocoById({ id, metrics, chartData, criativos }: {
   chartData?: any[]
   criativos?: RoasPorCriativo[]
 }) {
+  // Com um produto selecionado no filtro, a receita vem so dele, mas o gasto da
+  // Meta vem de TODOS (a tabela `gastos` nao tem produto). ROAS, Lucro e CPA
+  // cruzariam bases diferentes e sairiam errados pra baixo — entao viram "—"
+  // em vez de mostrar numero mentiroso. Ver app/actions/dashboard.ts.
+  const gastoMisturado = !!metrics?.gastoDeTodosOsProdutos
+  const AVISO_GASTO =
+    'Indisponivel com um produto selecionado: o gasto da Meta nao e separavel por produto, '
+    + 'entao esta conta misturaria a receita de um produto com o gasto de todos. '
+    + 'Tire o filtro de produto (ou use a fonte "Meta Ads") para ver este numero.'
+
   switch (id) {
     case 'revenue':
       return (
@@ -36,24 +46,30 @@ export default function BlocoById({ id, metrics, chartData, criativos }: {
         <MetricCard
           titulo="Gastos com anúncios"
           valor={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          subtitulo={gastoMisturado ? 'de todos os produtos' : undefined}
+          tooltip={gastoMisturado
+            ? 'O gasto da Meta nao e separavel por produto, entao este valor e o total de todas as contas — ele NAO acompanha o produto selecionado no filtro.'
+            : undefined}
         />
       )
     case 'roas':
       return (
         <MetricCard
           titulo="ROAS"
-          valor={`${metrics.roas.toFixed(2)}`}
+          valor={gastoMisturado ? '—' : `${metrics.roas.toFixed(2)}`}
           verde
-          tooltip="Retorno sobre o investimento em anúncios. ROAS = Faturamento Bruto / Gastos com anúncios"
+          tooltip={gastoMisturado ? AVISO_GASTO : "Retorno sobre o investimento em anúncios. ROAS = Faturamento Bruto / Gastos com anúncios"}
         />
       )
     case 'lucro':
       return (
         <MetricCard
           titulo="Lucro"
-          valor={`R$ ${(metrics.revenue - metrics.spend - metrics.imposto).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          valor={gastoMisturado
+            ? '—'
+            : `R$ ${(metrics.revenue - metrics.spend - metrics.imposto).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           verde
-          tooltip="Lucro (ROI final). Lucro = Faturamento Líquido − Gastos com anúncios − Imposto sobre anúncios (Meta)"
+          tooltip={gastoMisturado ? AVISO_GASTO : "Lucro (ROI final). Lucro = Faturamento Líquido − Gastos com anúncios − Imposto sobre anúncios (Meta)"}
         />
       )
     case 'imposto':
@@ -87,9 +103,9 @@ export default function BlocoById({ id, metrics, chartData, criativos }: {
       return (
         <MetricCard
           titulo="CPA médio"
-          valor={`R$ ${metrics.cpaMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          valor={gastoMisturado ? '—' : `R$ ${metrics.cpaMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           subtitulo={`${metrics.vendasPagas} venda${metrics.vendasPagas !== 1 ? 's' : ''} de tráfego pago`}
-          tooltip="Custo por aquisição do funil como um todo. CPA = Gastos com anúncios ÷ vendas de TRÁFEGO PAGO no período (front + upsell) — não conta venda orgânica (sem criativo/anúncio de origem), senão o CPA sairia artificialmente mais barato."
+          tooltip={gastoMisturado ? AVISO_GASTO : "Custo por aquisição do funil como um todo. CPA = Gastos com anúncios ÷ vendas de TRÁFEGO PAGO no período (front + upsell) — não conta venda orgânica (sem criativo/anúncio de origem), senão o CPA sairia artificialmente mais barato."}
           alinharTooltipDireita
         />
       )

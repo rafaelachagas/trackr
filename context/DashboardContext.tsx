@@ -40,6 +40,8 @@ interface DashboardMetrics {
   cpmMedio: number;
   cpaMedio: number;
   vendasPagas: number;
+  // true quando ha um produto selecionado: o gasto nao acompanha esse filtro.
+  gastoDeTodosOsProdutos: boolean;
 }
 
 interface DashboardContextType {
@@ -94,6 +96,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     cpmMedio: 0,
     cpaMedio: 0,
     vendasPagas: 0,
+    gastoDeTodosOsProdutos: false,
   });
   const [chartData, setChartData] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState(new Date());

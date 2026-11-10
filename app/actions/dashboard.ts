@@ -178,7 +178,14 @@ export async function getDashboardData(product: string, startDate: string, endDa
         taxaReembolso: taxaReembolso,
         cpmMedio: cpmMedio,
         cpaMedio: cpaMedio,
-        vendasPagas: vendasPagas
+        vendasPagas: vendasPagas,
+        // `gastos` NAO e filtravel por produto: a tabela nao tem coluna de
+        // produto, e o unico vinculo possivel seria inferir o produto a partir
+        // da venda do criativo — o que a regra de ouro do
+        // docs/VENDAS-ATRIBUICAO-ROAS.md manda nao fazer. Entao, com um produto
+        // selecionado, a receita e so dele mas o gasto continua sendo de TODOS.
+        // Avisa a UI pra nao exibir ROAS/Lucro/CPA cruzando bases diferentes.
+        gastoDeTodosOsProdutos: product !== 'Qualquer'
       },
       vendas: vendasComTipo,
       gastos: gastos
