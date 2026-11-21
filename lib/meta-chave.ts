@@ -93,20 +93,50 @@ export function criarResolvedor(
   gastos: { criativo: string | null; campaign_name: string | null; ad_name: string | null }[],
 ): ResolvedorChaves {
   const campanhas = new Map<string, Set<string>>()
+  // Pro sck SEM fase (ver doVenda): código|flags → anúncios com gasto, de qualquer fase.
+  const anuncios = new Map<string, { fase: string | null; campanha: string; anuncio: string }[]>()
   for (const g of gastos) {
     if (!g.criativo) continue
-    const b = base(g.criativo, faseToken(g.campaign_name), flagsToken(g.ad_name))
+    const fase = faseToken(g.campaign_name), flags = flagsToken(g.ad_name)
+    const b = base(g.criativo, fase, flags)
     let s = campanhas.get(b)
     if (!s) campanhas.set(b, (s = new Set()))
     s.add(campanhaToken(g.campaign_name))
+    const kc = `${g.criativo}|${flags}`
+    let l = anuncios.get(kc)
+    if (!l) anuncios.set(kc, (l = []))
+    l.push({ fase, campanha: campanhaToken(g.campaign_name), anuncio: campanhaToken(g.ad_name) })
   }
   return {
     doGasto: chaveDoAnuncio,
     doVenda(criativo, sck) {
       const parte0 = (sck || '').split('|')[0]
-      const b = base(criativo, faseToken(parte0), flagsToken(sck))
+      const fase = faseToken(parte0)
+      const flags = flagsToken(sck)
+      const b = base(criativo, fase, flags)
       const alvo = campanhaToken(parte0)
       const cands = campanhas.get(b)
+      // SCK sem fase nem campanha (nov/2026: "tp-ad50-black-pre-escala" = prefixo
+      // + nome do anúncio). A chave normal sai "ad50|?|..." e não casa com nada.
+      // Em vez de perder a venda, procura os anúncios com gasto do mesmo
+      // código|flags e fica com o de NOME mais parecido com o sck a partir do
+      // código ("ad50-black-pre-escala" × ad_name "ad50-black-pre-escala"). É o
+      // que separa ad38 FASE02 ("ad38-black-pre-escala") de ad38 FASE01
+      // ("ad38-black"). Só roda quando o caminho de sempre não acha candidato,
+      // então nenhum sck antigo muda de lugar.
+      if (!fase && (!cands || cands.size === 0)) {
+        const lista = anuncios.get(`${criativo}|${flags}`)
+        if (lista?.length) {
+          const s = (sck || '').toLowerCase()
+          const doCodigo = campanhaToken(s.slice(Math.max(0, s.indexOf(criativo))))
+          let melhor = lista[0], nota = -1
+          for (const a of lista) {
+            const n = prefixoComum(a.anuncio, doCodigo)
+            if (n > nota) { nota = n; melhor = a }
+          }
+          return `${base(criativo, melhor.fase, flags)}|${melhor.campanha}`
+        }
+      }
       if (!cands || cands.size === 0 || cands.has(alvo)) return `${b}|${alvo}`
       if (cands.size === 1) return `${b}|${[...cands][0]}`
       let melhor = '', nota = -1

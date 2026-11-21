@@ -80,6 +80,17 @@ vice-versa, é sinal de que a tarefa está no lugar errado. Pare e pergunte.
      `supabase_gastos_por_anuncio.sql`; sem ele o sync grava do jeito antigo.
    - O código vem de `extrairCriativo()` (regex `^(ad\d+)`) — sempre o
      código curto, nunca o slug completo.
+   - **SCK com prefixo (nov/2026, Black Friday):** o Isaías passou a usar
+     `tp-ad50-black-pre-escala` (= `tp-` + nome do anúncio na Meta), sem
+     campanha nem fase. Dois fallbacks, que só entram quando o caminho antigo
+     não acha nada (nenhum sck antigo muda de lugar):
+     `extrairCriativo` aceita um ÚNICO `adNN` como pedaço de um slug minúsculo
+     (`tp-ad50-...`, `iz-...-fase02-pre-escala-ad34`); e `criarResolvedor`,
+     quando o sck não tem fase, casa com o anúncio de mesmo código|flags cujo
+     `ad_name` mais se parece com o sck a partir do código (separa ad38 FASE02
+     `ad38-black-pre-escala` de ad38 FASE01 `ad38-black`). O cron de
+     reconciliação também preenche `criativo` em vendas que têm sck mas
+     ficaram sem criativo (`preencherCriativoFaltante`).
    - A fase (FASE01/02/03) já distingue os "3 níveis" de escala do anúncio
      (ex: FASE01 = escala, FASE02 = Pré Escala) — isso vem do nome da
      campanha na Meta / do primeiro segmento do sck, não é um bug, é assim

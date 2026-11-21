@@ -214,7 +214,32 @@ export async function reconciliarSck(opts: {
   // no faturamento total, só não entra no ROAS de nenhum criativo específico).
   const upsellsVinculados = await vincularUpsellsSemSck(opts.startDate, endDate)
 
+  // 4. Vendas COM sck mas sem criativo: o sck chegou num formato que a extração
+  // da época não reconhecia (ex.: "tp-ad50-black-pre-escala", nov/2026). Com a
+  // extração atualizada, preenche o criativo — só onde ainda está null.
+  await preencherCriativoFaltante(opts.startDate, endDate)
+
   return { atualizadas, coletadas: apiSck.size, pages, upsellsVinculados, erros: erros.length ? erros : undefined }
+}
+
+export async function preencherCriativoFaltante(startDate: number, endDate: number): Promise<number> {
+  const { data: rows } = await supabaseAdmin
+    .from('vendas')
+    .select('id, sck')
+    .is('criativo', null)
+    .not('sck', 'is', null)
+    .not('transaction_id', 'like', 'manual_%')
+    .gte('data', new Date(startDate).toISOString())
+    .lte('data', new Date(endDate).toISOString())
+    .range(0, 999)
+  let n = 0
+  for (const r of rows ?? []) {
+    const criativo = extrairCriativo(r.sck)
+    if (!criativo) continue
+    const { error } = await supabaseAdmin.from('vendas').update({ criativo }).eq('id', r.id).is('criativo', null)
+    if (!error) n++
+  }
+  return n
 }
 
 async function vincularUpsellsSemSck(startDate: number, endDate: number): Promise<number> {

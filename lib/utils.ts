@@ -38,7 +38,22 @@ export function extrairCriativo(texto: string | null | undefined): string | null
   const partes = texto.split('|')
   const alvo = partes.length >= 3 ? partes[2] : texto
   const match = alvo.match(/^(ad\d+)/i)
-  return match ? match[1].toLowerCase() : null
+  if (match) return match[1].toLowerCase()
+  return codigoDentroDoSlug(alvo.trim())
+}
+
+// Fallback (nov/2026, Black Friday): o sck passou a vir com prefixo antes do
+// código — "tp-ad50-black-pre-escala" (= "tp-" + nome do anúncio na Meta) — e
+// às vezes como o slug da campanha ("iz-adv-vendas-f-fase02-pre-escala-ad34").
+// Só aceita quando o texto é um slug minúsculo (letras/números/hífen, como o
+// sck é gerado) e tem UM ÚNICO código adNN como pedaço inteiro entre hífens.
+// Slug com dois códigos ("...-ad35-ad36") é ambíguo e continua sem criativo.
+// Nomes de anúncio da Meta (maiúsculas/espaços, ex. "ADV-AD62") e ids
+// ("v3_...", "c023ad62-...") não entram aqui, então nada que já existia muda.
+function codigoDentroDoSlug(alvo: string): string | null {
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(alvo)) return null
+  const codigos = new Set(alvo.split('-').filter((p) => /^ad\d+$/.test(p)))
+  return codigos.size === 1 ? [...codigos][0] : null
 }
 
 // Nome COMPLETO do criativo (a parte descritiva do sck), ex.:
