@@ -184,8 +184,8 @@ export async function GET(request: NextRequest) {
           .eq('status', 'approved')
           .not('transaction_id', 'like', 'manual_%')
           .not('criativo', 'is', null)
-          .gte('data', `${desde}T00:00:00`)
-          .lte('data', `${ate}T23:59:59`)
+          .gte('data', `${desde}T00:00:00-03:00`)
+          .lte('data', `${ate}T23:59:59.999-03:00`)
           .range(from, to)
       ),
       ativosPromise,

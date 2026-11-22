@@ -129,8 +129,8 @@ export async function GET(request: Request) {
         .select('criativo, fase, campanha, valor, data')
         .eq('status', 'approved')
         .like('transaction_id', 'manual_%')
-        .gte('data', `${d7}T00:00:00`)
-        .lte('data', `${ontem}T23:59:59`),
+        .gte('data', `${d7}T00:00:00-03:00`)
+        .lte('data', `${ontem}T23:59:59.999-03:00`),
       supabaseAdmin
         .from('vendas')
         .select('created_at')

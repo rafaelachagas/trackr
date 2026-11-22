@@ -244,8 +244,8 @@ export async function GET(request: Request) {
           .in('status', statusReceita)
           .not('transaction_id', 'like', 'manual_%')
           .not('criativo', 'is', null)
-          .gte('data', `${d7}T00:00:00`)
-          .lte('data', `${hoje}T23:59:59`)
+          .gte('data', `${d7}T00:00:00-03:00`)
+          .lte('data', `${hoje}T23:59:59.999-03:00`)
           .range(from, to)
       ),
       buscarAtivos,

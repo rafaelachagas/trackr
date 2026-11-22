@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
         .in('status', STATUS_RECEITA)
         .not('transaction_id', 'like', 'manual_%')
         .eq('criativo', codigo)
-        .gte('data', `${d7}T00:00:00`)
-        .lte('data', `${hoje}T23:59:59`)
+        .gte('data', `${d7}T00:00:00-03:00`)
+        .lte('data', `${hoje}T23:59:59.999-03:00`)
         .order('data', { ascending: false })
         .range(off, off + 999)
       if (error) throw error

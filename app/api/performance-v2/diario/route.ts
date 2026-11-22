@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
         .not('ad_id', 'is', null).eq('criativo', codigo).gte('data', desdeGasto).lte('data', hoje).range(f, t)),
       fetchAll<V>((f, t) => supabaseAdmin.from('vendas').select('sck, valor, valor_liquido, data, criativo')
         .in('status', STATUS_RECEITA).not('transaction_id', 'like', 'manual_%').eq('criativo', codigo)
-        .gte('data', `${inicio}T00:00:00`).lte('data', `${hoje}T23:59:59`).range(f, t)),
+        .gte('data', `${inicio}T00:00:00-03:00`).lte('data', `${hoje}T23:59:59.999-03:00`).range(f, t)),
     ])
 
     // Os dias fora da janela (d7..hoje entra só pra resolver campanha) não somam:
