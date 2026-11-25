@@ -1,15 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, MouseEvent, ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, MouseEvent, PointerEvent, ReactNode } from 'react'
 import {
   Loader2, Upload, Sparkles, Download, EyeOff, X, Check, Play, HelpCircle, Flag,
   ShieldOff, ShieldCheck, Undo2, Redo2, Trash2, Volume2, VolumeX, Music, FileAudio,
-  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film,
+  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, Pause, Maximize, RotateCcw, RotateCw,
 } from 'lucide-react'
 import {
   PalavraBruta, Token, Edicao, paraTokens, emLinhas, emParagrafos, tokenNoTempo, fmtTempo,
   LIMIAR_DUVIDA, lerRedFlags, acharRedFlags, normalizar, SFX_EMBUTIDOS, EDICAO_PADRAO,
-  fmtDb, montarSegmentos, Segmento,
+  fmtDb, montarSegmentos, Segmento, inserirPalavras,
 } from '@/lib/censura'
 import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
 
@@ -94,6 +94,17 @@ export default function CensorPage() {
   const [flagsTexto, setFlagsTexto] = useState('')
   const [padrao, setPadrao] = useState<Edicao>(EDICAO_PADRAO)
   const [rascunho, setRascunho] = useState('')
+  const [novaPalavra, setNovaPalavra] = useState('')
+  const [tocando, setTocando] = useState(false)
+  const [velocidade, setVelocidade] = useState(1)
+  const [volume, setVolume] = useState(1)
+  const [mudo, setMudo] = useState(false)
+  const [hover, setHover] = useState<{ t: number; palavras: string } | null>(null)
+  const playerRef = useRef<HTMLDivElement>(null)
+  const tempoRef = useRef<HTMLSpanElement>(null)
+  const progressoRef = useRef<HTMLDivElement>(null)
+  const arrasto = useRef<{ x: number; tocava: boolean; moveu: boolean } | null>(null)
+  const adicionarRef = useRef<HTMLInputElement>(null)
   const [previa, setPrevia] = useState(true)
   const [sons, setSons] = useState<string[]>([])
 
@@ -240,7 +251,12 @@ export default function CensorPage() {
       if (v) {
         if (pararEm.current != null && v.currentTime >= pararEm.current) { v.pause(); pararEm.current = null }
         if (vivos.length) setAtivo((a) => { const i = tokenNoTempo(vivos, v.currentTime); const id = i < 0 ? -1 : vivos[i].id; return id === a ? a : id })
-        if (cabecaRef.current && v.duration) cabecaRef.current.style.left = `${(v.currentTime / v.duration) * 100}%`
+        if (v.duration) {
+          const pct = `${(v.currentTime / v.duration) * 100}%`
+          if (cabecaRef.current) cabecaRef.current.style.left = pct
+          if (progressoRef.current) progressoRef.current.style.width = pct
+        }
+        if (tempoRef.current) tempoRef.current.textContent = fmtTempo(v.currentTime)
         if (motorRef.current?.video === v) motorRef.current.tick(segsRef.current, previaRef.current, sonsRef.current)
       }
       raf = requestAnimationFrame(tick)
@@ -391,6 +407,70 @@ export default function CensorPage() {
     }
   }
 
+  // ---------- player ----------
+  useEffect(() => { const v = videoRef.current; if (v) { v.volume = volume; v.muted = mudo } }, [volume, mudo, src])
+
+  function alternarPlay() {
+    const v = videoRef.current
+    if (!v) return
+    pararEm.current = null
+    if (v.paused) v.play().catch(() => {}); else v.pause()
+  }
+
+  function pular(seg: number) {
+    const v = videoRef.current
+    if (v) { pararEm.current = null; v.currentTime = Math.min(Math.max(0, v.currentTime + seg), v.duration || 0) }
+  }
+
+  function trocarVelocidade() {
+    const opcoes = [1, 1.25, 1.5, 2, 0.5, 0.75]
+    const prox = opcoes[(opcoes.indexOf(velocidade) + 1) % opcoes.length]
+    setVelocidade(prox)
+    if (videoRef.current) videoRef.current.playbackRate = prox
+  }
+
+  function telaCheia() {
+    const el = playerRef.current
+    if (!el) return
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    else el.requestFullscreen().catch(() => {})
+  }
+
+  function tempoNaBarra(e: { clientX: number; currentTarget: HTMLElement }) {
+    const r = e.currentTarget.getBoundingClientRect()
+    return Math.min(Math.max(0, (e.clientX - r.left) / r.width), 1) * duracao
+  }
+  const segNoTempo = (t: number) => segs.find((sg) => t >= sg.ini && t <= sg.fim)
+
+  // Arrastar: pausa enquanto arrasta (o vídeo acompanha o mouse) e volta a
+  // tocar se estava tocando. Clique sem arrastar num trecho vermelho seleciona.
+  function barraDown(e: PointerEvent<HTMLDivElement>) {
+    if (!duracao) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const v = videoRef.current
+    arrasto.current = { x: e.clientX, tocava: !!v && !v.paused, moveu: false }
+    v?.pause()
+    seek(tempoNaBarra(e))
+  }
+  function barraMove(e: PointerEvent<HTMLDivElement>) {
+    if (!duracao) return
+    const t = tempoNaBarra(e)
+    const sg = segNoTempo(t)
+    setHover({ t, palavras: sg ? sg.ids.map((id) => tokens[id].word).join(' ') : '' })
+    const a = arrasto.current
+    if (!a) return
+    if (Math.abs(e.clientX - a.x) > 3) a.moveu = true
+    if (a.moveu) seek(t)
+  }
+  function barraUp(e: PointerEvent<HTMLDivElement>) {
+    const a = arrasto.current
+    arrasto.current = null
+    if (!a) return
+    const sg = !a.moveu ? segNoTempo(tempoNaBarra(e)) : undefined
+    if (sg) { selecionar(sg.ids, true); return }
+    if (a.tocava) videoRef.current?.play().catch(() => {})
+  }
+
   // ---------- seleção ----------
   function seek(t: number) {
     const v = videoRef.current
@@ -467,6 +547,22 @@ export default function CensorPage() {
     setSel([])
   }
 
+  /** Palavra que o Whisper engoliu. Aceita várias ("muito bom") de uma vez. */
+  function adicionar(ref: number, lado: 'antes' | 'depois', texto: string) {
+    const palavras = texto.trim().split(/\s+/).filter(Boolean)
+    if (!palavras.length || !tokens[ref]) return
+    let novos: number[] = []
+    mudar((t) => {
+      const r = inserirPalavras(t.tokens, ref, lado, palavras)
+      novos = r.novos
+      const ed: Record<number, Edicao> = {}
+      for (const [k, v] of Object.entries(t.edicoes)) ed[r.mapa(Number(k))] = v
+      return { tokens: r.tokens, marcas: t.marcas.map(r.mapa), ignoradas: t.ignoradas.map(r.mapa), edicoes: ed }
+    })
+    setNovaPalavra('')
+    setSel(novos); setAncora(novos[0] ?? null)
+  }
+
   function editarAudio(ids: number[], parcial: Partial<Edicao>, chave: string) {
     mudar((t) => {
       const ed = { ...t.edicoes }
@@ -531,6 +627,8 @@ export default function CensorPage() {
   // seleção. Dentro de um campo de texto, o Ctrl+Z é o do próprio campo.
   const selRef = useRef(sel); useEffect(() => { selRef.current = sel }, [sel])
   const removerRef = useRef(remover); useEffect(() => { removerRef.current = remover })
+  const alternarPlayRef = useRef(alternarPlay); useEffect(() => { alternarPlayRef.current = alternarPlay })
+  const pularRef = useRef(pular); useEffect(() => { pularRef.current = pular })
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const alvo = e.target as HTMLElement
@@ -541,6 +639,9 @@ export default function CensorPage() {
       else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); refazer() }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && selRef.current.length) { e.preventDefault(); removerRef.current(selRef.current) }
       else if (e.key === 'Escape') setSel([])
+      else if (e.key === ' ' || e.key === 'k') { e.preventDefault(); if (alvo?.closest('button')) alvo.blur(); alternarPlayRef.current() }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); pularRef.current(e.shiftKey ? -5 : -2) }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); pularRef.current(e.shiftKey ? 5 : 2) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -647,14 +748,16 @@ export default function CensorPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(300px,400px)_minmax(0,1fr)_340px] gap-3 items-start">
-        {/* ---------- Vídeo ---------- */}
+        {/* ---------- Vídeo (player próprio) ---------- */}
         <div className="lg:sticky lg:top-3 space-y-2">
-          <div className="relative bg-black rounded-2xl overflow-hidden border border-border">
-            <video ref={videoRef} src={src} controls playsInline crossOrigin="anonymous" onPlay={aoTocar}
-              onLoadedMetadata={(e) => setDuracao(e.currentTarget.duration || 0)}
-              className="w-full max-h-[64vh] block mx-auto" />
+          <div ref={playerRef} className="relative bg-black rounded-2xl overflow-hidden border border-border [&:fullscreen]:rounded-none [&:fullscreen]:border-0 [&:fullscreen]:flex [&:fullscreen]:items-center [&:fullscreen_video]:max-h-none [&:fullscreen_video]:h-full">
+            <video ref={videoRef} src={src} playsInline crossOrigin="anonymous"
+              onClick={alternarPlay}
+              onPlay={() => { aoTocar(); setTocando(true) }} onPause={() => setTocando(false)} onEnded={() => setTocando(false)}
+              onLoadedMetadata={(e) => { setDuracao(e.currentTarget.duration || 0); e.currentTarget.playbackRate = velocidade }}
+              className="w-full max-h-[64vh] block mx-auto cursor-pointer" />
             {linhaAtual && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-[17%] flex justify-center px-3">
+              <div className="pointer-events-none absolute inset-x-0 bottom-[14%] flex justify-center px-3">
                 <p className="max-w-[94%] text-center text-[13px] font-bold leading-snug bg-black/75 text-white px-2.5 py-1 rounded-md">
                   {linhaAtual.tokens.map((t) => (
                     <span key={t.id} className={`${t.id === ativo ? 'text-amber-300' : ''} ${censuradas.has(t.id) ? 'blur-[5px]' : ''}`}>{t.word} </span>
@@ -662,23 +765,61 @@ export default function CensorPage() {
                 </p>
               </div>
             )}
+            {!tocando && (
+              <button onClick={alternarPlay} aria-label="Tocar"
+                className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/55 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 hover:scale-105 transition">
+                <Play className="w-7 h-7 ml-1" fill="currentColor" />
+              </button>
+            )}
           </div>
 
-          {/* Linha do tempo: trechos censurados em vermelho. */}
-          {tokens.length > 0 && duracao > 0 && (
-            <div className="bg-card border border-border rounded-2xl p-3 space-y-2.5">
-              <div
-                className="relative h-7 rounded-md bg-white/[0.04] cursor-pointer overflow-hidden"
-                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * duracao) }}>
-                {segs.map((s) => (
-                  <button key={`${s.ini}`} title={s.ids.map((id) => tokens[id].word).join(' ')}
-                    onClick={(e) => { e.stopPropagation(); selecionar(s.ids, true) }}
-                    className="absolute top-1 bottom-1 rounded-sm bg-rose-500/80 hover:bg-rose-400 min-w-[3px]"
-                    style={{ left: `${(s.ini / duracao) * 100}%`, width: `${((s.fim - s.ini) / duracao) * 100}%` }} />
-                ))}
-                <div ref={cabecaRef} className="absolute top-0 bottom-0 w-0.5 bg-primary pointer-events-none" />
+          <div className="bg-card border border-border rounded-2xl p-3 space-y-3">
+            {/* Barra de reprodução: clique ou arraste em qualquer ponto. Os
+                trechos censurados ficam em vermelho; clique sem arrastar num
+                deles seleciona as palavras. */}
+            <div
+              className="relative h-10 rounded-lg bg-white/[0.04] cursor-pointer select-none touch-none group/barra"
+              onPointerDown={barraDown} onPointerMove={barraMove} onPointerUp={barraUp}
+              onPointerLeave={() => { if (!arrasto.current) setHover(null) }}>
+              <div ref={progressoRef} className="absolute inset-y-0 left-0 bg-primary/15 rounded-l-lg pointer-events-none" />
+              {duracao > 0 && segs.map((sg) => (
+                <div key={`${sg.ini}`} className="absolute top-2 bottom-2 rounded-sm bg-rose-500/85 min-w-[3px] pointer-events-none"
+                  style={{ left: `${(sg.ini / duracao) * 100}%`, width: `${((sg.fim - sg.ini) / duracao) * 100}%` }} />
+              ))}
+              <div ref={cabecaRef} className="absolute -top-1 -bottom-1 w-0.5 -ml-px bg-white pointer-events-none">
+                <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white shadow ring-2 ring-primary group-hover/barra:scale-125 transition" />
               </div>
-              <div className="flex items-center justify-between gap-2">
+              {hover && duracao > 0 && (
+                <div className="absolute -top-8 -translate-x-1/2 px-1.5 py-0.5 rounded bg-black/90 text-white text-[10px] font-semibold tabular-nums whitespace-nowrap pointer-events-none max-w-[220px] truncate"
+                  style={{ left: `${(hover.t / duracao) * 100}%` }}>
+                  {fmtTempo(hover.t)}{hover.palavras && <span className="text-rose-300"> · {hover.palavras}</span>}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1">
+              <BotaoIcone titulo="Voltar 2s (←)" onClick={() => pular(-2)}><RotateCcw className="w-4 h-4" /></BotaoIcone>
+              <button onClick={alternarPlay} title={tocando ? 'Pausar (Espaço)' : 'Tocar (Espaço)'}
+                className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center hover:opacity-90 shrink-0">
+                {tocando ? <Pause className="w-4 h-4" fill="currentColor" /> : <Play className="w-4 h-4 ml-0.5" fill="currentColor" />}
+              </button>
+              <BotaoIcone titulo="Avançar 2s (→)" onClick={() => pular(2)}><RotateCw className="w-4 h-4" /></BotaoIcone>
+              <p className="text-xs tabular-nums text-foreground ml-1.5 mr-auto whitespace-nowrap">
+                <span ref={tempoRef}>0:00.0</span><span className="text-muted-foreground"> / {fmtTempo(duracao)}</span>
+              </p>
+              <button onClick={trocarVelocidade} title="Velocidade"
+                className="h-8 min-w-[40px] px-1.5 rounded-lg text-xs font-bold text-foreground/90 hover:bg-white/5 tabular-nums">{velocidade}x</button>
+              <BotaoIcone titulo={mudo ? 'Ligar som' : 'Tirar som'} onClick={() => setMudo((m) => !m)}>
+                {mudo || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </BotaoIcone>
+              <input type="range" min={0} max={1} step={0.05} value={mudo ? 0 : volume} aria-label="Volume"
+                onChange={(e) => { setVolume(Number(e.target.value)); setMudo(false) }}
+                className="w-16 accent-primary hidden sm:block" />
+              <BotaoIcone titulo="Tela cheia" onClick={telaCheia}><Maximize className="w-4 h-4" /></BotaoIcone>
+            </div>
+
+            {tokens.length > 0 && (
+              <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-border">
                 <p className="text-[11px] text-muted-foreground">{segs.length} {segs.length === 1 ? 'trecho censurado' : 'trechos censurados'}</p>
                 <button onClick={() => setPrevia((p) => !p)} className="inline-flex items-center gap-2 text-[11px] font-semibold text-foreground/90">
                   {previa ? 'Ouvindo com edições' : 'Ouvindo o original'}
@@ -687,10 +828,9 @@ export default function CensorPage() {
                   </span>
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-
         {/* ---------- Transcrição ---------- */}
         <div className="bg-card border border-border rounded-2xl flex flex-col lg:h-[calc(100vh-150px)] min-w-0 overflow-hidden">
           {!tokens.length ? (
@@ -767,12 +907,13 @@ export default function CensorPage() {
                     {selTodasCensuradas
                       ? <AcaoBarra onClick={() => marcar(sel, false)}><ShieldOff className="w-3.5 h-3.5" /> Liberar</AcaoBarra>
                       : <AcaoBarra tom="rose" onClick={() => marcar(sel, true)}><ShieldCheck className="w-3.5 h-3.5" /> Censurar</AcaoBarra>}
+                    {sel.length === 1 && <AcaoBarra onClick={() => adicionarRef.current?.focus()} titulo="Inserir uma palavra que o Whisper não pegou"><Plus className="w-3.5 h-3.5" /> Palavra</AcaoBarra>}
                     <AcaoBarra onClick={() => remover(sel)} titulo="Apaga da transcrição (Delete)"><Trash2 className="w-3.5 h-3.5" /> Remover</AcaoBarra>
                     <button onClick={() => setSel([])} title="Limpar seleção (Esc)" className="w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 inline-flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
                   </div>
                 ) : (
                   <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
-                    <Keyboard className="w-3.5 h-3.5" /> Clique numa palavra · <Kbd>Shift</Kbd> trecho · <Kbd>Ctrl</Kbd> soma · <Kbd>Delete</Kbd> remove · <Kbd>Ctrl Z</Kbd> desfaz
+                    <Keyboard className="w-3.5 h-3.5" /> <Kbd>Espaço</Kbd> toca/pausa · Clique numa palavra · <Kbd>Shift</Kbd> trecho · <Kbd>Ctrl</Kbd> soma · <Kbd>Delete</Kbd> remove · <Kbd>Ctrl Z</Kbd> desfaz
                   </p>
                 )}
               </div>
@@ -805,6 +946,20 @@ export default function CensorPage() {
                     className="w-9 h-9 rounded-lg bg-primary text-white disabled:opacity-30 inline-flex items-center justify-center"><Check className="w-4 h-4" /></button>
                 </div>
                 <p className="text-[11px] text-muted-foreground"><Kbd>Enter</Kbd> salva e vai pra próxima dúvida. Palavra a mais? <button onClick={() => remover([unica.id])} className="text-foreground underline underline-offset-2 hover:text-rose-300">Remover</button></p>
+                <div className="pt-3 border-t border-border space-y-1.5">
+                  <p className="text-[11px] font-semibold text-foreground/90">Faltou palavra?</p>
+                  <div className="flex gap-1.5">
+                    <input ref={adicionarRef} value={novaPalavra} onChange={(e) => setNovaPalavra(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') adicionar(unica.id, e.shiftKey ? 'antes' : 'depois', novaPalavra) }}
+                      placeholder="palavra que faltou"
+                      className="flex-1 min-w-0 h-9 px-3 rounded-lg text-sm bg-background border border-border text-foreground focus:border-primary/60 outline-none" />
+                    <button onClick={() => adicionar(unica.id, 'antes', novaPalavra)} disabled={!novaPalavra.trim()} title={`Coloca antes de “${unica.word}” (Shift+Enter)`}
+                      className="h-9 px-2.5 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5 disabled:opacity-30">Antes</button>
+                    <button onClick={() => adicionar(unica.id, 'depois', novaPalavra)} disabled={!novaPalavra.trim()} title="Coloca depois (Enter)"
+                      className="h-9 px-2.5 rounded-lg text-xs font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-30">Depois</button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Entra antes ou depois de “{unica.word}”. Pode digitar mais de uma.</p>
+                </div>
               </div>
             )}
           </Secao>

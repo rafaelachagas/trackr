@@ -185,3 +185,35 @@ export function montarSegmentos(
   }
   return segs
 }
+
+// ---------------- Edição do texto ----------------
+
+/** Insere palavras que o Whisper engoliu, antes ou depois de `ref`. Se há
+ *  silêncio entre as vizinhas, as novas ocupam ele; senão dividem o tempo da
+ *  própria `ref` (o Whisper costuma colar duas palavras numa). Os ids são o
+ *  índice no array, então tudo depois do ponto de inserção anda `n` casas —
+ *  `mapa` traduz id antigo → novo pra marcas/edições acompanharem. */
+export function inserirPalavras(tokens: Token[], ref: number, lado: 'antes' | 'depois', palavras: string[]) {
+  const n = palavras.length
+  const ts = tokens.map((t) => ({ ...t }))
+  const vivoDe = (i: number, passo: number) => { let j = i + passo; while (j >= 0 && j < ts.length && ts[j].removida) j += passo; return j >= 0 && j < ts.length ? ts[j] : null }
+  const r = ts[ref]
+  let ini: number, fim: number
+  if (lado === 'depois') {
+    const prox = vivoDe(ref, 1)
+    ini = r.end_time; fim = prox ? prox.start_time : r.end_time + 0.3 * n
+    if (fim - ini < 0.08) { const meio = (r.start_time + r.end_time) / 2; ini = meio; fim = r.end_time; r.end_time = meio }
+  } else {
+    const ant = vivoDe(ref, -1)
+    fim = r.start_time; ini = ant ? ant.end_time : Math.max(0, r.start_time - 0.3 * n)
+    if (fim - ini < 0.08) { const meio = (r.start_time + r.end_time) / 2; ini = r.start_time; fim = meio; r.start_time = meio }
+  }
+  const pos = lado === 'depois' ? ref + 1 : ref
+  const passo = (fim - ini) / n
+  const novas: Token[] = palavras.map((w, k) => ({
+    id: 0, word: w, start_time: ini + passo * k, end_time: ini + passo * (k + 1), confidence: 1, corrigida: true,
+  }))
+  const final = [...ts.slice(0, pos), ...novas, ...ts.slice(pos)].map((t, id) => ({ ...t, id }))
+  const mapa = (id: number) => (id >= pos ? id + n : id)
+  return { tokens: final, mapa, novos: novas.map((_, k) => pos + k) }
+}
