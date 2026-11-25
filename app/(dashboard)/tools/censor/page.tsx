@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, MouseEvent, ReactNod
 import {
   Loader2, Upload, Sparkles, Download, EyeOff, X, Check, Play, HelpCircle, Flag,
   ShieldOff, ShieldCheck, Undo2, Redo2, Trash2, Volume2, VolumeX, Music, FileAudio,
-  Wand2, RefreshCw, Keyboard,
+  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film,
 } from 'lucide-react'
 import {
   PalavraBruta, Token, Edicao, paraTokens, emLinhas, emParagrafos, tokenNoTempo, fmtTempo,
@@ -18,13 +18,14 @@ import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
 // lista de red flags) → escolhe o que acontece no áudio de cada trecho, com
 // prévia ao vivo. Exportação vem na próxima fase.
 //
-// O vídeo toca do arquivo local (blob). A cópia no Storage só existe pra VPS
-// baixar e é apagada no fim, como na Transcrição rápida.
+// Cada vídeo vira um PROJETO no servidor (lib/censura-projetos.ts): o vídeo
+// sobe uma vez só, a transcrição e todas as mudanças salvam sozinhas, e a tela
+// inicial lista os projetos pra reabrir de qualquer computador — sem subir e
+// transcrever de novo. A URL leva ?p=<id>, então recarregar a página mantém o
+// projeto aberto. O navegador também guarda uma cópia (nome+tamanho do
+// arquivo) como reserva.
 //
-// Todo o trabalho (transcrição, correções, marcas, edições) fica no
-// navegador, na chave nome+tamanho do arquivo: recarregar ou reabrir o mesmo
-// vídeo não refaz a transcrição, que leva minutos. Toda mudança passa por
-// mudar(), que guarda o estado anterior pro Ctrl+Z.
+// Toda mudança passa por mudar(), que guarda o estado anterior pro Ctrl+Z.
 
 const ACEITA = '.mp4,.mov,.webm,.m4v,video/mp4,video/quicktime,video/webm'
 const TETO_MB = 200
@@ -33,6 +34,22 @@ const CHAVE_PADRAO = 'censura:padrao'
 const chaveTrabalho = (f: File) => `censura:trabalho:${f.name}:${f.size}`
 
 interface Trabalho { tokens: Token[]; marcas: number[]; ignoradas: number[]; edicoes: Record<number, Edicao> }
+interface MetaProjeto { id: string; nome: string; tamanho: number; video: string; criado: string; atualizado: string; palavras: number; censuradas: number }
+type EstadoSalvo = 'salvo' | 'salvando' | 'erro' | null
+
+function quando(iso: string): string {
+  const d = new Date(iso), min = Math.round((Date.now() - d.getTime()) / 60000)
+  if (min < 1) return 'agora'
+  if (min < 60) return `há ${min} min`
+  if (min < 60 * 24) return `há ${Math.round(min / 60)} h`
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+}
+
+function urlComProjeto(id: string | null) {
+  const u = new URL(window.location.href)
+  if (id) u.searchParams.set('p', id); else u.searchParams.delete('p')
+  window.history.replaceState(null, '', u.toString())
+}
 const VAZIO: Trabalho = { tokens: [], marcas: [], ignoradas: [], edicoes: {} }
 
 function lerJson<T>(chave: string): T | null {
@@ -44,6 +61,15 @@ function gravar(chave: string, valor: string) {
 
 export default function CensorPage() {
   const [arquivo, setArquivo] = useState<File | null>(null)
+  // Projeto no servidor. `info` existe com ou sem o arquivo local (projeto
+  // reaberto pela lista não tem File, só a URL do vídeo).
+  const [projId, setProjId] = useState<string | null>(null)
+  const [videoPath, setVideoPath] = useState<string | null>(null)
+  const [info, setInfo] = useState<{ nome: string; tamanho: number } | null>(null)
+  const [projetos, setProjetos] = useState<MetaProjeto[] | null>(null)
+  const [abrindo, setAbrindo] = useState<string | null>(null)
+  const [estadoSalvo, setEstadoSalvo] = useState<EstadoSalvo>(null)
+  const ultimoSalvo = useRef('')
   const [src, setSrc] = useState<string | null>(null)
   const [rodando, setRodando] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -121,6 +147,51 @@ export default function CensorPage() {
     if (!arquivo || !trab.tokens.length) return
     gravar(chaveTrabalho(arquivo), JSON.stringify(trab))
   }, [arquivo, trab])
+
+  // Salva no servidor 1s depois da última mudança. Só manda o que mudou
+  // desde o último envio (abrir um projeto não conta como mudança).
+  const nCensuradas = useRef(0)
+  useEffect(() => { nCensuradas.current = censuradas.size }, [censuradas])
+  useEffect(() => {
+    if (!projId || !trab.tokens.length) return
+    const corpo = JSON.stringify(trab)
+    if (corpo === ultimoSalvo.current) return
+    setEstadoSalvo('salvando')
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/censura/projetos/${projId}`, {
+          method: 'PUT', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ trab, resumo: { palavras: trab.tokens.filter((x) => !x.removida).length, censuradas: nCensuradas.current } }),
+        })
+        if (!r.ok) throw new Error()
+        ultimoSalvo.current = corpo; setEstadoSalvo('salvo')
+      } catch { setEstadoSalvo('erro') }
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [projId, trab])
+
+  // Fechar a aba com mudança ainda não salva: o navegador pergunta antes.
+  useEffect(() => {
+    if (estadoSalvo !== 'salvando' && estadoSalvo !== 'erro') return
+    const f = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', f)
+    return () => window.removeEventListener('beforeunload', f)
+  }, [estadoSalvo])
+
+  // Lista de projetos na tela inicial.
+  const carregarLista = useCallback(() => {
+    fetch('/api/censura/projetos', { cache: 'no-store' }).then((r) => r.json())
+      .then((j) => setProjetos(Array.isArray(j?.projetos) ? j.projetos : []))
+      .catch(() => setProjetos([]))
+  }, [])
+  useEffect(() => { if (!src) carregarLista() }, [src, carregarLista])
+
+  // ?p=<id> na URL reabre o projeto (recarregar a página não perde nada).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('p')
+    if (id) abrirProjeto(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ---------- histórico ----------
   /** Aplica uma mudança guardando o estado anterior. Mudanças com a mesma
@@ -200,54 +271,100 @@ export default function CensorPage() {
   const unica = sel.length === 1 ? tokens[sel[0]] : null
   useEffect(() => { setRascunho(unica?.word ?? '') }, [unica?.id, unica?.word])
 
-  // ---------- arquivo / transcrição ----------
+  // ---------- projeto / arquivo / transcrição ----------
+  function limparEditor() {
+    setErro(null); setEnviado(0); setSel([]); setAncora(null); setAtivo(-1); setDuracao(0); setEstadoSalvo(null)
+  }
+
+  async function abrirProjeto(id: string) {
+    if (rodando) return
+    setAbrindo(id); setErro(null)
+    try {
+      const j = await fetch(`/api/censura/projetos/${id}`, { cache: 'no-store' }).then((r) => r.json())
+      if (!j?.videoUrl) throw new Error(j?.error || 'Não consegui abrir o projeto.')
+      const meta = j.meta as MetaProjeto
+      const salvo = (j.trab || {}) as Partial<Trabalho>
+      const novo: Trabalho = { ...VAZIO, ...salvo, edicoes: salvo.edicoes ?? {} }
+      limparEditor()
+      ultimoSalvo.current = JSON.stringify(novo)
+      substituir(novo)
+      setAviso(null); setArquivo(null)
+      setProjId(meta.id); setVideoPath(meta.video); setInfo({ nome: meta.nome, tamanho: meta.tamanho })
+      setSrc(j.videoUrl); urlComProjeto(meta.id)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e)); urlComProjeto(null)
+    } finally { setAbrindo(null) }
+  }
+
+  async function apagarProjeto(m: MetaProjeto) {
+    if (!confirm(`Apagar o projeto "${m.nome}"? O vídeo e todas as marcações somem do servidor.`)) return
+    setProjetos((l) => l?.filter((x) => x.id !== m.id) ?? l)
+    await fetch(`/api/censura/projetos/${m.id}`, { method: 'DELETE' }).catch(() => {})
+    carregarLista()
+  }
+
   function escolher(f: File | null | undefined) {
     if (!f) return
     if (!/\.(mp4|mov|webm|m4v)$/i.test(f.name)) { setErro('Por enquanto: mp4, mov ou webm. MKV/AVI o navegador não toca — converta antes.'); return }
     if (f.size > TETO_MB * 1024 * 1024) { setErro(`${(f.size / 1048576).toFixed(0)}MB é grande demais — o teto aqui é ${TETO_MB}MB.`); return }
     const salvo = lerJson<Partial<Trabalho>>(chaveTrabalho(f))
-    setErro(null); setEnviado(0); setSel([]); setAncora(null); setAtivo(-1); setDuracao(0)
-    substituir({ ...VAZIO, ...salvo, edicoes: salvo?.edicoes ?? {} })
-    setAviso(salvo?.tokens?.length ? 'Trabalho recuperado deste vídeo.' : null)
+    const novo: Trabalho = { ...VAZIO, ...salvo, edicoes: salvo?.edicoes ?? {} }
+    limparEditor()
+    ultimoSalvo.current = ''
+    substituir(novo)
+    setProjId(null); setVideoPath(null); setInfo({ nome: f.name, tamanho: f.size })
     setArquivo(f); setSrc(URL.createObjectURL(f))
+    // Trabalho antigo que só existia neste navegador: vira projeto agora.
+    if (novo.tokens.length) { setAviso('Trabalho recuperado deste vídeo.'); criarProjeto(f).catch(() => setEstadoSalvo('erro')) }
+    else setAviso(null)
   }
 
-  function trocarVideo() {
+  function voltarAosProjetos() {
     if (rodando) return
+    if (estadoSalvo === 'salvando' && !confirm('Ainda salvando a última mudança. Sair mesmo assim?')) return
     videoRef.current?.pause()
-    setSrc(null); setArquivo(null); substituir(VAZIO); setErro(null); setAviso(null); setSel([])
+    setSrc(null); setArquivo(null); setProjId(null); setVideoPath(null); setInfo(null)
+    substituir(VAZIO); setErro(null); setAviso(null); setSel([]); setEstadoSalvo(null)
+    urlComProjeto(null)
   }
 
-  /** Mesmo envio da Transcrição rápida: URL assinada + XHR pra ter progresso. */
-  function subir(f: File): Promise<string> {
-    return new Promise(async (ok, falha) => {
-      const a = await fetch('/api/rastreador/transcrever-arquivo', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ nome: f.name }),
-      }).then((r) => r.json()).catch(() => null)
-      if (!a?.signedUrl) return falha(new Error(a?.error || 'Não consegui preparar o envio.'))
+  /** Cria o projeto no servidor e sobe o vídeo pra ele (URL assinada + XHR
+   *  pra ter progresso). Depois disso o salvamento automático assume. */
+  async function criarProjeto(f: File): Promise<{ id: string; caminho: string }> {
+    const a = await fetch('/api/censura/projetos', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nome: f.name, tamanho: f.size }),
+    }).then((r) => r.json()).catch(() => null)
+    if (!a?.signedUrl) throw new Error(a?.error || 'Não consegui criar o projeto.')
+    await new Promise<void>((ok, falha) => {
       const xhr = new XMLHttpRequest()
       xhr.open('PUT', a.signedUrl, true)
       xhr.setRequestHeader('x-upsert', 'true')
       if (f.type) xhr.setRequestHeader('content-type', f.type)
       xhr.upload.onprogress = (e) => e.lengthComputable && setEnviado(e.loaded / e.total)
-      xhr.onload = () => (xhr.status < 300 ? ok(a.caminho) : falha(new Error(`envio falhou (${xhr.status})`)))
+      xhr.onload = () => (xhr.status < 300 ? ok() : falha(new Error(`envio falhou (${xhr.status})`)))
       xhr.onerror = () => falha(new Error('envio falhou — conexão caiu'))
       xhr.send(f)
     })
+    setEnviado(1)
+    setProjId(a.id); setVideoPath(a.caminho); urlComProjeto(a.id)
+    return { id: a.id, caminho: a.caminho }
   }
 
   async function transcrever() {
-    if (!arquivo || rodando) return
+    if ((!arquivo && !videoPath) || rodando) return
     if (trab.tokens.length && !confirm('Transcrever de novo apaga as correções e marcas deste vídeo. Continuar?')) return
     setRodando(true); setErro(null); setAviso(null); setSel([]); substituir(VAZIO)
-    setSegundos(0); setEnviado(0)
+    setSegundos(0)
     clearInterval(timerRef.current)
     timerRef.current = setInterval(() => setSegundos((s) => s + 1), 1000)
-    let caminho = ''
     try {
-      setStatus('Enviando o vídeo')
-      caminho = await subir(arquivo)
+      // O vídeo sobe uma vez só: projeto já criado reaproveita o que está lá.
+      let caminho = videoPath
+      if (!caminho) {
+        setStatus('Enviando o vídeo'); setEnviado(0)
+        caminho = (await criarProjeto(arquivo!)).caminho
+      }
       setStatus('Mandando pra VPS')
       const ini = await fetch('/api/rastreador/transcrever-arquivo', {
         method: 'PUT', headers: { 'content-type': 'application/json' },
@@ -271,7 +388,6 @@ export default function CensorPage() {
       setErro(e instanceof Error ? e.message : String(e)); setStatus(null)
     } finally {
       setRodando(false); clearInterval(timerRef.current)
-      if (caminho) fetch(`/api/rastreador/transcrever-arquivo?caminho=${encodeURIComponent(caminho)}`, { method: 'DELETE' }).catch(() => {})
     }
   }
 
@@ -403,8 +519,8 @@ export default function CensorPage() {
   }
 
   function baixarJson() {
-    const nome = (arquivo?.name || 'video').replace(/\.[^.]+$/, '')
-    const corpo = { video: arquivo?.name, transcript: vivos, segmentos: segs }
+    const nome = (info?.nome || 'video').replace(/\.[^.]+$/, '')
+    const corpo = { video: info?.nome, transcript: vivos, segmentos: segs }
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([JSON.stringify(corpo, null, 2)], { type: 'application/json' }))
     a.download = `${nome}-censura.json`; a.click()
@@ -462,8 +578,46 @@ export default function CensorPage() {
           <p className="text-sm font-semibold text-foreground">Arraste o vídeo aqui ou clique pra escolher</p>
           <p className="text-xs text-muted-foreground mt-1.5">mp4, mov ou webm · até {TETO_MB}MB</p>
         </button>
-        <p className="text-xs text-muted-foreground text-center">Já trabalhou nesse vídeo antes? Abra o mesmo arquivo e tudo volta como estava.</p>
         {erro && <p className="text-xs text-rose-300 text-center">{erro}</p>}
+
+        {/* Projetos salvos: abrem sem subir nem transcrever de novo. */}
+        <div className="space-y-2.5 pt-2">
+          <div className="flex items-baseline justify-between px-1">
+            <h2 className="text-sm font-bold text-foreground">Seus projetos</h2>
+            {projetos && projetos.length > 0 && <p className="text-[11px] text-muted-foreground">salvam sozinhos a cada mudança</p>}
+          </div>
+          {projetos === null ? (
+            <div className="bg-card border border-border rounded-2xl p-6 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+          ) : projetos.length === 0 ? (
+            <div className="bg-card border border-border rounded-2xl p-6 text-center text-xs text-muted-foreground">
+              Nenhum projeto ainda. Depois de transcrever, o vídeo fica salvo aqui e é só clicar pra continuar de onde parou.
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-2xl divide-y divide-border overflow-hidden">
+              {projetos.map((m) => (
+                <div key={m.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] transition group">
+                  <button onClick={() => abrirProjeto(m.id)} disabled={!!abrindo} className="flex items-center gap-3 min-w-0 flex-1 text-left disabled:opacity-60">
+                    <div className="w-9 h-9 rounded-lg bg-white/[0.05] text-muted-foreground group-hover:text-primary flex items-center justify-center shrink-0">
+                      {abrindo === m.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Film className="w-4 h-4" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate" title={m.nome}>{m.nome}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {m.palavras ? `${m.palavras} palavras` : 'sem transcrição'}
+                        {m.censuradas > 0 && <span className="text-rose-300"> · {m.censuradas} censuradas</span>}
+                        {' · '}{quando(m.atualizado)}
+                      </p>
+                    </div>
+                  </button>
+                  <button onClick={() => apagarProjeto(m)} title="Apagar projeto"
+                    className="w-8 h-8 rounded-lg text-muted-foreground/60 hover:text-rose-300 hover:bg-rose-500/10 flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -476,8 +630,9 @@ export default function CensorPage() {
         <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0"><EyeOff className="w-4 h-4" /></div>
         <div className="min-w-0 mr-auto">
           <p className="text-sm font-bold text-foreground leading-tight">Editor de Censura</p>
-          <p className="text-[11px] text-muted-foreground truncate leading-tight" title={arquivo?.name}>{arquivo?.name} · {((arquivo?.size || 0) / 1048576).toFixed(1)} MB{aviso && <span className="text-emerald-400"> · {aviso}</span>}</p>
+          <p className="text-[11px] text-muted-foreground truncate leading-tight" title={info?.nome}>{info?.nome} · {((info?.tamanho || 0) / 1048576).toFixed(1)} MB{aviso && <span className="text-emerald-400"> · {aviso}</span>}</p>
         </div>
+        <Selo projId={projId} estado={estadoSalvo} enviado={enviado} transcrevendo={rodando} />
         <BotaoIcone titulo="Desfazer (Ctrl+Z)" onClick={desfazer} disabled={!podeDesfazer}><Undo2 className="w-4 h-4" /></BotaoIcone>
         <BotaoIcone titulo="Refazer (Ctrl+Y)" onClick={refazer} disabled={!podeRefazer}><Redo2 className="w-4 h-4" /></BotaoIcone>
         <span className="w-px h-6 bg-border mx-1" />
@@ -485,9 +640,9 @@ export default function CensorPage() {
           <BotaoIcone titulo="Transcrever de novo" onClick={transcrever} disabled={rodando}><RefreshCw className="w-4 h-4" /></BotaoIcone>
         )}
         {tokens.length > 0 && <BotaoIcone titulo="Baixar JSON" onClick={baixarJson}><Download className="w-4 h-4" /></BotaoIcone>}
-        <button onClick={trocarVideo} disabled={rodando}
+        <button onClick={voltarAosProjetos} disabled={rodando}
           className="h-8 px-3 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5 inline-flex items-center gap-1.5 disabled:opacity-40">
-          <X className="w-3.5 h-3.5" /> Trocar vídeo
+          <FolderOpen className="w-3.5 h-3.5" /> Projetos
         </button>
       </div>
 
@@ -495,7 +650,7 @@ export default function CensorPage() {
         {/* ---------- Vídeo ---------- */}
         <div className="lg:sticky lg:top-3 space-y-2">
           <div className="relative bg-black rounded-2xl overflow-hidden border border-border">
-            <video ref={videoRef} src={src} controls playsInline onPlay={aoTocar}
+            <video ref={videoRef} src={src} controls playsInline crossOrigin="anonymous" onPlay={aoTocar}
               onLoadedMetadata={(e) => setDuracao(e.currentTarget.duration || 0)}
               className="w-full max-h-[64vh] block mx-auto" />
             {linhaAtual && (
@@ -757,6 +912,19 @@ export default function CensorPage() {
 }
 
 // ---------- peças de UI ----------
+
+/** Selo de salvamento na barra de ferramentas. */
+function Selo({ projId, estado, enviado, transcrevendo }: { projId: string | null; estado: EstadoSalvo; enviado: number; transcrevendo: boolean }) {
+  const base = 'hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium mr-1'
+  if (!projId) {
+    if (enviado > 0 && enviado < 1) return <span className={`${base} text-muted-foreground`}><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando o vídeo {Math.round(enviado * 100)}%</span>
+    if (transcrevendo) return null
+    return <span className={`${base} text-muted-foreground/70`} title="O projeto é criado quando você transcreve"><CloudOff className="w-3.5 h-3.5" /> Ainda não salvo</span>
+  }
+  if (estado === 'salvando') return <span className={`${base} text-muted-foreground`}><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando</span>
+  if (estado === 'erro') return <span className={`${base} text-rose-300`} title="Tenta de novo na próxima mudança"><CloudOff className="w-3.5 h-3.5" /> Não salvou</span>
+  return <span className={`${base} text-emerald-400/90`}><Cloud className="w-3.5 h-3.5" /> Salvo</span>
+}
 
 function Secao({ titulo, icone, children }: { titulo: string; icone: ReactNode; children: ReactNode }) {
   return (

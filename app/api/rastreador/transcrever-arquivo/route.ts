@@ -59,7 +59,10 @@ export async function PUT(req: NextRequest) {
     // palavras: true pede o tempo de cada palavra (Editor de Censura). Sai sem
     // o corte de silêncio do Whisper, então é um pouco mais lento.
     const { caminho, palavras } = await req.json()
-    if (!String(caminho || '').startsWith(`${RAIZ}/`)) {
+    // censura/<id>/video.* é o vídeo de um projeto do Editor de Censura — fica
+    // guardado (não passa pelo DELETE abaixo, que só aceita transcricao/).
+    const ok = String(caminho || '')
+    if (!ok.startsWith(`${RAIZ}/`) && !/^censura\/[\w-]+\/video\.\w+$/.test(ok)) {
       return NextResponse.json({ error: 'caminho inválido' }, { status: 400 })
     }
     // 2h de validade: a fila da VPS roda um trabalho por vez, e a URL precisa
