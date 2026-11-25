@@ -13,6 +13,9 @@ export interface Token {
   speaker?: string
   /** true quando o usuário corrigiu o texto do Whisper. */
   corrigida?: boolean
+  /** Removida pelo usuário (palavra duplicada/inventada). O tempo dela passa
+   *  pra palavra anterior. Fica no array pra os ids não mudarem. */
+  removida?: boolean
 }
 
 export interface Linha { tokens: Token[]; start: number; end: number }
@@ -39,6 +42,24 @@ export function emLinhas(tokens: Token[], pausa = 0.7, maxPalavras = 9): Linha[]
   }
   fecha()
   return linhas
+}
+
+/** Parágrafos pro painel de leitura: quebra em pausa longa, ou em fim de
+ *  frase depois de um bloco razoável. */
+export function emParagrafos(tokens: Token[]): Linha[] {
+  const ps: Linha[] = []
+  let atual: Token[] = []
+  const fecha = () => {
+    if (atual.length) ps.push({ tokens: atual, start: atual[0].start_time, end: atual[atual.length - 1].end_time })
+    atual = []
+  }
+  for (const t of tokens) {
+    const ant = atual[atual.length - 1]
+    if (ant && (t.start_time - ant.end_time > 1.1 || (atual.length >= 28 && /[.?!…]$/.test(ant.word)) || atual.length >= 60)) fecha()
+    atual.push(t)
+  }
+  fecha()
+  return ps
 }
 
 /** Busca binária: índice do token que está tocando em `t`, ou -1. */
@@ -96,4 +117,71 @@ export function acharRedFlags(tokens: Token[], flags: string[][]): { flag: strin
     }
   }
   return achados
+}
+
+// ---------------- Áudio ----------------
+
+/** Efeitos embutidos são SINTETIZADOS (não são arquivos): tocam em qualquer
+ *  duração e o ffmpeg consegue gerar os mesmos na exportação. Arquivo enviado
+ *  pelo usuário vira `arq:<nome>`. */
+export const SFX_EMBUTIDOS = [
+  { id: 'nenhum', nome: 'Nenhum' },
+  { id: 'bip', nome: 'Bip' },
+  { id: 'bip_grave', nome: 'Bip grave' },
+  { id: 'ruido', nome: 'Chiado' },
+  { id: 'vento', nome: 'Vento' },
+  { id: 'radio', nome: 'Rádio' },
+] as const
+
+export interface Edicao {
+  /** Volume da voz no trecho, de -60 (mudo) a +6 dB. */
+  db: number
+  /** 'nenhum', id embutido, ou 'arq:<nome>'. */
+  sfx: string
+  /** Volume do efeito, dB. */
+  sfxDb: number
+  /** substituir = voz some e só o efeito toca; sobrepor = voz no volume acima + efeito. */
+  modo: 'substituir' | 'sobrepor'
+}
+
+export const EDICAO_PADRAO: Edicao = { db: -60, sfx: 'bip', sfxDb: -8, modo: 'substituir' }
+
+export const dbParaGanho = (db: number) => (db <= -60 ? 0 : Math.pow(10, db / 20))
+
+/** Ganho da voz dentro do trecho editado. */
+export function ganhoVoz(ed: Edicao): number {
+  return ed.sfx !== 'nenhum' && ed.modo === 'substituir' ? 0 : dbParaGanho(ed.db)
+}
+
+export function fmtDb(db: number): string {
+  return db <= -60 ? 'mudo' : `${db > 0 ? '+' : ''}${db} dB`
+}
+
+/** Folga nas pontas: o tempo do Whisper tem ~0,1s de erro, e cortar colado
+ *  na palavra deixa escapar o começo/fim da sílaba. */
+export const FOLGA = 0.03
+/** Palavra que o Whisper devolveu com duração ~0 ganha pelo menos isto. */
+export const DURACAO_MIN = 0.14
+
+export interface Segmento { ids: number[]; ini: number; fim: number; ed: Edicao }
+
+/** Junta palavras censuradas vizinhas com a mesma edição num trecho só —
+ *  senão "renda extra" daria dois bips colados. */
+export function montarSegmentos(
+  tokens: Token[], censuradas: Set<number>, edicoes: Record<number, Edicao>, padrao: Edicao,
+): Segmento[] {
+  const ids = [...censuradas].filter((id) => tokens[id]).sort((a, b) => a - b)
+  const segs: Segmento[] = []
+  for (const id of ids) {
+    const t = tokens[id]
+    const ed = edicoes[id] ?? padrao
+    let ini = t.start_time - FOLGA, fim = t.end_time + FOLGA
+    if (fim - ini < DURACAO_MIN) { const meio = (t.start_time + t.end_time) / 2; ini = meio - DURACAO_MIN / 2; fim = meio + DURACAO_MIN / 2 }
+    ini = Math.max(0, ini)
+    const ult = segs[segs.length - 1]
+    if (ult && ult.ids[ult.ids.length - 1] === id - 1 && ini - ult.fim < 0.25 && JSON.stringify(ult.ed) === JSON.stringify(ed)) {
+      ult.ids.push(id); ult.fim = Math.max(ult.fim, fim)
+    } else segs.push({ ids: [id], ini, fim, ed })
+  }
+  return segs
 }
