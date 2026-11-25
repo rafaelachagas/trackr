@@ -9,7 +9,7 @@ import { BUCKET_CRIATIVOS, AUDIO_OK, VIDEO_OK, nomeSeguro } from '@/lib/criativo
 // nenhum código novo na VPS.
 //
 // POST   {nome}      → assina o envio direto do navegador
-// PUT    {caminho}   → inicia o job na VPS, devolve {job_id}
+// PUT    {caminho, palavras?} → inicia o job na VPS, devolve {job_id}
 // DELETE ?caminho=   → apaga o arquivo (o front chama quando o job termina)
 //
 // O status é consultado pelo GET de /api/rastreador/transcrever-async.
@@ -56,7 +56,9 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const { caminho } = await req.json()
+    // palavras: true pede o tempo de cada palavra (Editor de Censura). Sai sem
+    // o corte de silêncio do Whisper, então é um pouco mais lento.
+    const { caminho, palavras } = await req.json()
     if (!String(caminho || '').startsWith(`${RAIZ}/`)) {
       return NextResponse.json({ error: 'caminho inválido' }, { status: 400 })
     }
@@ -66,7 +68,7 @@ export async function PUT(req: NextRequest) {
       .from(BUCKET_CRIATIVOS).createSignedUrl(caminho, 7200)
     if (error || !data?.signedUrl) throw new Error(error?.message || 'falha ao assinar a leitura')
 
-    const alvo = `${TRANSCRITOR_URL}/transcribe_async?video_url=${encodeURIComponent(data.signedUrl)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}`
+    const alvo = `${TRANSCRITOR_URL}/transcribe_async?video_url=${encodeURIComponent(data.signedUrl)}&key=${encodeURIComponent(TRANSCRITOR_APIKEY)}${palavras ? '&words=1' : ''}`
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 30000)
     const r = await fetch(alvo, { signal: ctrl.signal, cache: 'no-store' }).finally(() => clearTimeout(t))

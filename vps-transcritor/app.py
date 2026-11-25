@@ -210,7 +210,25 @@ JOBS = {}
 JOBS_LOCK = threading.Lock()
 
 
-def _rodar_job(job_id: str, video_url: str, cookies: str = None):
+def _palavras_da_transcricao(segments):
+    """Lista {w, s, e, p} — palavra, início, fim (segundos) e confiança.
+
+    É o que o Editor de Censura precisa pra mexer só no trecho de cada
+    palavra. O texto corrido sai junto, montado dos mesmos segmentos."""
+    palavras, partes = [], []
+    for seg in segments:
+        partes.append(seg.text.strip())
+        for w in (seg.words or []):
+            txt = (w.word or "").strip()
+            if not txt:
+                continue
+            palavras.append({"w": txt, "s": round(float(w.start), 3),
+                             "e": round(float(w.end), 3),
+                             "p": round(float(w.probability or 0), 3)})
+    return " ".join(partes).strip(), palavras
+
+
+def _rodar_job(job_id: str, video_url: str, cookies: str = None, com_palavras: bool = False):
     with JOBS_LOCK:
         JOBS[job_id]["status"] = "fila"
     if not TRANSCRIBE_LOCK.acquire(timeout=7200):
@@ -222,10 +240,21 @@ def _rodar_job(job_id: str, video_url: str, cookies: str = None):
         with JOBS_LOCK:
             JOBS[job_id]["status"] = "rodando"
         path = baixar(video_url, cookies)
-        segments, info = model.transcribe(path, language="pt", vad_filter=True)
-        texto = " ".join(s.text.strip() for s in segments).strip()
+        if com_palavras:
+            # SEM vad_filter, pelo mesmo motivo do _momentos_dinheiro: com ele
+            # a palavra sai adiantada em vídeo com pausas, e aqui o instante
+            # exato é o produto inteiro.
+            segments, info = model.transcribe(path, language="pt", vad_filter=False,
+                                              word_timestamps=True)
+            texto, palavras = _palavras_da_transcricao(segments)
+            extra = {"palavras": palavras}
+        else:
+            segments, info = model.transcribe(path, language="pt", vad_filter=True)
+            texto = " ".join(s.text.strip() for s in segments).strip()
+            extra = {}
         with JOBS_LOCK:
-            JOBS[job_id].update(status="ok", texto=texto, idioma=info.language, duracao=round(info.duration, 1))
+            JOBS[job_id].update(status="ok", texto=texto, idioma=info.language,
+                                duracao=round(info.duration, 1), **extra)
     except Exception as e:
         with JOBS_LOCK:
             JOBS[job_id].update(status="erro", erro=f"falha ao transcrever: {e}")
@@ -250,9 +279,11 @@ def transcribe_async():
         return jsonify(error="nao autorizado"), 401
     video_url = request.args.get("video_url")
     ig_cookie = request.args.get("ig_cookie")
+    com_palavras = request.args.get("words") == "1"
     if request.is_json:
         video_url = video_url or (request.json or {}).get("video_url")
         ig_cookie = ig_cookie or (request.json or {}).get("ig_cookie")
+        com_palavras = com_palavras or bool((request.json or {}).get("words"))
     if not video_url:
         return jsonify(error="video_url ausente"), 400
     _limpar_jobs_velhos()
@@ -260,7 +291,7 @@ def transcribe_async():
     job_id = uuid.uuid4().hex
     with JOBS_LOCK:
         JOBS[job_id] = {"status": "fila", "criado": time.time()}
-    threading.Thread(target=_rodar_job, args=(job_id, video_url, cookies), daemon=True).start()
+    threading.Thread(target=_rodar_job, args=(job_id, video_url, cookies, com_palavras), daemon=True).start()
     return jsonify(ok=True, job_id=job_id)
 
 
