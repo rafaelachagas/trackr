@@ -11,6 +11,8 @@ export interface Token {
   end_time: number
   confidence: number
   speaker?: string
+  /** true quando o usuário corrigiu o texto do Whisper. */
+  corrigida?: boolean
 }
 
 export interface Linha { tokens: Token[]; start: number; end: number }
@@ -61,4 +63,37 @@ export function fmtTempo(seg: number): string {
   const s = Math.max(0, seg)
   const m = Math.floor(s / 60)
   return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`
+}
+
+/** Abaixo disso o Whisper ficou em dúvida — vale o olho humano. */
+export const LIMIAR_DUVIDA = 0.5
+
+/** Lista de red flags: uma por linha (ou vírgula). "ganh*" casa por prefixo;
+ *  "renda extra" casa a sequência de palavras. Sempre sem acento/maiúscula. */
+export function lerRedFlags(texto: string): string[][] {
+  return texto.split(/[\n,;]/).map((l) => l.trim().split(/\s+/).map((p) => {
+    const estrela = p.endsWith('*')
+    const n = normalizar(estrela ? p.slice(0, -1) : p)
+    return n ? n + (estrela ? '*' : '') : ''
+  }).filter(Boolean)).filter((f) => f.length)
+}
+
+function casa(padrao: string, palavra: string): boolean {
+  return padrao.endsWith('*') ? palavra.startsWith(padrao.slice(0, -1)) : padrao === palavra
+}
+
+/** Ocorrências da lista nos tokens: cada uma vira {flag, ids}. */
+export function acharRedFlags(tokens: Token[], flags: string[][]): { flag: string; ids: number[] }[] {
+  const norm = tokens.map((t) => normalizar(t.word))
+  const achados: { flag: string; ids: number[] }[] = []
+  for (let i = 0; i < tokens.length; i++) {
+    for (const f of flags) {
+      if (i + f.length > tokens.length) continue
+      if (f.every((p, k) => casa(p, norm[i + k]))) {
+        achados.push({ flag: f.join(' '), ids: f.map((_, k) => tokens[i + k].id) })
+        break
+      }
+    }
+  }
+  return achados
 }
