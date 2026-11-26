@@ -96,6 +96,8 @@ export default function CensorPage() {
   const [, setVersaoHist] = useState(0)
 
   const [sel, setSel] = useState<number[]>([])
+  /** Menu do botão direito numa palavra. */
+  const [menu, setMenu] = useState<{ x: number; y: number; ids: number[] } | null>(null)
   const [ancora, setAncora] = useState<number | null>(null)
   const [flagsTexto, setFlagsTexto] = useState('')
   const [desligadas, setDesligadas] = useState<string[]>([])
@@ -598,6 +600,42 @@ export default function CensorPage() {
     setSel(novos); setAncora(novos[0] ?? null)
   }
 
+  /** Botão direito → "Marcar como risco". Alto/muito alto já censura. */
+  function marcarRisco(ids: number[], g: Gravidade) {
+    if (!ids.length) return
+    const alvo = new Set(ids)
+    mudar((t) => ({
+      ...t,
+      ignoradas: censuraSozinho(g) ? t.ignoradas.filter((id) => !alvo.has(id)) : t.ignoradas,
+      riscos: [
+        ...(t.riscos || []).filter((r) => !(r.fonte === 'manual' && r.ids.some((id) => alvo.has(id)))),
+        { ids: [...ids].sort((a, b) => a - b), gravidade: g, categoria: 'Marcado por você', politica: '—', motivo: 'Você marcou como risco.', fonte: 'manual' as const },
+      ],
+    }))
+  }
+
+  /** "Não é risco": tira o que a IA/você marcou e libera o resto. */
+  function tirarRisco(ids: number[]) {
+    const alvo = new Set(ids)
+    mudar((t) => {
+      const g = new Set(t.ignoradas)
+      ids.forEach((id) => { if (idsFlag.has(id)) g.add(id) })
+      return {
+        ...t,
+        marcas: t.marcas.filter((id) => !alvo.has(id)),
+        ignoradas: [...g],
+        riscos: (t.riscos || []).filter((r) => !((r.fonte === 'manual' || r.fonte === 'ia') && r.ids.some((id) => alvo.has(id)))),
+      }
+    })
+  }
+
+  function abrirMenu(t: Token, e: MouseEvent) {
+    e.preventDefault()
+    const ids = selSet.has(t.id) ? sel : [t.id]
+    if (!selSet.has(t.id)) { setSel([t.id]); setAncora(t.id) }
+    setMenu({ x: e.clientX, y: e.clientY, ids })
+  }
+
   /** IA lê a transcrição com a política da Meta. Entra no Ctrl+Z e no projeto. */
   async function analisarRiscos() {
     if (analisando || !vivos.length) return
@@ -608,7 +646,7 @@ export default function CensorPage() {
         body: JSON.stringify({ palavras: vivos.map((t) => ({ id: t.id, w: t.word })), motivos }),
       }).then((r) => r.json()).catch(() => null)
       if (!Array.isArray(j?.riscos)) throw new Error(j?.error || 'A análise falhou — tente de novo.')
-      mudar((t) => ({ ...t, riscos: j.riscos as Risco[], analisadoEm: new Date().toISOString() }))
+      mudar((t) => ({ ...t, riscos: [...(t.riscos || []).filter((r) => r.fonte === 'manual'), ...(j.riscos as Risco[])], analisadoEm: new Date().toISOString() }))
     } catch (e) {
       setErroIA(e instanceof Error ? e.message : String(e))
     } finally { setAnalisando(false) }
@@ -947,7 +985,7 @@ export default function CensorPage() {
                         const rk = riscoDe.get(t.id)
                         const alerta = rk && !idsFlag.has(t.id) && !cens && !s
                         return (
-                          <span key={t.id} data-t={t.id} onClick={(e) => clicarPalavra(t, e)}
+                          <span key={t.id} data-t={t.id} onClick={(e) => clicarPalavra(t, e)} onContextMenu={(e) => abrirMenu(t, e)}
                             title={`${fmtTempo(t.start_time)} · confiança ${Math.round(t.confidence * 100)}%${t.corrigida ? ' · corrigida' : ''}${rk ? ` · risco ${NOME_GRAVIDADE[rk.gravidade].toLowerCase()}: ${rk.categoria}` : ''}`}
                             className={`cursor-pointer rounded-[5px] px-[3px] py-[2px] transition-colors ${
                               s ? 'bg-primary text-white'
@@ -984,7 +1022,7 @@ export default function CensorPage() {
                   </div>
                 ) : (
                   <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
-                    <Keyboard className="w-3.5 h-3.5" /> <Kbd>Espaço</Kbd> toca/pausa · Clique numa palavra · <Kbd>Shift</Kbd> trecho · <Kbd>Ctrl</Kbd> soma · <Kbd>Delete</Kbd> remove · <Kbd>Ctrl Z</Kbd> desfaz
+                    <Keyboard className="w-3.5 h-3.5" /> <Kbd>Espaço</Kbd> toca/pausa · Clique numa palavra · <Kbd>Shift</Kbd> trecho · <Kbd>Ctrl</Kbd> soma · <Kbd>Delete</Kbd> remove · botão direito: opções · <Kbd>Ctrl Z</Kbd> desfaz
                   </p>
                 )}
               </div>
@@ -1117,7 +1155,7 @@ export default function CensorPage() {
                 {analisando ? <><Loader2 className="w-4 h-4 animate-spin" /> Lendo com a política da Meta…</> : <><Sparkles className="w-4 h-4" /> {trab.analisadoEm ? 'Analisar de novo com IA' : 'Analisar riscos com IA'}</>}
               </button>
               {trab.analisadoEm && !analisando && (
-                <p className="text-[11px] text-muted-foreground -mt-1.5">IA achou {(trab.riscos || []).length} {(trab.riscos || []).length === 1 ? 'trecho' : 'trechos'} · {quando(trab.analisadoEm)}</p>
+                <p className="text-[11px] text-muted-foreground -mt-1.5">IA achou {(trab.riscos || []).filter((r) => r.fonte === 'ia').length} {(trab.riscos || []).filter((r) => r.fonte === 'ia').length === 1 ? 'trecho' : 'trechos'} · {quando(trab.analisadoEm)}</p>
               )}
               {erroIA && <p className="text-[11px] text-rose-300">{erroIA}</p>}
 
@@ -1152,7 +1190,7 @@ export default function CensorPage() {
                               <span className="min-w-0">
                                 <span className={`text-xs font-semibold ${liberada ? 'line-through text-muted-foreground' : cens ? 'text-rose-200' : 'text-foreground'}`}>“{r.ids.map((id) => tokens[id].word).join(' ')}”</span>
                                 <span className="block text-[10px] text-muted-foreground truncate">
-                                  {r.categoria}{r.fonte === 'ia' ? ' · IA' : ''}{r.bipResolve === false ? ' · regravar' : ''}
+                                  {r.categoria}{r.fonte === 'ia' ? ' · IA' : r.fonte === 'manual' ? ' · você' : ''}{r.bipResolve === false ? ' · regravar' : ''}
                                 </span>
                               </span>
                             </button>
@@ -1203,7 +1241,84 @@ export default function CensorPage() {
           </Secao>
         </div>
       </div>
+
+      {menu && (() => {
+        const ids = menu.ids.filter((id) => tokens[id] && !tokens[id].removida)
+        if (!ids.length) return null
+        const todasCens = ids.every((id) => censuradas.has(id))
+        const temRisco = ids.some((id) => riscoDe.has(id) || marcas.has(id))
+        const uma = ids.length === 1 ? tokens[ids[0]] : null
+        const fechar = () => setMenu(null)
+        return (
+          <MenuPalavra x={menu.x} y={menu.y} onFechar={fechar}
+            titulo={`“${ids.slice(0, 8).map((id) => tokens[id].word).join(' ')}${ids.length > 8 ? '…' : ''}”`}>
+            {todasCens
+              ? <ItemMenu onClick={() => { marcar(ids, false); fechar() }}><ShieldOff className="w-3.5 h-3.5" /> Liberar</ItemMenu>
+              : <ItemMenu tom="rose" onClick={() => { marcar(ids, true); fechar() }}><ShieldCheck className="w-3.5 h-3.5" /> Censurar</ItemMenu>}
+            <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Marcar como risco</div>
+            <div className="px-2 pb-1.5 grid grid-cols-2 gap-1">
+              {GRAVIDADES.map((g) => (
+                <button key={g} onClick={() => { marcarRisco(ids, g); fechar() }}
+                  className={`h-7 rounded border text-[10px] font-bold uppercase tracking-wide hover:brightness-125 ${COR_GRAVIDADE[g]}`}>
+                  {NOME_GRAVIDADE[g]}
+                </button>
+              ))}
+            </div>
+            {temRisco && <ItemMenu onClick={() => { tirarRisco(ids); fechar() }}><X className="w-3.5 h-3.5" /> Não é risco</ItemMenu>}
+            {uma && normalizar(uma.word) && (
+              <ItemMenu onClick={() => { paraMinhaLista(uma.word); fechar() }}><Flag className="w-3.5 h-3.5" /> Sempre censurar “{normalizar(uma.word)}”</ItemMenu>
+            )}
+            <div className="my-1 border-t border-border" />
+            <ItemMenu onClick={() => { ouvir(ids); fechar() }}><Play className="w-3.5 h-3.5" /> Ouvir</ItemMenu>
+            {uma && <ItemMenu onClick={() => { fechar(); setTimeout(() => adicionarRef.current?.focus(), 0) }}><Plus className="w-3.5 h-3.5" /> Inserir palavra que faltou</ItemMenu>}
+            <ItemMenu onClick={() => { remover(ids); fechar() }}><Trash2 className="w-3.5 h-3.5" /> Remover da transcrição</ItemMenu>
+          </MenuPalavra>
+        )
+      })()}
     </div>
+  )
+}
+
+/** Menu flutuante do botão direito. Fecha clicando fora, Esc ou rolando. */
+function MenuPalavra({ x, y, titulo, onFechar, children }: { x: number; y: number; titulo: string; onFechar: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ left: x, top: y })
+  useEffect(() => {
+    const el = ref.current
+    if (el) {
+      const r = el.getBoundingClientRect()
+      setPos({ left: Math.max(8, Math.min(x, window.innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) })
+    }
+    const fora = (e: Event) => { if (!ref.current?.contains(e.target as Node)) onFechar() }
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar() }
+    document.addEventListener('mousedown', fora)
+    document.addEventListener('contextmenu', fora)
+    window.addEventListener('keydown', tecla)
+    window.addEventListener('scroll', onFechar, true)
+    window.addEventListener('resize', onFechar)
+    return () => {
+      document.removeEventListener('mousedown', fora)
+      document.removeEventListener('contextmenu', fora)
+      window.removeEventListener('keydown', tecla)
+      window.removeEventListener('scroll', onFechar, true)
+      window.removeEventListener('resize', onFechar)
+    }
+  }, [x, y, onFechar])
+  return (
+    <div ref={ref} style={pos} onContextMenu={(e) => e.preventDefault()}
+      className="fixed z-50 w-60 rounded-lg border border-border bg-card shadow-2xl shadow-black/50 py-1">
+      <p className="px-2.5 py-1.5 text-[11px] text-muted-foreground truncate border-b border-border mb-1">{titulo}</p>
+      {children}
+    </div>
+  )
+}
+
+function ItemMenu({ onClick, tom, children }: { onClick: () => void; tom?: 'rose'; children: ReactNode }) {
+  return (
+    <button onClick={onClick}
+      className={`w-full px-2.5 h-8 text-left text-xs inline-flex items-center gap-2 hover:bg-white/[0.06] ${tom === 'rose' ? 'text-rose-200' : 'text-foreground/90'}`}>
+      {children}
+    </button>
   )
 }
 
@@ -1240,7 +1355,7 @@ function CartaoRisco({ r, tokens }: { r: Risco; tokens: Token[] }) {
       <div className="flex items-center gap-2 flex-wrap">
         <SeloGravidade g={r.gravidade} />
         <p className="text-xs font-bold text-foreground">{r.categoria}</p>
-        <span className="ml-auto text-[10px] text-muted-foreground">{r.fonte === 'ia' ? 'IA' : r.fonte === 'lista' ? 'sua lista' : 'biblioteca'}</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">{r.fonte === 'ia' ? 'IA' : r.fonte === 'lista' ? 'sua lista' : r.fonte === 'manual' ? 'você marcou' : 'biblioteca'}</span>
       </div>
       <p className="text-[11px] text-foreground/90">“{r.ids.map((id) => tokens[id]?.word).join(' ')}” — {r.motivo}</p>
       {r.politica && r.politica !== '—' && <p className="text-[10px] text-muted-foreground">Política: {r.politica}</p>}

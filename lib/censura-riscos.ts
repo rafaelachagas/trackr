@@ -28,7 +28,7 @@ export interface Risco {
   troca?: string
   /** false = mesmo com o bip, a frase continua passando a ideia proibida. */
   bipResolve?: boolean
-  fonte: 'biblioteca' | 'lista' | 'ia'
+  fonte: 'biblioteca' | 'lista' | 'ia' | 'manual'
 }
 
 export interface Categoria {
