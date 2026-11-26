@@ -601,16 +601,18 @@ export default function CensorPage() {
   }
 
   /** Botão direito → "Marcar como risco". Alto/muito alto já censura. */
-  function marcarRisco(ids: number[], g: Gravidade) {
+  function marcarRisco(ids: number[], g: Gravidade, contexto = false) {
     if (!ids.length) return
     const alvo = new Set(ids)
+    // Contexto = as palavras sozinhas não são risco, juntas são ("começar
+    // hoje"). Bipar não tira o sentido: fica destacado pra regravar.
+    const novo: Risco = contexto
+      ? { ids: [...ids].sort((a, b) => a - b), gravidade: g, categoria: 'Contexto marcado por você', politica: '—', motivo: 'Juntas, essas palavras passam a ideia proibida.', troca: 'Regrave ou reescreva o trecho tirando a promessa (prazo, facilidade, ganho).', bipResolve: false, fonte: 'manual' }
+      : { ids: [...ids].sort((a, b) => a - b), gravidade: g, categoria: 'Marcado por você', politica: '—', motivo: 'Você marcou como risco.', fonte: 'manual' }
     mudar((t) => ({
       ...t,
-      ignoradas: censuraSozinho(g) ? t.ignoradas.filter((id) => !alvo.has(id)) : t.ignoradas,
-      riscos: [
-        ...(t.riscos || []).filter((r) => !(r.fonte === 'manual' && r.ids.some((id) => alvo.has(id)))),
-        { ids: [...ids].sort((a, b) => a - b), gravidade: g, categoria: 'Marcado por você', politica: '—', motivo: 'Você marcou como risco.', fonte: 'manual' as const },
-      ],
+      ignoradas: censuraSozinho(g) && !contexto ? t.ignoradas.filter((id) => !alvo.has(id)) : t.ignoradas,
+      riscos: [...(t.riscos || []).filter((r) => !(r.fonte === 'manual' && r.ids.some((id) => alvo.has(id)))), novo],
     }))
   }
 
@@ -1248,6 +1250,8 @@ export default function CensorPage() {
         const todasCens = ids.every((id) => censuradas.has(id))
         const temRisco = ids.some((id) => riscoDe.has(id) || marcas.has(id))
         const uma = ids.length === 1 ? tokens[ids[0]] : null
+        // Até 6 palavras vira frase da lista ("comecar hoje").
+        const frase = ids.length <= 6 ? normalizar(ids.map((id) => tokens[id].word).join(' ')) : ''
         const fechar = () => setMenu(null)
         return (
           <MenuPalavra x={menu.x} y={menu.y} onFechar={fechar}
@@ -1265,8 +1269,13 @@ export default function CensorPage() {
               ))}
             </div>
             {temRisco && <ItemMenu onClick={() => { tirarRisco(ids); fechar() }}><X className="w-3.5 h-3.5" /> Não é risco</ItemMenu>}
-            {uma && normalizar(uma.word) && (
-              <ItemMenu onClick={() => { paraMinhaLista(uma.word); fechar() }}><Flag className="w-3.5 h-3.5" /> Sempre censurar “{normalizar(uma.word)}”</ItemMenu>
+            <ItemMenu onClick={() => { marcarRisco(ids, 'alto', true); fechar() }}>
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-300" />
+              <span>Contexto de risco <span className="text-muted-foreground">· regravar</span></span>
+            </ItemMenu>
+            {ids.length > 1 && <p className="px-2.5 pb-1 text-[10px] text-muted-foreground leading-snug">Juntas viram promessa (“começar hoje”): destaca o trecho pra regravar, sem bipar.</p>}
+            {frase && (
+              <ItemMenu onClick={() => { paraMinhaLista(frase); fechar() }}><Flag className="w-3.5 h-3.5" /> <span className="truncate">Sempre censurar “{frase}”</span></ItemMenu>
             )}
             <div className="my-1 border-t border-border" />
             <ItemMenu onClick={() => { ouvir(ids); fechar() }}><Play className="w-3.5 h-3.5" /> Ouvir</ItemMenu>
