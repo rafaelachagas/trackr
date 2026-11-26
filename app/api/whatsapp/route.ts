@@ -18,6 +18,7 @@ import {
 } from '@/lib/whatsapp-saude'
 import { ligarNoGrupo, desligarNoGrupo, grupoLigado, enviarTexto } from '@/lib/whatsapp-grupos'
 import { tratarSubirAnuncio } from '@/lib/whatsapp-subir-anuncio'
+import { tratarComandoWhatsApp } from '@/lib/censura-revisor'
 
 // Funções de grupo ligadas por comando (fora do /relatorio configurável).
 const COMANDOS_GRUPO = [CMD_START, CMD_STOP, CMD_RESUMO_START, CMD_RESUMO_STOP, CMD_RESUMO_AGORA]
@@ -450,6 +451,18 @@ export async function POST(request: NextRequest) {
         after(() => responderSaudeAgora())
       }
       return NextResponse.json({ ok: true, comando: texto })
+    }
+
+    // —— Revisor do Editor de Censura: "aprovar 1 3", "recusar tudo" (só o dono) ——
+    if (isDM && EVOLUTION_APIKEY && mesmoNumero(DONO_SAUDE, remoteJid) && /^(aprova|recusa)/.test(texto)) {
+      try {
+        const resp = await tratarComandoWhatsApp(texto)
+        if (resp) { await enviarTexto(DONO_SAUDE, resp); return NextResponse.json({ ok: true, fluxo: 'censura-revisor' }) }
+      } catch (e) {
+        console.error('[whatsapp/censura-revisor]', e)
+        await enviarTexto(DONO_SAUDE, `❌ Erro ao aplicar a proposta: ${e instanceof Error ? e.message : e}`).catch(() => {})
+        return NextResponse.json({ ok: false, fluxo: 'censura-revisor' })
+      }
     }
 
     // —— Subir anúncio pela conversa (só no privado do dono; monta PAUSADO) ——

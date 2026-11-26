@@ -202,6 +202,23 @@ so hoje
 corre`,
   },
   {
+    id: 'literal', nome: 'Leitura literal da Meta', politica: 'Exploração humana / nudez / segurança infantil', gravidade: 'alto',
+    motivo: 'O robô da Meta lê a transcrição sem contexto: "menina" vira menor de idade, "banheiro" vira nudez, "testando em você" vira cobaia/exploração.',
+    termos: `menina
+meninas
+menininha
+novinha
+novinhas
+banheiro
+no banheiro
+pelada
+sem roupa
+testando
+testar em voce
+cobaia
+cobaias`,
+  },
+  {
     id: 'plataformas', nome: 'Outras plataformas', politica: 'Propriedade intelectual', gravidade: 'baixo',
     motivo: 'Nome de plataforma/rede. Baixo, mas some com marca de terceiro.',
     termos: `tiktok
@@ -241,17 +258,35 @@ function acharValores(tokens: Token[]): number[][] {
   return out
 }
 
+/** O que o revisor (e você) aprovou por cima da biblioteca fixa. Fica em
+ *  configuracoes 'censura_biblioteca_extra'. */
+export interface BibliotecaExtra {
+  termos?: Record<string, string[]>
+  removidos?: Record<string, string[]>
+  gravidade?: Record<string, Gravidade>
+}
+
+export function aplicarExtra(extra?: BibliotecaExtra | null): Categoria[] {
+  if (!extra) return BIBLIOTECA
+  return BIBLIOTECA.map((c) => {
+    const fora = new Set((extra.removidos?.[c.id] || []).map((t) => normalizar(t)))
+    const linhas = c.termos.split('\n').map((l) => l.trim()).filter((l) => l && !fora.has(normalizar(l)))
+    for (const t of extra.termos?.[c.id] || []) if (!linhas.includes(t) && !fora.has(normalizar(t))) linhas.push(t)
+    return { ...c, termos: linhas.join('\n'), gravidade: extra.gravidade?.[c.id] || c.gravidade }
+  })
+}
+
 /** Riscos que a biblioteca e a lista do usuário acham nos tokens vivos. */
-export function riscosLocais(vivos: Token[], ligadas: Set<string>, listaUsuario: string): Risco[] {
+export function riscosLocais(vivos: Token[], ligadas: Set<string>, listaUsuario: string, biblioteca: Categoria[] = BIBLIOTECA): Risco[] {
   const out: Risco[] = []
-  for (const c of BIBLIOTECA) {
+  for (const c of biblioteca) {
     if (!ligadas.has(c.id)) continue
     for (const o of acharRedFlags(vivos, lerRedFlags(c.termos))) {
       out.push({ ids: o.ids, gravidade: c.gravidade, categoria: c.nome, politica: c.politica, motivo: c.motivo, fonte: 'biblioteca', bipResolve: c.regravar ? false : undefined })
     }
   }
   if (ligadas.has('valores')) {
-    const v = BIBLIOTECA.find((c) => c.id === 'valores')!
+    const v = biblioteca.find((c) => c.id === 'valores')!
     for (const ids of acharValores(vivos)) out.push({ ids, gravidade: v.gravidade, categoria: v.nome, politica: v.politica, motivo: v.motivo, fonte: 'biblioteca' })
   }
   for (const o of acharRedFlags(vivos, lerRedFlags(listaUsuario))) {

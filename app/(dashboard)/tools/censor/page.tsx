@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, MouseEvent, PointerE
 import {
   Loader2, Upload, Sparkles, Download, EyeOff, X, Check, Play, HelpCircle, Flag,
   ShieldOff, ShieldCheck, Undo2, Redo2, Trash2, Volume2, VolumeX, Music, FileAudio,
-  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, Pause, Maximize, RotateCcw, RotateCw,
+  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, MessageSquarePlus, Pause, Maximize, RotateCcw, RotateCw,
 } from 'lucide-react'
 import {
   PalavraBruta, Token, Edicao, paraTokens, emLinhas, emParagrafos, tokenNoTempo, fmtTempo,
@@ -13,7 +13,7 @@ import {
 } from '@/lib/censura'
 import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
 import {
-  Risco, Gravidade, GRAVIDADES, NOME_GRAVIDADE, BIBLIOTECA, censuraSozinho, autoCensura, riscosLocais, riscoPorPalavra,
+  Risco, Gravidade, GRAVIDADES, NOME_GRAVIDADE, BibliotecaExtra, aplicarExtra, censuraSozinho, autoCensura, riscosLocais, riscoPorPalavra,
 } from '@/lib/censura-riscos'
 
 // Editor de Censura. Fluxo: sobe o vídeo → transcreve palavra por palavra →
@@ -97,7 +97,9 @@ export default function CensorPage() {
 
   const [sel, setSel] = useState<number[]>([])
   /** Menu do botão direito numa palavra. */
-  const [menu, setMenu] = useState<{ x: number; y: number; ids: number[] } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; ids: number[]; obs?: boolean } | null>(null)
+  /** Termos que o revisor semanal/você aprovaram por cima da biblioteca fixa. */
+  const [extra, setExtra] = useState<BibliotecaExtra | null>(null)
   const [ancora, setAncora] = useState<number | null>(null)
   const [flagsTexto, setFlagsTexto] = useState('')
   const [desligadas, setDesligadas] = useState<string[]>([])
@@ -141,8 +143,9 @@ export default function CensorPage() {
   const linhasLegenda = useMemo(() => emLinhas(vivos), [vivos])
   // Riscos: IA (salvos no projeto) + biblioteca e lista (recalculadas). Alto e
   // muito alto entram censurados sozinhos — `idsFlag` —, o usuário libera.
-  const ligadas = useMemo(() => new Set(BIBLIOTECA.map((c) => c.id).filter((id) => !desligadas.includes(id))), [desligadas])
-  const riscosLocal = useMemo(() => riscosLocais(vivos, ligadas, flagsTexto), [vivos, ligadas, flagsTexto])
+  const bib = useMemo(() => aplicarExtra(extra), [extra])
+  const ligadas = useMemo(() => new Set(bib.map((c) => c.id).filter((id) => !desligadas.includes(id))), [bib, desligadas])
+  const riscosLocal = useMemo(() => riscosLocais(vivos, ligadas, flagsTexto, bib), [vivos, ligadas, flagsTexto, bib])
   const todosRiscos = useMemo(() => [
     ...(trab.riscos || []).filter((r) => r.ids.every((id) => tokens[id] && !tokens[id].removida)),
     ...riscosLocal,
@@ -181,6 +184,7 @@ export default function CensorPage() {
     } catch { /* sem storage */ }
     const d = lerJson<string[]>(CHAVE_DESLIGADAS)
     if (Array.isArray(d)) setDesligadas(d)
+    fetch('/api/censura/exemplos').then((r) => r.json()).then((j) => { if (j?.extra) setExtra(j.extra) }).catch(() => {})
     const p = lerJson<Edicao>(CHAVE_PADRAO)
     if (p) setPadrao({ ...EDICAO_PADRAO, ...p })
   }, [])
@@ -537,6 +541,12 @@ export default function CensorPage() {
 
   // ---------- ações (todas passam pelo histórico) ----------
   function marcar(ids: number[], censurar: boolean) {
+    // Fase 1: liberar o que a biblioteca/IA marcou = alarme falso; censurar o
+    // que ninguém pegou = algo que faltou na inteligência.
+    const falsos = ids.filter((id) => !censurar && idsFlag.has(id))
+    const faltou = ids.filter((id) => censurar && !riscoDe.has(id))
+    if (falsos.length) registrar(falsos, 'liberou', { fonte_risco: riscoDe.get(falsos[0])?.fonte })
+    if (faltou.length) registrar(faltou, 'censurou')
     mudar((t) => {
       const m = new Set(t.marcas), g = new Set(t.ignoradas)
       for (const id of ids) {
@@ -601,14 +611,18 @@ export default function CensorPage() {
   }
 
   /** Botão direito → "Marcar como risco". Alto/muito alto já censura. */
-  function marcarRisco(ids: number[], g: Gravidade, contexto = false) {
+  function marcarRisco(ids: number[], g: Gravidade, contexto = false, obs?: { motivo: string; politica: string }) {
     if (!ids.length) return
     const alvo = new Set(ids)
     // Contexto = as palavras sozinhas não são risco, juntas são ("começar
     // hoje"). Bipar não tira o sentido: fica destacado pra regravar.
-    const novo: Risco = contexto
-      ? { ids: [...ids].sort((a, b) => a - b), gravidade: g, categoria: 'Contexto marcado por você', politica: '—', motivo: 'Juntas, essas palavras passam a ideia proibida.', troca: 'Regrave ou reescreva o trecho tirando a promessa (prazo, facilidade, ganho).', bipResolve: false, fonte: 'manual' }
-      : { ids: [...ids].sort((a, b) => a - b), gravidade: g, categoria: 'Marcado por você', politica: '—', motivo: 'Você marcou como risco.', fonte: 'manual' }
+    const ord = [...ids].sort((a, b) => a - b)
+    const novo: Risco = obs
+      ? { ids: ord, gravidade: g, categoria: obs.politica || 'Observação sua', politica: obs.politica || '—', motivo: obs.motivo, bipResolve: contexto ? false : undefined, troca: contexto ? 'Regrave ou reescreva o trecho.' : undefined, fonte: 'manual' }
+      : contexto
+        ? { ids: ord, gravidade: g, categoria: 'Contexto marcado por você', politica: '—', motivo: 'Juntas, essas palavras passam a ideia proibida.', troca: 'Regrave ou reescreva o trecho tirando a promessa (prazo, facilidade, ganho).', bipResolve: false, fonte: 'manual' }
+        : { ids: ord, gravidade: g, categoria: 'Marcado por você', politica: '—', motivo: 'Você marcou como risco.', fonte: 'manual' }
+    registrar(ord, contexto ? 'contexto' : 'risco', { gravidade: g, motivo: obs?.motivo, politica: obs?.politica, fonte_risco: riscoDe.get(ord[0])?.fonte })
     mudar((t) => ({
       ...t,
       ignoradas: censuraSozinho(g) && !contexto ? t.ignoradas.filter((id) => !alvo.has(id)) : t.ignoradas,
@@ -619,6 +633,8 @@ export default function CensorPage() {
   /** "Não é risco": tira o que a IA/você marcou e libera o resto. */
   function tirarRisco(ids: number[]) {
     const alvo = new Set(ids)
+    const r0 = ids.map((id) => riscoDe.get(id)).find(Boolean)
+    registrar(ids, 'nao_risco', { fonte_risco: r0?.fonte, categoria: r0?.categoria })
     mudar((t) => {
       const g = new Set(t.ignoradas)
       ids.forEach((id) => { if (idsFlag.has(id)) g.add(id) })
@@ -629,6 +645,31 @@ export default function CensorPage() {
         riscos: (t.riscos || []).filter((r) => !((r.fonte === 'manual' || r.fonte === 'ia') && r.ids.some((id) => alvo.has(id)))),
       }
     })
+  }
+
+  /** Fase 1: manda a decisão pro servidor virar exemplo da IA. Não trava nada. */
+  function registrar(ids: number[], decisao: string, extra: { gravidade?: string; motivo?: string; politica?: string; fonte_risco?: string; categoria?: string } = {}) {
+    const ord = [...ids].filter((id) => tokens[id]).sort((a, b) => a - b)
+    if (!ord.length) return
+    // Trechos contíguos viram um exemplo cada ("começar hoje" + "natura").
+    const grupos: number[][] = []
+    for (const id of ord) {
+      const g = grupos[grupos.length - 1]
+      const iv = vivos.findIndex((x) => x.id === id)
+      if (g && vivos.findIndex((x) => x.id === g[g.length - 1]) === iv - 1) g.push(id); else grupos.push([id])
+    }
+    const itens = grupos.slice(0, 20).map((g) => {
+      const i0 = vivos.findIndex((x) => x.id === g[0]), i1 = vivos.findIndex((x) => x.id === g[g.length - 1])
+      return {
+        trecho: g.map((id) => tokens[id].word).join(' '),
+        contexto: vivos.slice(Math.max(0, i0 - 8), i1 + 9).map((x) => x.word).join(' '),
+        decisao, ...extra,
+      }
+    })
+    fetch('/api/censura/exemplos', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projetoId: projId || '', itens }),
+    }).catch(() => {})
   }
 
   function abrirMenu(t: Token, e: MouseEvent) {
@@ -849,6 +890,10 @@ export default function CensorPage() {
           <BotaoIcone titulo="Transcrever de novo" onClick={transcrever} disabled={rodando}><RefreshCw className="w-4 h-4" /></BotaoIcone>
         )}
         {tokens.length > 0 && <BotaoIcone titulo="Baixar JSON" onClick={baixarJson}><Download className="w-4 h-4" /></BotaoIcone>}
+        <a href="/tools/censor/inteligencia" target="_blank" rel="noreferrer" title="O que a IA aprendeu, reprovações da Meta, revisor e placar"
+          className="h-8 px-3 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5 inline-flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" /> Inteligência
+        </a>
         <button onClick={voltarAosProjetos} disabled={rodando}
           className="h-8 px-3 rounded-lg text-xs font-semibold border border-border text-foreground/90 hover:bg-white/5 inline-flex items-center gap-1.5 disabled:opacity-40">
           <FolderOpen className="w-3.5 h-3.5" /> Projetos
@@ -1207,11 +1252,11 @@ export default function CensorPage() {
 
               <details className="group/d rounded-lg border border-border">
                 <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-semibold text-foreground/90 flex items-center gap-1.5">
-                  Biblioteca · {BIBLIOTECA.length - desligadas.length}/{BIBLIOTECA.length} ligadas
+                  Biblioteca · {bib.filter((c) => !desligadas.includes(c.id)).length}/{bib.length} ligadas
                   <ChevronDown className="w-3.5 h-3.5 ml-auto transition group-open/d:rotate-180" />
                 </summary>
                 <div className="px-3 pb-3 space-y-1">
-                  {BIBLIOTECA.map((c) => {
+                  {bib.map((c) => {
                     const on = !desligadas.includes(c.id)
                     return (
                       <button key={c.id} onClick={() => alternarCategoria(c.id)} title={c.motivo}
@@ -1253,9 +1298,15 @@ export default function CensorPage() {
         // Até 6 palavras vira frase da lista ("comecar hoje").
         const frase = ids.length <= 6 ? normalizar(ids.map((id) => tokens[id].word).join(' ')) : ''
         const fechar = () => setMenu(null)
+        const titulo = `“${ids.slice(0, 8).map((id) => tokens[id].word).join(' ')}${ids.length > 8 ? '…' : ''}”`
+        if (menu.obs) return (
+          <MenuPalavra x={menu.x} y={menu.y} onFechar={fechar} titulo={titulo} largo>
+            <FormObservacao politicas={[...new Set(bib.map((c) => c.politica))]} onVoltar={() => setMenu({ ...menu, obs: false })}
+              onSalvar={(o) => { marcarRisco(ids, o.gravidade, o.regravar, { motivo: o.motivo, politica: o.politica }); fechar() }} />
+          </MenuPalavra>
+        )
         return (
-          <MenuPalavra x={menu.x} y={menu.y} onFechar={fechar}
-            titulo={`“${ids.slice(0, 8).map((id) => tokens[id].word).join(' ')}${ids.length > 8 ? '…' : ''}”`}>
+          <MenuPalavra x={menu.x} y={menu.y} onFechar={fechar} titulo={titulo}>
             {todasCens
               ? <ItemMenu onClick={() => { marcar(ids, false); fechar() }}><ShieldOff className="w-3.5 h-3.5" /> Liberar</ItemMenu>
               : <ItemMenu tom="rose" onClick={() => { marcar(ids, true); fechar() }}><ShieldCheck className="w-3.5 h-3.5" /> Censurar</ItemMenu>}
@@ -1274,6 +1325,10 @@ export default function CensorPage() {
               <span>Contexto de risco <span className="text-muted-foreground">· regravar</span></span>
             </ItemMenu>
             {ids.length > 1 && <p className="px-2.5 pb-1 text-[10px] text-muted-foreground leading-snug">Juntas viram promessa (“começar hoje”): destaca o trecho pra regravar, sem bipar.</p>}
+            <ItemMenu onClick={() => setMenu({ ...menu, obs: true })}>
+              <MessageSquarePlus className="w-3.5 h-3.5 text-primary" />
+              <span>Marcar com observação…</span>
+            </ItemMenu>
             {frase && (
               <ItemMenu onClick={() => { paraMinhaLista(frase); fechar() }}><Flag className="w-3.5 h-3.5" /> <span className="truncate">Sempre censurar “{frase}”</span></ItemMenu>
             )}
@@ -1289,7 +1344,50 @@ export default function CensorPage() {
 }
 
 /** Menu flutuante do botão direito. Fecha clicando fora, Esc ou rolando. */
-function MenuPalavra({ x, y, titulo, onFechar, children }: { x: number; y: number; titulo: string; onFechar: () => void; children: ReactNode }) {
+/** "Por que isso é risco" — vira exemplo pra IA aprender o critério. */
+function FormObservacao({ politicas, onSalvar, onVoltar }: {
+  politicas: string[]
+  onSalvar: (o: { motivo: string; politica: string; gravidade: Gravidade; regravar: boolean }) => void
+  onVoltar: () => void
+}) {
+  const [motivo, setMotivo] = useState('')
+  const [politica, setPolitica] = useState('')
+  const [gravidade, setGravidade] = useState<Gravidade>('alto')
+  const [regravar, setRegravar] = useState(false)
+  const sugestoes = [...new Set(['Exploração humana', 'Nudez e atividade sexual', 'Segurança infantil', ...politicas])]
+  const ok = motivo.trim().length > 2
+  return (
+    <div className="px-2.5 pb-2 space-y-2" onKeyDown={(e) => e.stopPropagation()}>
+      <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Por que é risco?</label>
+      <textarea autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3}
+        placeholder={'Ex.: "menina" — a Meta lê como menor de idade, mesmo sendo papo de amiga com adulta'}
+        className="w-full px-2 py-1.5 rounded-md text-xs bg-background border border-border text-foreground focus:border-primary/60 outline-none resize-none leading-relaxed" />
+      <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Política da Meta</label>
+      <input list="politicas-meta" value={politica} onChange={(e) => setPolitica(e.target.value)} placeholder="Ex.: Exploração humana"
+        className="w-full h-8 px-2 rounded-md text-xs bg-background border border-border text-foreground focus:border-primary/60 outline-none" />
+      <datalist id="politicas-meta">{sugestoes.map((p) => <option key={p} value={p} />)}</datalist>
+      <div className="grid grid-cols-4 gap-1">
+        {GRAVIDADES.map((g) => (
+          <button key={g} onClick={() => setGravidade(g)}
+            className={`h-7 rounded border text-[9px] font-bold uppercase ${COR_GRAVIDADE[g]} ${gravidade === g ? 'ring-2 ring-primary' : 'opacity-60'}`}>
+            {NOME_GRAVIDADE[g]}
+          </button>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 text-[11px] text-foreground/90 cursor-pointer">
+        <input type="checkbox" checked={regravar} onChange={(e) => setRegravar(e.target.checked)} />
+        Só o bip não resolve (regravar)
+      </label>
+      <div className="flex gap-1.5 pt-1">
+        <button onClick={onVoltar} className="h-8 px-3 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-white/5">Voltar</button>
+        <button disabled={!ok} onClick={() => onSalvar({ motivo: motivo.trim(), politica: politica.trim(), gravidade, regravar })}
+          className="flex-1 h-8 rounded-md text-xs font-bold bg-primary text-white disabled:opacity-40">Salvar e ensinar a IA</button>
+      </div>
+    </div>
+  )
+}
+
+function MenuPalavra({ x, y, titulo, onFechar, largo, children }: { x: number; y: number; titulo: string; onFechar: () => void; largo?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ left: x, top: y })
   useEffect(() => {
@@ -1315,7 +1413,7 @@ function MenuPalavra({ x, y, titulo, onFechar, children }: { x: number; y: numbe
   }, [x, y, onFechar])
   return (
     <div ref={ref} style={pos} onContextMenu={(e) => e.preventDefault()}
-      className="fixed z-50 w-60 rounded-lg border border-border bg-card shadow-2xl shadow-black/50 py-1">
+      className={`fixed z-50 ${largo ? 'w-80' : 'w-60'} rounded-lg border border-border bg-card shadow-2xl shadow-black/50 py-1`}>
       <p className="px-2.5 py-1.5 text-[11px] text-muted-foreground truncate border-b border-border mb-1">{titulo}</p>
       {children}
     </div>

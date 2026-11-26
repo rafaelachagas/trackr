@@ -9,6 +9,9 @@
     { "path": "/api/whatsapp/resumo-cron", "schedule": "0 11 * * *" },
     { "path": "/api/conteudo/cron", "schedule": "0 9 * * *" },
     { "path": "/api/rastreador/vigia", "schedule": "30 * * * *" },
-    { "path": "/api/whatsapp/saude-cron", "schedule": "2 * * * *" }
+    { "path": "/api/whatsapp/saude-cron", "schedule": "2 * * * *" },
+    { "path": "/api/censura/meta-cron", "schedule": "*/30 * * * *" },
+    { "path": "/api/censura/placar-cron", "schedule": "20 * * * *" },
+    { "path": "/api/censura/revisor-cron", "schedule": "0 12 * * 1" }
   ]
 }
