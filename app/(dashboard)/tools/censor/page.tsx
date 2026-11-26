@@ -4,14 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, MouseEvent, PointerE
 import {
   Loader2, Upload, Sparkles, Download, EyeOff, X, Check, Play, HelpCircle, Flag,
   ShieldOff, ShieldCheck, Undo2, Redo2, Trash2, Volume2, VolumeX, Music, FileAudio,
-  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, Pause, Maximize, RotateCcw, RotateCw,
+  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, Pause, Maximize, RotateCcw, RotateCw,
 } from 'lucide-react'
 import {
   PalavraBruta, Token, Edicao, paraTokens, emLinhas, emParagrafos, tokenNoTempo, fmtTempo,
-  LIMIAR_DUVIDA, lerRedFlags, acharRedFlags, normalizar, SFX_EMBUTIDOS, EDICAO_PADRAO,
+  LIMIAR_DUVIDA, lerRedFlags, normalizar, SFX_EMBUTIDOS, EDICAO_PADRAO,
   fmtDb, montarSegmentos, Segmento, inserirPalavras,
 } from '@/lib/censura'
 import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
+import {
+  Risco, Gravidade, GRAVIDADES, NOME_GRAVIDADE, BIBLIOTECA, censuraSozinho, autoCensura, riscosLocais, riscoPorPalavra,
+} from '@/lib/censura-riscos'
 
 // Editor de Censura. Fluxo: sobe o vídeo → transcreve palavra por palavra →
 // corrige/remove o que o Whisper errou → marca o que censurar (à mão ou pela
@@ -31,9 +34,12 @@ const ACEITA = '.mp4,.mov,.webm,.m4v,video/mp4,video/quicktime,video/webm'
 const TETO_MB = 200
 const CHAVE_FLAGS = 'censura:redflags'
 const CHAVE_PADRAO = 'censura:padrao'
+const CHAVE_DESLIGADAS = 'censura:categorias-desligadas'
+const CHAVE_MOTIVOS = 'censura:motivos-meta'
 const chaveTrabalho = (f: File) => `censura:trabalho:${f.name}:${f.size}`
 
-interface Trabalho { tokens: Token[]; marcas: number[]; ignoradas: number[]; edicoes: Record<number, Edicao> }
+/** riscos = o que a IA achou (a biblioteca e a lista são recalculadas na hora). */
+interface Trabalho { tokens: Token[]; marcas: number[]; ignoradas: number[]; edicoes: Record<number, Edicao>; riscos?: Risco[]; analisadoEm?: string }
 interface MetaProjeto { id: string; nome: string; tamanho: number; video: string; criado: string; atualizado: string; palavras: number; censuradas: number }
 type EstadoSalvo = 'salvo' | 'salvando' | 'erro' | null
 
@@ -92,6 +98,10 @@ export default function CensorPage() {
   const [sel, setSel] = useState<number[]>([])
   const [ancora, setAncora] = useState<number | null>(null)
   const [flagsTexto, setFlagsTexto] = useState('')
+  const [desligadas, setDesligadas] = useState<string[]>([])
+  const [motivos, setMotivos] = useState('')
+  const [analisando, setAnalisando] = useState(false)
+  const [erroIA, setErroIA] = useState<string | null>(null)
   const [padrao, setPadrao] = useState<Edicao>(EDICAO_PADRAO)
   const [rascunho, setRascunho] = useState('')
   const [novaPalavra, setNovaPalavra] = useState('')
@@ -127,8 +137,29 @@ export default function CensorPage() {
   const ignoradas = useMemo(() => new Set(trab.ignoradas), [trab.ignoradas])
   const paragrafos = useMemo(() => emParagrafos(vivos), [vivos])
   const linhasLegenda = useMemo(() => emLinhas(vivos), [vivos])
-  const ocorrencias = useMemo(() => acharRedFlags(vivos, lerRedFlags(flagsTexto)), [vivos, flagsTexto])
-  const idsFlag = useMemo(() => new Set(ocorrencias.flatMap((o) => o.ids)), [ocorrencias])
+  // Riscos: IA (salvos no projeto) + biblioteca e lista (recalculadas). Alto e
+  // muito alto entram censurados sozinhos — `idsFlag` —, o usuário libera.
+  const ligadas = useMemo(() => new Set(BIBLIOTECA.map((c) => c.id).filter((id) => !desligadas.includes(id))), [desligadas])
+  const riscosLocal = useMemo(() => riscosLocais(vivos, ligadas, flagsTexto), [vivos, ligadas, flagsTexto])
+  const todosRiscos = useMemo(() => [
+    ...(trab.riscos || []).filter((r) => r.ids.every((id) => tokens[id] && !tokens[id].removida)),
+    ...riscosLocal,
+  ], [trab.riscos, riscosLocal, tokens])
+  const riscoDe = useMemo(() => riscoPorPalavra(todosRiscos), [todosRiscos])
+  // Frase em que "só o bip não resolve" não é bipada inteira: fica destacada
+  // pra regravar. O que der pra bipar dentro dela (marca, valor) vem das
+  // outras fontes.
+  const idsFlag = useMemo(() => new Set(todosRiscos.filter((r) => autoCensura(r)).flatMap((r) => r.ids)), [todosRiscos])
+  // Lista do painel: um item por trecho, o mais grave quando há repetição.
+  const listaRiscos = useMemo(() => {
+    const m = new Map<string, Risco>()
+    for (const r of todosRiscos) {
+      const k = r.ids.join(',')
+      const a = m.get(k)
+      if (!a || GRAVIDADES.indexOf(r.gravidade) < GRAVIDADES.indexOf(a.gravidade) || (r.fonte === 'ia' && a.fonte !== 'ia' && r.gravidade === a.gravidade)) m.set(k, r)
+    }
+    return [...m.values()].sort((a, b) => GRAVIDADES.indexOf(a.gravidade) - GRAVIDADES.indexOf(b.gravidade) || a.ids[0] - b.ids[0])
+  }, [todosRiscos])
   // Censurada = marcada à mão, ou red flag que o usuário não liberou.
   const censuradas = useMemo(() => {
     const s = new Set([...marcas].filter((id) => tokens[id] && !tokens[id].removida))
@@ -137,17 +168,17 @@ export default function CensorPage() {
   }, [marcas, idsFlag, ignoradas, tokens])
   const duvidas = useMemo(() => vivos.filter((t) => t.confidence < LIMIAR_DUVIDA && !t.corrigida), [vivos])
   const segs = useMemo(() => montarSegmentos(tokens, censuradas, edicoes, padrao), [tokens, censuradas, edicoes, padrao])
-  const porFlag = useMemo(() => {
-    const m = new Map<string, number[][]>()
-    for (const o of ocorrencias) m.set(o.flag, [...(m.get(o.flag) || []), o.ids])
-    return [...m.entries()]
-  }, [ocorrencias])
 
   useEffect(() => { segsRef.current = segs }, [segs])
   useEffect(() => { previaRef.current = previa }, [previa])
 
   useEffect(() => {
-    try { setFlagsTexto(localStorage.getItem(CHAVE_FLAGS) ?? '') } catch { /* sem storage */ }
+    try {
+      setFlagsTexto(localStorage.getItem(CHAVE_FLAGS) ?? '')
+      setMotivos(localStorage.getItem(CHAVE_MOTIVOS) ?? '')
+    } catch { /* sem storage */ }
+    const d = lerJson<string[]>(CHAVE_DESLIGADAS)
+    if (Array.isArray(d)) setDesligadas(d)
     const p = lerJson<Edicao>(CHAVE_PADRAO)
     if (p) setPadrao({ ...EDICAO_PADRAO, ...p })
   }, [])
@@ -542,7 +573,8 @@ export default function CensorPage() {
         }
       }
       const ed = { ...t.edicoes }; alvo.forEach((id) => delete ed[id])
-      return { ...t, tokens: ts, marcas: t.marcas.filter((id) => !alvo.has(id)), edicoes: ed }
+      const riscos = t.riscos?.map((x) => ({ ...x, ids: x.ids.filter((id) => !alvo.has(id)) })).filter((x) => x.ids.length)
+      return { ...t, tokens: ts, marcas: t.marcas.filter((id) => !alvo.has(id)), edicoes: ed, riscos }
     })
     setSel([])
   }
@@ -557,10 +589,45 @@ export default function CensorPage() {
       novos = r.novos
       const ed: Record<number, Edicao> = {}
       for (const [k, v] of Object.entries(t.edicoes)) ed[r.mapa(Number(k))] = v
-      return { tokens: r.tokens, marcas: t.marcas.map(r.mapa), ignoradas: t.ignoradas.map(r.mapa), edicoes: ed }
+      return {
+        ...t, tokens: r.tokens, marcas: t.marcas.map(r.mapa), ignoradas: t.ignoradas.map(r.mapa), edicoes: ed,
+        riscos: t.riscos?.map((x) => ({ ...x, ids: x.ids.map(r.mapa) })),
+      }
     })
     setNovaPalavra('')
     setSel(novos); setAncora(novos[0] ?? null)
+  }
+
+  /** IA lê a transcrição com a política da Meta. Entra no Ctrl+Z e no projeto. */
+  async function analisarRiscos() {
+    if (analisando || !vivos.length) return
+    setAnalisando(true); setErroIA(null)
+    try {
+      const j = await fetch('/api/censura/analisar', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ palavras: vivos.map((t) => ({ id: t.id, w: t.word })), motivos }),
+      }).then((r) => r.json()).catch(() => null)
+      if (!Array.isArray(j?.riscos)) throw new Error(j?.error || 'A análise falhou — tente de novo.')
+      mudar((t) => ({ ...t, riscos: j.riscos as Risco[], analisadoEm: new Date().toISOString() }))
+    } catch (e) {
+      setErroIA(e instanceof Error ? e.message : String(e))
+    } finally { setAnalisando(false) }
+  }
+
+  function alternarCategoria(id: string) {
+    setDesligadas((d) => {
+      const novo = d.includes(id) ? d.filter((x) => x !== id) : [...d, id]
+      gravar(CHAVE_DESLIGADAS, JSON.stringify(novo))
+      return novo
+    })
+  }
+
+  /** "Sempre censurar essa palavra": vai pra lista do usuário. */
+  function paraMinhaLista(palavra: string) {
+    const n = normalizar(palavra)
+    if (!n) return
+    const novo = (flagsTexto.trim() ? flagsTexto.replace(/\s+$/, '') + '\n' : '') + n
+    setFlagsTexto(novo); gravar(CHAVE_FLAGS, novo)
   }
 
   function editarAudio(ids: number[], parcial: Partial<Edicao>, chave: string) {
@@ -653,6 +720,7 @@ export default function CensorPage() {
   }, [linhasLegenda, ativo])
 
   const selSet = useMemo(() => new Set(sel), [sel])
+  const riscoSel = sel.map((id) => riscoDe.get(id)).find(Boolean) ?? null
   const selCensuradas = sel.filter((id) => censuradas.has(id))
   const selTodasCensuradas = sel.length > 0 && selCensuradas.length === sel.length
   const edSel: Edicao | null = selCensuradas.length ? (edicoes[selCensuradas[0]] ?? padrao) : null
@@ -876,16 +944,19 @@ export default function CensorPage() {
                         const duvida = t.confidence < LIMIAR_DUVIDA && !t.corrigida
                         const cens = censuradas.has(t.id)
                         const s = selSet.has(t.id)
+                        const rk = riscoDe.get(t.id)
+                        const alerta = rk && !idsFlag.has(t.id) && !cens && !s
                         return (
                           <span key={t.id} data-t={t.id} onClick={(e) => clicarPalavra(t, e)}
-                            title={`${fmtTempo(t.start_time)} · confiança ${Math.round(t.confidence * 100)}%${t.corrigida ? ' · corrigida' : ''}`}
+                            title={`${fmtTempo(t.start_time)} · confiança ${Math.round(t.confidence * 100)}%${t.corrigida ? ' · corrigida' : ''}${rk ? ` · risco ${NOME_GRAVIDADE[rk.gravidade].toLowerCase()}: ${rk.categoria}` : ''}`}
                             className={`cursor-pointer rounded-[5px] px-[3px] py-[2px] transition-colors ${
                               s ? 'bg-primary text-white'
                                 : cens ? 'bg-rose-500/20 text-rose-200 hover:bg-rose-500/30'
                                   : 'hover:bg-white/[0.07]'
                             } ${t.id === ativo && !s ? 'shadow-[inset_0_-2px_0_0_#fcd34d] text-foreground' : ''} ${
                               duvida && !s ? 'underline decoration-dotted decoration-amber-300/80 decoration-2 underline-offset-[5px]' : ''} ${
-                              idsFlag.has(t.id) && !cens && !s ? 'line-through decoration-orange-400/60' : ''}`}>
+                              idsFlag.has(t.id) && !cens && !s ? 'line-through decoration-orange-400/60' : ''} ${
+                              alerta ? (rk.gravidade !== 'baixo' ? 'bg-orange-400/10 text-orange-200 shadow-[inset_0_-2px_0_0_rgba(251,146,60,0.7)]' : 'shadow-[inset_0_-2px_0_0_rgba(251,146,60,0.35)]') : ''}`}>
                             {t.word}
                           </span>
                         )
@@ -925,6 +996,13 @@ export default function CensorPage() {
         <div className="2xl:sticky 2xl:top-3 lg:col-span-2 2xl:col-span-1 2xl:max-h-[calc(100vh-150px)] 2xl:overflow-y-auto grid sm:grid-cols-2 2xl:grid-cols-1 gap-3 items-start">
           {/* Palavra */}
           <Secao titulo="Palavra" icone={<Wand2 className="w-3.5 h-3.5" />}>
+            {riscoSel && <CartaoRisco r={riscoSel} tokens={tokens} />}
+            {unica && !riscoDe.has(unica.id) && marcas.has(unica.id) && normalizar(unica.word) && (
+              <button onClick={() => paraMinhaLista(unica.word)}
+                className="w-full mb-3 text-left text-[11px] rounded-lg border border-dashed border-border px-3 py-2 text-muted-foreground hover:text-foreground hover:border-primary/50">
+                Sempre censurar “{normalizar(unica.word)}”? <b className="text-primary">Adicionar à minha lista</b>
+              </button>
+            )}
             {!tokens.length ? (
               <Vazio>Depois da transcrição, clique numa palavra pra corrigir, remover ou censurar.</Vazio>
             ) : !unica ? (
@@ -1031,33 +1109,96 @@ export default function CensorPage() {
             )}
           </Secao>
 
-          {/* Red flags */}
-          <Secao titulo="Red flags" icone={<Flag className="w-3.5 h-3.5" />}>
+          {/* Riscos da Meta */}
+          <Secao titulo="Riscos da Meta" icone={<Flag className="w-3.5 h-3.5" />}>
             <div className="space-y-3">
-              <textarea value={flagsTexto} onChange={(e) => { setFlagsTexto(e.target.value); gravar(CHAVE_FLAGS, e.target.value) }} rows={4}
-                placeholder={'uma por linha\nrenda extra\nganh*   ← ganhar, ganhei...'}
-                className="w-full px-3 py-2 rounded-lg text-xs bg-background border border-border text-foreground focus:border-primary/60 outline-none resize-y font-mono leading-relaxed" />
-              <p className="text-[11px] text-muted-foreground -mt-1">Toda ocorrência já entra censurada. Libere as que quiser manter.</p>
-              {tokens.length > 0 && (porFlag.length ? (
-                <div className="space-y-2.5">
-                  {porFlag.map(([flag, ocs]) => (
-                    <div key={flag}>
-                      <p className="text-xs font-bold text-foreground">{flag} <span className="text-muted-foreground font-normal">· {ocs.length}×</span></p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {ocs.map((ids) => {
-                          const liberada = ids.every((id) => ignoradas.has(id))
+              <button onClick={analisarRiscos} disabled={!tokens.length || analisando}
+                className="w-full h-9 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 disabled:opacity-40 inline-flex items-center justify-center gap-2">
+                {analisando ? <><Loader2 className="w-4 h-4 animate-spin" /> Lendo com a política da Meta…</> : <><Sparkles className="w-4 h-4" /> {trab.analisadoEm ? 'Analisar de novo com IA' : 'Analisar riscos com IA'}</>}
+              </button>
+              {trab.analisadoEm && !analisando && (
+                <p className="text-[11px] text-muted-foreground -mt-1.5">IA achou {(trab.riscos || []).length} {(trab.riscos || []).length === 1 ? 'trecho' : 'trechos'} · {quando(trab.analisadoEm)}</p>
+              )}
+              {erroIA && <p className="text-[11px] text-rose-300">{erroIA}</p>}
+
+              <details className="group/d rounded-lg border border-border">
+                <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-semibold text-foreground/90 flex items-center gap-1.5">
+                  Motivos de bloqueio que a Meta mandou {motivos.trim() && <span className="text-primary">· preenchido</span>}
+                  <ChevronDown className="w-3.5 h-3.5 ml-auto transition group-open/d:rotate-180" />
+                </summary>
+                <div className="px-3 pb-3 space-y-1.5">
+                  <textarea value={motivos} onChange={(e) => { setMotivos(e.target.value); gravar(CHAVE_MOTIVOS, e.target.value) }} rows={4}
+                    placeholder={'Cole aqui o aviso da Meta, ex.:\n"Seu anúncio foi reprovado — Fraudes, golpes e práticas enganosas"'}
+                    className="w-full px-3 py-2 rounded-lg text-xs bg-background border border-border text-foreground focus:border-primary/60 outline-none resize-y leading-relaxed" />
+                  <p className="text-[11px] text-muted-foreground">A IA dá peso extra a isso. Fica salvo pros próximos vídeos.</p>
+                </div>
+              </details>
+
+              {tokens.length > 0 && (listaRiscos.length ? (
+                <div className="space-y-3">
+                  {GRAVIDADES.map((g) => {
+                    const itens = listaRiscos.filter((r) => r.gravidade === g)
+                    if (!itens.length) return null
+                    return (
+                      <div key={g} className="space-y-1">
+                        <div className="flex items-center gap-2"><SeloGravidade g={g} /><span className="text-[11px] text-muted-foreground">{itens.length}{censuraSozinho(g) ? '' : ' · só destacados'}</span></div>
+                        {itens.map((r) => {
+                          const liberada = autoCensura(r) && r.ids.every((id) => ignoradas.has(id))
+                          const cens = r.ids.every((id) => censuradas.has(id))
                           return (
-                            <button key={ids[0]} onClick={() => selecionar(ids, true)}
-                              className={`h-6 px-2 rounded-md text-[11px] tabular-nums border transition ${liberada ? 'border-border text-muted-foreground line-through' : 'border-rose-400/30 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25'}`}>
-                              {fmtTempo(tokens[ids[0]].start_time)}
+                            <button key={`${r.fonte}-${r.ids.join(',')}`} onClick={() => selecionar(r.ids, true)}
+                              className={`w-full text-left rounded-md px-2 py-1.5 hover:bg-white/[0.05] flex items-start gap-2 ${liberada ? 'opacity-50' : ''}`}>
+                              <span className="text-[10px] tabular-nums text-muted-foreground mt-0.5 shrink-0">{fmtTempo(tokens[r.ids[0]].start_time)}</span>
+                              <span className="min-w-0">
+                                <span className={`text-xs font-semibold ${liberada ? 'line-through text-muted-foreground' : cens ? 'text-rose-200' : 'text-foreground'}`}>“{r.ids.map((id) => tokens[id].word).join(' ')}”</span>
+                                <span className="block text-[10px] text-muted-foreground truncate">
+                                  {r.categoria}{r.fonte === 'ia' ? ' · IA' : ''}{r.bipResolve === false ? ' · regravar' : ''}
+                                </span>
+                              </span>
                             </button>
                           )
                         })}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
+                  <p className="text-[11px] text-muted-foreground">Clique num trecho pra ver o motivo. Liberar ou censurar fica na barra embaixo do texto.</p>
                 </div>
-              ) : flagsTexto.trim() ? <Vazio>Nenhuma palavra da lista aparece neste vídeo.</Vazio> : null)}
+              ) : <Vazio>Nenhum risco encontrado ainda. Rode a análise com IA.</Vazio>)}
+
+              <details className="group/d rounded-lg border border-border">
+                <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-semibold text-foreground/90 flex items-center gap-1.5">
+                  Biblioteca · {BIBLIOTECA.length - desligadas.length}/{BIBLIOTECA.length} ligadas
+                  <ChevronDown className="w-3.5 h-3.5 ml-auto transition group-open/d:rotate-180" />
+                </summary>
+                <div className="px-3 pb-3 space-y-1">
+                  {BIBLIOTECA.map((c) => {
+                    const on = !desligadas.includes(c.id)
+                    return (
+                      <button key={c.id} onClick={() => alternarCategoria(c.id)} title={c.motivo}
+                        className="w-full flex items-center gap-2 py-1 text-left">
+                        <span className={`w-7 h-4 rounded-full relative transition shrink-0 ${on ? 'bg-primary' : 'bg-white/15'}`}>
+                          <span className={`absolute top-[2px] w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-[14px]' : 'left-[2px]'}`} />
+                        </span>
+                        <span className="text-[11px] text-foreground/90 flex-1">{c.nome}</span>
+                        <SeloGravidade g={c.gravidade} />
+                      </button>
+                    )
+                  })}
+                </div>
+              </details>
+
+              <details className="group/d rounded-lg border border-border">
+                <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-semibold text-foreground/90 flex items-center gap-1.5">
+                  Sua lista {flagsTexto.trim() && <span className="text-muted-foreground font-normal">· {lerRedFlags(flagsTexto).length}</span>}
+                  <ChevronDown className="w-3.5 h-3.5 ml-auto transition group-open/d:rotate-180" />
+                </summary>
+                <div className="px-3 pb-3 space-y-1.5">
+                  <textarea value={flagsTexto} onChange={(e) => { setFlagsTexto(e.target.value); gravar(CHAVE_FLAGS, e.target.value) }} rows={4}
+                    placeholder={'uma por linha\nrenda extra\nganh*   ← ganhar, ganhei...'}
+                    className="w-full px-3 py-2 rounded-lg text-xs bg-background border border-border text-foreground focus:border-primary/60 outline-none resize-y font-mono leading-relaxed" />
+                  <p className="text-[11px] text-muted-foreground">Vale como risco alto: já entra censurado.</p>
+                </div>
+              </details>
             </div>
           </Secao>
         </div>
@@ -1079,6 +1220,36 @@ function Selo({ projId, estado, enviado, transcrevendo }: { projId: string | nul
   if (estado === 'salvando') return <span className={`${base} text-muted-foreground`}><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando</span>
   if (estado === 'erro') return <span className={`${base} text-rose-300`} title="Tenta de novo na próxima mudança"><CloudOff className="w-3.5 h-3.5" /> Não salvou</span>
   return <span className={`${base} text-emerald-400/90`}><Cloud className="w-3.5 h-3.5" /> Salvo</span>
+}
+
+const COR_GRAVIDADE: Record<Gravidade, string> = {
+  muito_alto: 'bg-rose-500/20 text-rose-200 border-rose-400/40',
+  alto: 'bg-rose-500/10 text-rose-200 border-rose-400/25',
+  medio: 'bg-orange-400/10 text-orange-200 border-orange-400/30',
+  baixo: 'bg-white/[0.04] text-muted-foreground border-border',
+}
+
+function SeloGravidade({ g }: { g: Gravidade }) {
+  return <span className={`inline-flex items-center h-5 px-1.5 rounded border text-[10px] font-bold uppercase tracking-wide ${COR_GRAVIDADE[g]}`}>{NOME_GRAVIDADE[g]}</span>
+}
+
+/** Por que a palavra selecionada é risco — e o que fazer. */
+function CartaoRisco({ r, tokens }: { r: Risco; tokens: Token[] }) {
+  return (
+    <div className={`mb-3 rounded-lg border p-3 space-y-1.5 ${COR_GRAVIDADE[r.gravidade]}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <SeloGravidade g={r.gravidade} />
+        <p className="text-xs font-bold text-foreground">{r.categoria}</p>
+        <span className="ml-auto text-[10px] text-muted-foreground">{r.fonte === 'ia' ? 'IA' : r.fonte === 'lista' ? 'sua lista' : 'biblioteca'}</span>
+      </div>
+      <p className="text-[11px] text-foreground/90">“{r.ids.map((id) => tokens[id]?.word).join(' ')}” — {r.motivo}</p>
+      {r.politica && r.politica !== '—' && <p className="text-[10px] text-muted-foreground">Política: {r.politica}</p>}
+      {r.bipResolve === false && (
+        <p className="text-[11px] text-amber-200 flex gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" /> Só o bip não resolve: a frase continua passando a ideia. Melhor regravar esse trecho.</p>
+      )}
+      {r.troca && <p className="text-[11px] text-foreground/90"><b>Troca:</b> {r.troca}</p>}
+    </div>
+  )
 }
 
 function Secao({ titulo, icone, children }: { titulo: string; icone: ReactNode; children: ReactNode }) {

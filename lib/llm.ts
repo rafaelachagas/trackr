@@ -67,16 +67,18 @@ export async function chamarLLM(opts: {
   // ("transicao": "speed ramp"), e aí ou se descarta em silêncio ou se aceita
   // lixo. Com schema, o valor inválido não chega a existir.
   schema?: Record<string, unknown>
+  /** Padrão 60s. Análise de texto longo precisa de mais. */
+  timeoutMs?: number
 }): Promise<LLMResult> {
   const cfg = await getLLMConfig()
   if (cfg.provider === 'gemini') return chamarGemini(cfg, opts)
   return chamarAnthropic(cfg, opts)
 }
 
-async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean; schema?: Record<string, unknown> }): Promise<LLMResult> {
+async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean; schema?: Record<string, unknown>; timeoutMs?: number }): Promise<LLMResult> {
   if (!cfg.anthropicKey) return { ok: false, texto: '', erro: 'Chave da Anthropic não configurada.' }
   const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 60000)
+  const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 60000)
   try {
     const body: Record<string, any> = {
       model: cfg.model,
@@ -107,10 +109,10 @@ async function chamarAnthropic(cfg: LLMConfig, opts: { system?: string; prompt: 
   }
 }
 
-async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean; schema?: Record<string, unknown> }): Promise<LLMResult> {
+async function chamarGemini(cfg: LLMConfig, opts: { system?: string; prompt: string; maxTokens?: number; temperatura?: number; json?: boolean; schema?: Record<string, unknown>; timeoutMs?: number }): Promise<LLMResult> {
   if (!cfg.geminiKey) return { ok: false, texto: '', erro: 'Chave do Gemini não configurada.' }
   const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 60000)
+  const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 60000)
   try {
     // Os modelos Gemini 3.x usam "thinking" que consome maxOutputTokens — por isso
     // um teto baixo cortava o JSON. Damos folga e forçamos saída JSON quando pedido.
