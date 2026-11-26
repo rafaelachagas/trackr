@@ -105,13 +105,24 @@ function casa(padrao: string, palavra: string): boolean {
 
 /** Ocorrências da lista nos tokens: cada uma vira {flag, ids}. */
 export function acharRedFlags(tokens: Token[], flags: string[][]): { flag: string; ids: number[] }[] {
-  const norm = tokens.map((t) => normalizar(t.word))
+  // O Whisper às vezes gruda duas palavras num token ("a magalu", "a Samsung,"):
+  // casa por sub-palavra e devolve os tokens inteiros que contêm o trecho.
+  const sub: { w: string; id: number }[] = []
+  for (const t of tokens) {
+    for (const parte of t.word.trim().split(/\s+/)) {
+      const w = normalizar(parte)
+      if (w) sub.push({ w, id: t.id })
+    }
+  }
   const achados: { flag: string; ids: number[] }[] = []
-  for (let i = 0; i < tokens.length; i++) {
+  const vistos = new Set<string>()
+  for (let i = 0; i < sub.length; i++) {
     for (const f of flags) {
-      if (i + f.length > tokens.length) continue
-      if (f.every((p, k) => casa(p, norm[i + k]))) {
-        achados.push({ flag: f.join(' '), ids: f.map((_, k) => tokens[i + k].id) })
+      if (i + f.length > sub.length) continue
+      if (f.every((p, k) => casa(p, sub[i + k].w))) {
+        const ids = [...new Set(f.map((_, k) => sub[i + k].id))]
+        const chave = `${f.join(' ')}|${ids.join(',')}`
+        if (!vistos.has(chave)) { vistos.add(chave); achados.push({ flag: f.join(' '), ids }) }
         break
       }
     }
