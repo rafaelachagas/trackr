@@ -141,7 +141,7 @@ export async function gerarPropostas(extraContexto?: string): Promise<Proposta[]
   const desde = new Date(Date.now() - DIAS * 86400_000).toISOString()
   const ev = await evidencias(desde)
   const r = await chamarLLM({
-    system: SISTEMA, json: true, maxTokens: 4000, timeoutMs: 170000,
+    system: SISTEMA, json: true, maxTokens: 12000, timeoutMs: 170000,
     prompt: [extraContexto ? `POLÍTICA NOVA/ATUALIZADA QUE O DONO COLOU (prioridade):\n${extraContexto.slice(0, 15000)}` : '', ev.texto].filter(Boolean).join('\n\n'),
   })
   if (!r.ok) throw new Error(r.erro || 'IA não respondeu')

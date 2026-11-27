@@ -27,10 +27,16 @@ export async function GET(request: NextRequest) {
       out.descoberta = await descobrir()
       await supabaseAdmin.from('configuracoes').upsert({ chave: CHAVE, valor: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'chave' })
     }
-    // Sobra ~1 min pra analisar depois de transcrever.
-    const resta = 300_000 - (Date.now() - ini) - 70_000
-    if (resta > 60_000) out.transcrito = await transcreverProximo(resta)
-    out.analisados = await analisarProximos(3, ini + 285_000)
+    // Transcreve em sequência (a maioria cai no "só texto" em 1–2 s) e deixa
+    // metade do tempo pra IA achar os trechos culpados.
+    let transcritos = 0
+    while (Date.now() - ini < 140_000) {
+      const id = await transcreverProximo(Math.max(30_000, 150_000 - (Date.now() - ini)))
+      if (!id) break
+      transcritos++
+    }
+    out.transcritos = transcritos
+    out.analisados = await analisarProximos(15, ini + 270_000)
     return NextResponse.json({ ok: true, ...out, ms: Date.now() - ini })
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e), ...out }, { status: 500 })

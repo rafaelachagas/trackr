@@ -183,7 +183,7 @@ export async function transcreverProximo(tempoMs: number): Promise<string | null
   return caso.ad_id
 }
 
-const SISTEMA_CULPADO = `Você é o revisor de criativos da operação. Manual da operação:
+export const SISTEMA_CULPADO = `Você é o revisor de criativos da operação. Manual da operação:
 
 ${POLITICA_META}
 
@@ -217,13 +217,15 @@ export async function analisarProximos(max: number, prazo: number): Promise<numb
     if (c.situacao === 'reprovado') {
       const motivo = motivosEmTexto(c.motivos)
       const r = await chamarLLM({
-        system: SISTEMA_CULPADO, json: true, maxTokens: 2000, timeoutMs: 90000,
+        system: SISTEMA_CULPADO, json: true, maxTokens: 8000, timeoutMs: 90000,
         prompt: `Motivo da Meta:\n${motivo || '(a Meta não detalhou)'}\n\nTexto do anúncio:\n${texto.slice(0, 12000)}`,
       })
       if (!r.ok) { await marcar({ erro: r.erro || 'IA não respondeu' }); continue }
       let trechos: any[] = []
-      try { const t = r.texto; trechos = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)).trechos || [] } catch { /* formato ruim */ }
-      trechos = trechos.filter((t) => typeof t?.trecho === 'string' && norm.includes(' ' + normalizar(t.trecho) + ' ')).slice(0, 8)
+      // Resposta cortada/ruim não é "nenhum culpado": fica pra próxima rodada.
+      try { const t = r.texto; trechos = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)).trechos || [] }
+      catch { await marcar({ erro: 'resposta da IA veio cortada — tenta de novo' }); continue }
+      trechos = trechos.filter((t) => typeof t?.trecho === 'string' && norm.includes(' ' + t.trecho.split(/\s+/).map(normalizar).filter(Boolean).join(' ') + ' ')).slice(0, 8)
       const ex: Exemplo[] = trechos.map((t) => ({
         origem: 'meta', projeto_id: c.ad_id, trecho: t.trecho, contexto: frase(t.trecho),
         decisao: t.bip_resolve === false ? 'contexto' : 'reprovado',
