@@ -11,7 +11,7 @@ import { RAIZ_SONS } from '@/lib/censura-borrao'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const EXT_OK = ['.mp3', '.wav', '.m4a', '.ogg', '.aac']
+const EXT_OK = ['.mp3', '.wav', '.opus', '.m4a', '.ogg', '.aac']
 
 export async function GET() {
   try {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const { nome } = await req.json()
     const limpo = nomeSeguro(String(nome || ''), 80)
     const ext = limpo.slice(limpo.lastIndexOf('.')).toLowerCase()
-    if (!EXT_OK.includes(ext)) return NextResponse.json({ error: 'use mp3, wav, m4a, ogg ou aac' }, { status: 400 })
+    if (!EXT_OK.includes(ext)) return NextResponse.json({ error: 'use mp3, wav, opus, m4a, ogg ou aac' }, { status: 400 })
     const { data, error } = await bucket().createSignedUploadUrl(`${RAIZ_SONS}/${limpo}`, { upsert: true })
     if (error || !data) throw new Error(error?.message || 'falha ao assinar o envio')
     return NextResponse.json({ nome: limpo, signedUrl: data.signedUrl })

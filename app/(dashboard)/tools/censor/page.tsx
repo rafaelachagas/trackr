@@ -1333,7 +1333,7 @@ export default function CensorPage() {
 
           {/* Áudio */}
           <Secao titulo="Áudio" icone={<Volume2 className="w-3.5 h-3.5" />}>
-            <input ref={somRef} type="file" accept="audio/*,.mp3,.wav" multiple className="hidden"
+            <input ref={somRef} type="file" accept="audio/*,.mp3,.wav,.opus,.ogg,.m4a" multiple className="hidden"
               onChange={(e) => { enviarSons(e.target.files, sel); e.target.value = '' }} />
             {!edSel ? (
               <div className="space-y-2">
