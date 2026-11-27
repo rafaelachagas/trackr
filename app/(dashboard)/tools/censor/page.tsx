@@ -821,22 +821,24 @@ export default function CensorPage() {
     const lista = [...(arqs || [])]
     if (!lista.length) return
     setAviso(`Enviando ${lista.length} ${lista.length === 1 ? 'efeito' : 'efeitos'}…`)
-    let primeiro: string | null = null, falhas = 0
+    let primeiro: string | null = null, falhas = 0, motivo = ''
     for (const f of lista) {
       try {
-        const buf = await decodificarSom(f)
-        const a = await fetch('/api/censura/sons', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nome: f.name }) }).then((r) => r.json())
-        if (!a?.signedUrl) throw new Error(a?.error)
+        let buf: AudioBuffer
+        try { buf = await decodificarSom(f) } catch { throw new Error('o navegador não conseguiu ler o áudio') }
+        const resp = await fetch('/api/censura/sons', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nome: f.name }) })
+        const a = await resp.json().catch(() => null)
+        if (!a?.signedUrl) throw new Error(a?.error || `o site respondeu ${resp.status}`)
         const r = await fetch(a.signedUrl, { method: 'PUT', headers: { 'x-upsert': 'true', ...(f.type ? { 'content-type': f.type } : {}) }, body: f })
-        if (!r.ok) throw new Error(String(r.status))
+        if (!r.ok) throw new Error(`o armazenamento recusou (${r.status}) ${(await r.text().catch(() => '')).slice(0, 120)}`)
         const id = `arq:${a.nome}`
         sonsRef.current.set(id, buf)
         setSons((s) => s.includes(id) ? s : [...s, id])
         primeiro ??= id
-      } catch { falhas++ }
+      } catch (e) { falhas++; motivo ||= `${f.name}: ${e instanceof Error ? e.message : e}` }
     }
     if (primeiro && ids.length) editarAudio(ids, { sfx: primeiro }, '')
-    setAviso(falhas ? `${falhas} ${falhas === 1 ? 'arquivo não entrou' : 'arquivos não entraram'} — use mp3 ou wav.` : 'Efeitos salvos na biblioteca.')
+    setAviso(falhas ? `${falhas} ${falhas === 1 ? 'arquivo não entrou' : 'arquivos não entraram'} — ${motivo}` : `${lista.length} ${lista.length === 1 ? 'efeito salvo' : 'efeitos salvos'} na biblioteca.`)
   }
 
   async function exportar() {
