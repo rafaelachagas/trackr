@@ -712,17 +712,22 @@ export default function CensorPage() {
   }
 
   function editarAudio(ids: number[], parcial: Partial<Edicao>, chave: string) {
+    // Mexer no áudio já censura o trecho: não precisa censurar antes.
     mudar((t) => {
       const ed = { ...t.edicoes }
-      for (const id of ids) ed[id] = { ...(ed[id] ?? padrao), ...parcial }
-      return { ...t, edicoes: ed }
+      const m = new Set(t.marcas), g = new Set(t.ignoradas)
+      for (const id of ids) {
+        ed[id] = { ...(ed[id] ?? padrao), ...parcial }
+        if (idsFlag.has(id)) g.delete(id); else m.add(id)
+      }
+      return { ...t, edicoes: ed, marcas: [...m], ignoradas: [...g] }
     }, chave)
   }
 
   /** Mesma edição pra toda ocorrência censurada das mesmas palavras. */
   function aplicarATodas(ids: number[], ed: Edicao) {
     const palavras = new Set(ids.map((id) => normalizar(tokens[id].word)))
-    const alvo = [...censuradas].filter((id) => palavras.has(normalizar(tokens[id].word)))
+    const alvo = [...new Set([...censuradas, ...ids])].filter((id) => palavras.has(normalizar(tokens[id].word)))
     editarAudio(alvo, ed, '')
     return alvo.length
   }
@@ -804,7 +809,7 @@ export default function CensorPage() {
   const riscoSel = sel.map((id) => riscoDe.get(id)).find(Boolean) ?? null
   const selCensuradas = sel.filter((id) => censuradas.has(id))
   const selTodasCensuradas = sel.length > 0 && selCensuradas.length === sel.length
-  const edSel: Edicao | null = selCensuradas.length ? (edicoes[selCensuradas[0]] ?? padrao) : null
+  const edSel: Edicao | null = sel.length ? (edicoes[selCensuradas[0] ?? sel[0]] ?? padrao) : null
   const podeDesfazer = passado.current.length > 0
   const podeRefazer = futuro.current.length > 0
 
@@ -1130,14 +1135,14 @@ export default function CensorPage() {
           {/* Áudio */}
           <Secao titulo="Áudio" icone={<Volume2 className="w-3.5 h-3.5" />}>
             {!edSel ? (
-              <Vazio>{sel.length ? 'Censure a seleção pra escolher o que acontece no áudio.' : 'Selecione uma palavra censurada (em vermelho) pra editar o áudio dela.'}</Vazio>
+              <Vazio>{sel.length ? '' : 'Selecione uma ou mais palavras pra escolher o que acontece no áudio.'}</Vazio>
             ) : (
               <div className="space-y-4">
                 <div>
                   <p className="text-[11px] text-muted-foreground mb-1.5">Efeito sonoro</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[...SFX_EMBUTIDOS.map((s) => ({ id: s.id as string, nome: s.nome as string })), ...sons.map((id) => ({ id, nome: id.slice(4) }))].map((s) => (
-                      <button key={s.id} onClick={() => editarAudio(selCensuradas, { sfx: s.id }, '')} title={s.nome}
+                      <button key={s.id} onClick={() => editarAudio(sel, { sfx: s.id }, '')} title={s.nome}
                         className={`h-8 px-2 rounded-lg text-[11px] font-semibold truncate border transition ${edSel.sfx === s.id ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground hover:text-foreground hover:bg-white/5'}`}>
                         {s.nome}
                       </button>
@@ -1148,7 +1153,7 @@ export default function CensorPage() {
                     </button>
                   </div>
                   <input ref={somRef} type="file" accept="audio/*,.mp3,.wav" className="hidden"
-                    onChange={(e) => { enviarSom(e.target.files?.[0], selCensuradas); e.target.value = '' }} />
+                    onChange={(e) => { enviarSom(e.target.files?.[0], sel); e.target.value = '' }} />
                   {edSel.sfx.startsWith('arq:') && !sons.includes(edSel.sfx) && (
                     <p className="text-[11px] text-amber-300 mt-1.5">Som “{edSel.sfx.slice(4)}” não está carregado — envie de novo.</p>
                   )}
@@ -1157,7 +1162,7 @@ export default function CensorPage() {
                 {edSel.sfx !== 'nenhum' && (
                   <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-white/[0.04]">
                     {([['substituir', 'Substituir', 'some a voz'], ['sobrepor', 'Sobrepor', 'voz + efeito']] as const).map(([v, r, n]) => (
-                      <button key={v} onClick={() => editarAudio(selCensuradas, { modo: v }, '')}
+                      <button key={v} onClick={() => editarAudio(sel, { modo: v }, '')}
                         className={`rounded-md py-1.5 text-center transition ${edSel.modo === v ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
                         <span className="block text-xs font-bold">{r}</span><span className="block text-[10px] opacity-70">{n}</span>
                       </button>
@@ -1168,20 +1173,20 @@ export default function CensorPage() {
                 {(edSel.sfx === 'nenhum' || edSel.modo === 'sobrepor') && (
                   <Slider rotulo="Volume da voz" icone={edSel.db <= -60 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
                     valor={edSel.db} min={-60} max={6} texto={fmtDb(edSel.db)}
-                    onChange={(v) => editarAudio(selCensuradas, { db: v }, 'db')} />
+                    onChange={(v) => editarAudio(sel, { db: v }, 'db')} />
                 )}
                 {edSel.sfx !== 'nenhum' && (
                   <Slider rotulo="Volume do efeito" icone={<Music className="w-3.5 h-3.5" />}
                     valor={edSel.sfxDb} min={-30} max={6} texto={fmtDb(edSel.sfxDb)}
-                    onChange={(v) => editarAudio(selCensuradas, { sfxDb: v }, 'sfxDb')} />
+                    onChange={(v) => editarAudio(sel, { sfxDb: v }, 'sfxDb')} />
                 )}
 
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
-                  <button onClick={() => { if (previa) ouvir(selCensuradas); else { setPrevia(true); ouvir(selCensuradas) } }}
+                  <button onClick={() => { if (previa) ouvir(sel); else { setPrevia(true); ouvir(sel) } }}
                     className="h-9 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 inline-flex items-center justify-center gap-1.5 col-span-2">
                     <Play className="w-3.5 h-3.5" /> Ouvir com a edição
                   </button>
-                  <button onClick={() => { const n = aplicarATodas(selCensuradas, edSel); setAviso(`Aplicado em ${n} ${n === 1 ? 'trecho' : 'trechos'}.`) }}
+                  <button onClick={() => { const n = aplicarATodas(sel, edSel); setAviso(`Aplicado em ${n} ${n === 1 ? 'trecho' : 'trechos'}.`) }}
                     className="h-8 rounded-lg text-[11px] font-semibold border border-border text-foreground/90 hover:bg-white/5">
                     Aplicar em todas iguais
                   </button>
