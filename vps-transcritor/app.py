@@ -2909,7 +2909,9 @@ def _fonte_sfx(tipo, dur):
     d = "%.3f" % max(0.03, dur)
     if tipo in ("bip", "bip_grave"):
         f = 1000 if tipo == "bip" else 500
-        return "sine=frequency=%d:sample_rate=48000:duration=%s,volume=0.5" % (f, d)
+        # aevalsrc e não "sine": o sine do ffmpeg sai com amplitude 1/8 (18 dB
+        # mais baixo que o oscilador da prévia no navegador).
+        return "aevalsrc='0.5*sin(2*PI*%d*t)':s=48000:d=%s" % (f, d)
     if tipo == "ruido":
         return "anoisesrc=r=48000:c=white:a=0.5:d=%s,lowpass=f=7000" % d
     if tipo == "vento":
