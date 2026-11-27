@@ -2873,5 +2873,228 @@ def assemble_status():
     return jsonify(ok=True, **j)
 
 
+
+# ===================== EDITOR DE CENSURA — EXPORTAÇÃO =====================
+# O app (app/api/censura/exportar) manda os trechos já resolvidos:
+#   trechos: [{ini, fim, voz (ganho 0–2), sfx (bip|bip_grave|ruido|vento|radio|arquivo|None),
+#              arquivo (path no bucket), sfx_ganho}]
+#   areas:   [{x, y, w, h}] em fração do quadro — onde está a legenda queimada
+#   janelas: [[ini, fim]] em que as áreas ficam borradas
+#   raio_rel: raio do borrão em fração da largura do vídeo
+# Os efeitos embutidos são sintetizados igual à prévia do navegador
+# (lib/censura-audio.ts), por isso não dependem de arquivo.
+
+CENSURA_JOBS = {}
+CENSURA_LOCK = threading.Lock()
+CENSURA_TRAVA = threading.Semaphore(1)   # 1 CPU: um render por vez
+
+
+def _cjob(jid, **campos):
+    with CENSURA_LOCK:
+        CENSURA_JOBS.setdefault(jid, {}).update(campos)
+        if len(CENSURA_JOBS) > 100:
+            for k in list(CENSURA_JOBS)[:50]:
+                CENSURA_JOBS.pop(k, None)
+
+
+def _num(v, padrao=0.0):
+    try:
+        v = float(v)
+        return v if v == v else padrao
+    except (TypeError, ValueError):
+        return padrao
+
+
+def _fonte_sfx(tipo, dur):
+    d = "%.3f" % max(0.03, dur)
+    if tipo in ("bip", "bip_grave"):
+        f = 1000 if tipo == "bip" else 500
+        return "sine=frequency=%d:sample_rate=48000:duration=%s,volume=0.5" % (f, d)
+    if tipo == "ruido":
+        return "anoisesrc=r=48000:c=white:a=0.5:d=%s,lowpass=f=7000" % d
+    if tipo == "vento":
+        return "anoisesrc=r=48000:c=brown:a=0.5:d=%s,lowpass=f=500,volume=1.6" % d
+    if tipo == "radio":
+        return "anoisesrc=r=48000:c=white:a=0.5:d=%s,bandpass=f=1800:width_type=q:w=1.5,volume=2.5" % d
+    return None
+
+
+AFMT = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
+
+
+def _censurar(body):
+    bucket = body.get("bucket") or "criativos"
+    inp, out = body.get("input_path"), body.get("output_path")
+    if not inp or not out:
+        return ({"error": "input_path/output_path ausente"}, 400)
+    trechos = [t for t in (body.get("trechos") or []) if _num(t.get("fim")) > _num(t.get("ini"))][:2000]
+    areas = [a for a in (body.get("areas") or []) if all(k in a for k in ("x", "y", "w", "h"))][:8]
+    janelas = [j for j in (body.get("janelas") or []) if len(j) == 2 and _num(j[1]) > _num(j[0])][:2000]
+    raio_rel = max(0.001, min(0.2, _num(body.get("raio_rel"), 0.036)))
+
+    tmp = tempfile.mkdtemp(prefix="censura_")
+    try:
+        ent = os.path.join(tmp, "in" + (os.path.splitext(inp)[1].lower() or ".mp4"))
+        _storage_baixar(bucket, inp, ent)
+        tem_audio = _tem_audio(ent)
+
+        args = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", ent]
+        partes, n_in = [], 1
+
+        # ---- áudio ----
+        mapa_audio = None
+        if tem_audio and trechos:
+            cad = "[0:a]" + AFMT
+            for t in trechos:
+                g = max(0.0, min(2.0, _num(t.get("voz"), 1.0)))
+                if abs(g - 1) > 1e-3:
+                    cad += ",volume=volume=%.4f:enable='between(t,%.3f,%.3f)'" % (g, _num(t["ini"]), _num(t["fim"]))
+            partes.append(cad + "[voz]")
+
+            # Arquivos de efeito: baixa cada um uma vez só e divide com asplit.
+            arquivos = {}
+            for t in trechos:
+                c = t.get("arquivo")
+                if t.get("sfx") == "arquivo" and c and c not in arquivos:
+                    dest = os.path.join(tmp, "sfx%d%s" % (len(arquivos), os.path.splitext(c)[1] or ".mp3"))
+                    try:
+                        _storage_baixar(bucket, c, dest)
+                    except Exception:
+                        arquivos[c] = None   # sumiu da biblioteca: o trecho fica só com a voz editada
+                        continue
+                    arquivos[c] = n_in
+                    args += ["-i", dest]
+                    n_in += 1
+            usos = {}
+            for t in trechos:
+                if t.get("sfx") == "arquivo" and arquivos.get(t.get("arquivo")):
+                    usos[t["arquivo"]] = usos.get(t["arquivo"], 0) + 1
+            rotulos = {}
+            for c, k in usos.items():
+                idx = arquivos[c]
+                nomes = ["[f%d_%d]" % (idx, i) for i in range(k)]
+                if k > 1:
+                    partes.append("[%d:a]%s,asplit=%d%s" % (idx, AFMT, k, "".join(nomes)))
+                else:
+                    partes.append("[%d:a]%s%s" % (idx, AFMT, nomes[0]))
+                rotulos[c] = nomes
+
+            efeitos = []
+            for i, t in enumerate(trechos):
+                ini, fim = _num(t["ini"]), _num(t["fim"])
+                dur = fim - ini
+                ganho = max(0.0, min(4.0, _num(t.get("sfx_ganho"), 0.4)))
+                ms = int(round(ini * 1000))
+                if t.get("sfx") == "arquivo":
+                    nomes = rotulos.get(t.get("arquivo") or "")
+                    if not nomes:
+                        continue
+                    # Som enviado toca inteiro a partir da palavra (igual à prévia).
+                    partes.append("%safade=t=in:d=0.015,volume=%.4f,adelay=%d:all=1[e%d]" % (nomes.pop(), ganho, ms, i))
+                else:
+                    fonte = _fonte_sfx(t.get("sfx"), dur)
+                    if not fonte:
+                        continue
+                    fade = min(0.015, dur / 3)
+                    partes.append("%s,aformat=sample_fmts=fltp:channel_layouts=stereo,afade=t=in:d=%.3f,"
+                                  "afade=t=out:st=%.3f:d=%.3f,volume=%.4f,adelay=%d:all=1[e%d]"
+                                  % (fonte, fade, max(0.0, dur - fade), fade, ganho, ms, i))
+                efeitos.append("[e%d]" % i)
+            if efeitos:
+                partes.append("[voz]%samix=inputs=%d:normalize=0:duration=first[aout]" % ("".join(efeitos), len(efeitos) + 1))
+            else:
+                partes.append("[voz]anull[aout]")
+            mapa_audio = "[aout]"
+
+        # ---- vídeo: borrão na legenda queimada ----
+        mapa_video = None
+        if areas and janelas:
+            quando = "+".join("between(t,%.3f,%.3f)" % (_num(a), _num(b)) for a, b in janelas)
+            k = len(areas)
+            partes.append("[0:v]split=%d[base]%s" % (k + 1, "".join("[c%d]" % i for i in range(k))))
+            atual = "[base]"
+            for i, a in enumerate(areas):
+                ax, ay = max(0.0, min(0.98, _num(a["x"]))), max(0.0, min(0.98, _num(a["y"])))
+                aw, ah = max(0.02, min(1.0 - ax, _num(a["w"]))), max(0.02, min(1.0 - ay, _num(a["h"])))
+                # Tudo em expressão do próprio quadro: funciona em vídeo girado
+                # de celular (as dimensões já chegam na orientação certa).
+                # Raio = raio_rel × largura do VÍDEO (w aqui é a largura do recorte).
+                raio = "%.5f*w/%.5f" % (raio_rel, aw)
+                partes.append(
+                    "[c%d]crop=w='trunc(iw*%.5f/2)*2':h='trunc(ih*%.5f/2)*2':x='trunc(iw*%.5f/2)*2':y='trunc(ih*%.5f/2)*2',"
+                    "boxblur=luma_radius='max(1,min(%s,min(w,h)/2-1))':luma_power=2:"
+                    "chroma_radius='max(1,min(%s/2,min(cw,ch)/2-1))':chroma_power=2[b%d]"
+                    % (i, aw, ah, ax, ay, raio, raio, i))
+                prox = "[v%d]" % i
+                partes.append("%s[b%d]overlay=x='trunc(W*%.5f/2)*2':y='trunc(H*%.5f/2)*2':enable='%s'%s"
+                              % (atual, i, ax, ay, quando, prox))
+                atual = prox
+            mapa_video = atual
+
+        if partes:
+            script = os.path.join(tmp, "filtros.txt")
+            with open(script, "w", encoding="utf-8") as fh:
+                fh.write(";\n".join(partes))
+            args += ["-filter_complex_script", script]
+        args += ["-map", mapa_video or "0:v:0"]
+        if mapa_audio:
+            args += ["-map", mapa_audio, "-c:a", "aac", "-b:a", "192k"]
+        elif tem_audio:
+            args += ["-map", "0:a:0", "-c:a", "aac", "-b:a", "192k"]
+        if mapa_video:
+            args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-pix_fmt", "yuv420p", "-threads", "2"]
+        else:
+            args += ["-c:v", "copy"]   # sem borrão: imagem intacta, sai em segundos
+        saida = os.path.join(tmp, "out.mp4")
+        args += ["-movflags", "+faststart", saida]
+
+        t0 = time.time()
+        r = subprocess.run(args, capture_output=True, timeout=1800)
+        if r.returncode != 0 or not os.path.exists(saida):
+            return ({"error": "ffmpeg: " + _erro_ffmpeg(r)}, 500)
+        _storage_subir(bucket, out, saida)
+        return ({"ok": True, "segundos": round(time.time() - t0, 1)}, 200)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.route("/censor_render", methods=["POST"])
+def censor_render():
+    key = request.args.get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="storage não configurado no servidor"), 500
+    body = request.get_json(silent=True) or {}
+    jid = uuid.uuid4().hex
+    _cjob(jid, status="na_fila")
+
+    def tarefa():
+        with CENSURA_TRAVA:
+            _cjob(jid, status="rodando")
+            try:
+                payload, status = _censurar(body)
+            except Exception as e:
+                payload, status = {"error": "falha: %s" % e}, 500
+        if status == 200:
+            _cjob(jid, status="pronto", segundos=payload.get("segundos"))
+        else:
+            _cjob(jid, status="erro", erro=payload.get("error") or "falhou")
+
+    threading.Thread(target=tarefa, daemon=True).start()
+    return jsonify(ok=True, job_id=jid), 202
+
+
+@app.route("/censor_status", methods=["GET"])
+def censor_status():
+    key = request.args.get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    with CENSURA_LOCK:
+        j = dict(CENSURA_JOBS.get(request.args.get("job") or "") or {})
+    if not j:
+        return jsonify(error="job desconhecido"), 404
+    return jsonify(ok=True, **j)
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8082")))

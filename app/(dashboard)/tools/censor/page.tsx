@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, MouseEvent, PointerE
 import {
   Loader2, Upload, Sparkles, Download, EyeOff, X, Check, Play, HelpCircle, Flag,
   ShieldOff, ShieldCheck, Undo2, Redo2, Trash2, Volume2, VolumeX, Music, FileAudio,
-  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, MessageSquarePlus, Pause, Maximize, RotateCcw, RotateCw,
+  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, MessageSquarePlus, Pause, Maximize, RotateCcw, RotateCw, SquareDashed, Droplets,
 } from 'lucide-react'
 import {
   PalavraBruta, Token, Edicao, paraTokens, emLinhas, emParagrafos, tokenNoTempo, fmtTempo,
@@ -12,6 +12,7 @@ import {
   fmtDb, montarSegmentos, Segmento, inserirPalavras,
 } from '@/lib/censura'
 import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
+import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, janelasBorrao, raioBorrao } from '@/lib/censura-borrao'
 import {
   Risco, Gravidade, GRAVIDADES, NOME_GRAVIDADE, BibliotecaExtra, aplicarExtra, censuraSozinho, autoCensura, riscosLocais, riscoPorPalavra,
 } from '@/lib/censura-riscos'
@@ -39,7 +40,8 @@ const CHAVE_MOTIVOS = 'censura:motivos-meta'
 const chaveTrabalho = (f: File) => `censura:trabalho:${f.name}:${f.size}`
 
 /** riscos = o que a IA achou (a biblioteca e a lista são recalculadas na hora). */
-interface Trabalho { tokens: Token[]; marcas: number[]; ignoradas: number[]; edicoes: Record<number, Edicao>; riscos?: Risco[]; analisadoEm?: string }
+/** areas/borrao = onde está a legenda queimada no vídeo e como borrar (lib/censura-borrao.ts). */
+interface Trabalho { tokens: Token[]; marcas: number[]; ignoradas: number[]; edicoes: Record<number, Edicao>; riscos?: Risco[]; analisadoEm?: string; areas?: AreaBorrao[]; borrao?: ConfigBorrao }
 interface MetaProjeto { id: string; nome: string; tamanho: number; video: string; criado: string; atualizado: string; palavras: number; censuradas: number }
 type EstadoSalvo = 'salvo' | 'salvando' | 'erro' | null
 
@@ -121,6 +123,16 @@ export default function CensorPage() {
   const adicionarRef = useRef<HTMLInputElement>(null)
   const [previa, setPrevia] = useState(true)
   const [sons, setSons] = useState<string[]>([])
+  // Borrão da legenda queimada: modo de desenhar a área, retângulo do vídeo
+  // dentro do player (o <video> tem faixa preta dos lados) e se está borrando agora.
+  const [marcandoArea, setMarcandoArea] = useState(false)
+  const [caixa, setCaixa] = useState<{ l: number; t: number; w: number; h: number } | null>(null)
+  const [borrando, setBorrando] = useState(false)
+  const [rascunhoArea, setRascunhoArea] = useState<AreaBorrao | null>(null)
+  const desenho = useRef<{ x: number; y: number } | null>(null)
+  /** Exportação na VPS (ffmpeg): enviando → rodando (consulta o status) → pronto com o link. */
+  const [exp, setExp] = useState<{ fase: 'enviando' | 'rodando' | 'pronto' | 'erro'; erro?: string; url?: string; desde: number } | null>(null)
+  const janelasRef = useRef<[number, number][]>([])
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -175,6 +187,10 @@ export default function CensorPage() {
   const segs = useMemo(() => montarSegmentos(tokens, censuradas, edicoes, padrao), [tokens, censuradas, edicoes, padrao])
 
   useEffect(() => { segsRef.current = segs }, [segs])
+  const areas = useMemo(() => trab.areas ?? [], [trab.areas])
+  const borrao = trab.borrao ?? BORRAO_PADRAO
+  const janelas = useMemo(() => (areas.length ? janelasBorrao(segs, borrao, duracao || Infinity) : []), [areas.length, segs, borrao, duracao])
+  useEffect(() => { janelasRef.current = janelas }, [janelas])
   useEffect(() => { previaRef.current = previa }, [previa])
 
   useEffect(() => {
@@ -295,12 +311,61 @@ export default function CensorPage() {
         }
         if (tempoRef.current) tempoRef.current.textContent = fmtTempo(v.currentTime)
         if (motorRef.current?.video === v) motorRef.current.tick(segsRef.current, previaRef.current, sonsRef.current)
+        const t = v.currentTime
+        const b = previaRef.current && janelasRef.current.some(([a, z]) => t >= a && t < z)
+        setBorrando((x) => (x === b ? x : b))
       }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [vivos, src])
+
+  // Onde a imagem do vídeo está dentro do player (com object-fit: contain
+  // sobra faixa preta). As áreas são frações DA IMAGEM, não do player.
+  const medirCaixa = useCallback(() => {
+    const v = videoRef.current, p = playerRef.current
+    if (!v || !p || !v.videoWidth) return
+    const r = v.getBoundingClientRect(), q = p.getBoundingClientRect()
+    const esc = Math.min(r.width / v.videoWidth, r.height / v.videoHeight)
+    const w = v.videoWidth * esc, h = v.videoHeight * esc
+    setCaixa({ l: r.left - q.left + (r.width - w) / 2, t: r.top - q.top + (r.height - h) / 2, w, h })
+  }, [])
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !src) return
+    const ro = new ResizeObserver(medirCaixa)
+    ro.observe(v)
+    document.addEventListener('fullscreenchange', medirCaixa)
+    return () => { ro.disconnect(); document.removeEventListener('fullscreenchange', medirCaixa) }
+  }, [src, medirCaixa])
+
+  function pontoNaImagem(e: PointerEvent<HTMLDivElement>) {
+    const r = e.currentTarget.getBoundingClientRect()
+    return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }
+  }
+  function areaDown(e: PointerEvent<HTMLDivElement>) {
+    if (!marcandoArea) return
+    e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId)
+    desenho.current = pontoNaImagem(e)
+    setRascunhoArea({ ...desenho.current, w: 0, h: 0 })
+  }
+  function areaMove(e: PointerEvent<HTMLDivElement>) {
+    const o = desenho.current
+    if (!o) return
+    const p = pontoNaImagem(e)
+    setRascunhoArea({ x: Math.min(o.x, p.x), y: Math.min(o.y, p.y), w: Math.abs(p.x - o.x), h: Math.abs(p.y - o.y) })
+  }
+  function areaUp() {
+    const a = rascunhoArea
+    desenho.current = null; setRascunhoArea(null)
+    if (!a || a.w < 0.02 || a.h < 0.01) return
+    mudar((t) => ({ ...t, areas: [...(t.areas ?? []), a] }))
+  }
+  function tirarArea(i: number) { mudar((t) => ({ ...t, areas: (t.areas ?? []).filter((_, j) => j !== i) })) }
+  function mudarBorrao(parcial: Partial<ConfigBorrao>, chave: string) {
+    mudar((t) => ({ ...t, borrao: { ...(t.borrao ?? BORRAO_PADRAO), ...parcial } }), chave)
+  }
 
   /** O motor só pode nascer depois de um gesto do usuário (regra do navegador
    *  pra áudio), então nasce no primeiro play. */
@@ -734,15 +799,73 @@ export default function CensorPage() {
 
   function usarComoPadrao(ed: Edicao) { setPadrao(ed); gravar(CHAVE_PADRAO, JSON.stringify(ed)) }
 
-  async function enviarSom(f: File | null | undefined, ids: number[]) {
-    if (!f) return
+  // Biblioteca de efeitos: fica no servidor (vale pra todo projeto e é de lá
+  // que a exportação pega o arquivo). Decodifica tudo pra prévia ao vivo.
+  const carregarSons = useCallback(async () => {
+    const j = await fetch('/api/censura/sons', { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
+    const lista: { nome: string; url: string | null }[] = Array.isArray(j?.sons) ? j.sons : []
+    await Promise.all(lista.map(async ({ nome, url }) => {
+      const id = `arq:${nome}`
+      if (sonsRef.current.has(id) || !url) return
+      try {
+        const blob = await fetch(url).then((r) => r.blob())
+        sonsRef.current.set(id, await decodificarSom(new File([blob], nome)))
+      } catch { /* arquivo ruim: fica de fora da prévia */ }
+    }))
+    setSons(lista.map((s) => `arq:${s.nome}`))
+  }, [])
+  useEffect(() => { carregarSons() }, [carregarSons])
+
+  /** Sobe um ou vários efeitos pra biblioteca. Com `ids`, o primeiro já vai pras palavras selecionadas. */
+  async function enviarSons(arqs: FileList | null | undefined, ids: number[]) {
+    const lista = [...(arqs || [])]
+    if (!lista.length) return
+    setAviso(`Enviando ${lista.length} ${lista.length === 1 ? 'efeito' : 'efeitos'}…`)
+    let primeiro: string | null = null, falhas = 0
+    for (const f of lista) {
+      try {
+        const buf = await decodificarSom(f)
+        const a = await fetch('/api/censura/sons', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nome: f.name }) }).then((r) => r.json())
+        if (!a?.signedUrl) throw new Error(a?.error)
+        const r = await fetch(a.signedUrl, { method: 'PUT', headers: { 'x-upsert': 'true', ...(f.type ? { 'content-type': f.type } : {}) }, body: f })
+        if (!r.ok) throw new Error(String(r.status))
+        const id = `arq:${a.nome}`
+        sonsRef.current.set(id, buf)
+        setSons((s) => s.includes(id) ? s : [...s, id])
+        primeiro ??= id
+      } catch { falhas++ }
+    }
+    if (primeiro && ids.length) editarAudio(ids, { sfx: primeiro }, '')
+    setAviso(falhas ? `${falhas} ${falhas === 1 ? 'arquivo não entrou' : 'arquivos não entraram'} — use mp3 ou wav.` : 'Efeitos salvos na biblioteca.')
+  }
+
+  async function exportar() {
+    if (!projId) return
+    setExp({ fase: 'enviando', desde: Date.now() })
     try {
-      const buf = await decodificarSom(f)
-      const id = `arq:${f.name}`
-      sonsRef.current.set(id, buf)
-      setSons((s) => s.includes(id) ? s : [...s, id])
-      editarAudio(ids, { sfx: id }, '')
-    } catch { setErro('Não consegui ler esse áudio — use mp3 ou wav.') }
+      const r = await fetch('/api/censura/exportar', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projId, segs: segs.map((g) => ({ ini: g.ini, fim: g.fim, ed: g.ed })), areas, borrao, janelas }),
+      }).then((x) => x.json())
+      if (!r?.job) throw new Error(r?.error || 'Não consegui começar a exportação.')
+      setExp({ fase: 'rodando', desde: Date.now() })
+      // Vídeo longo leva alguns minutos; consulta a cada 4s.
+      for (;;) {
+        await new Promise((ok) => setTimeout(ok, 4000))
+        const st = await fetch(`/api/censura/exportar?p=${encodeURIComponent(projId)}&job=${encodeURIComponent(r.job)}`, { cache: 'no-store' }).then((x) => x.json()).catch(() => null)
+        if (st?.status === 'pronto' && st.url) { setExp((e) => ({ fase: 'pronto', url: st.url, desde: e?.desde ?? Date.now() })); return }
+        if (st?.status === 'erro' || st?.error) throw new Error(st?.erro || st?.error || 'A exportação falhou.')
+      }
+    } catch (e) {
+      setExp({ fase: 'erro', erro: e instanceof Error ? e.message : String(e), desde: Date.now() })
+    }
+  }
+
+  async function apagarSom(id: string) {
+    if (!confirm(`Apagar "${id.slice(4)}" da biblioteca de efeitos?`)) return
+    await fetch(`/api/censura/sons?nome=${encodeURIComponent(id.slice(4))}`, { method: 'DELETE' }).catch(() => null)
+    sonsRef.current.delete(id)
+    setSons((s) => s.filter((x) => x !== id))
   }
 
   function proximaDuvida(apos = -1) {
@@ -912,9 +1035,36 @@ export default function CensorPage() {
             <video ref={videoRef} src={src} playsInline crossOrigin="anonymous"
               onClick={alternarPlay}
               onPlay={() => { aoTocar(); setTocando(true) }} onPause={() => setTocando(false)} onEnded={() => setTocando(false)}
-              onLoadedMetadata={(e) => { setDuracao(e.currentTarget.duration || 0); e.currentTarget.playbackRate = velocidade }}
+              onLoadedMetadata={(e) => { setDuracao(e.currentTarget.duration || 0); e.currentTarget.playbackRate = velocidade; medirCaixa() }}
               className="w-full max-h-[64vh] block mx-auto cursor-pointer" />
-            {linhaAtual && (
+            {caixa && (areas.length > 0 || marcandoArea) && (
+              // Camada do tamanho exato da imagem: as áreas da legenda queimada.
+              <div className={`absolute ${marcandoArea ? 'cursor-crosshair z-10' : 'pointer-events-none'}`}
+                style={{ left: caixa.l, top: caixa.t, width: caixa.w, height: caixa.h }}
+                onPointerDown={areaDown} onPointerMove={areaMove} onPointerUp={areaUp}>
+                {marcandoArea && <div className="absolute inset-0 bg-black/25" />}
+                {areas.map((a, i) => (
+                  <div key={i} className={`absolute ${marcandoArea ? 'border-2 border-dashed border-amber-300' : ''}`}
+                    style={{
+                      left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.w * 100}%`, height: `${a.h * 100}%`,
+                      backdropFilter: borrando ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
+                      WebkitBackdropFilter: borrando ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
+                    }}>
+                    {marcandoArea && (
+                      <button onPointerDown={(e) => e.stopPropagation()} onClick={() => tirarArea(i)} aria-label="Apagar área"
+                        className="absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {rascunhoArea && (
+                  <div className="absolute border-2 border-amber-300 bg-amber-300/15"
+                    style={{ left: `${rascunhoArea.x * 100}%`, top: `${rascunhoArea.y * 100}%`, width: `${rascunhoArea.w * 100}%`, height: `${rascunhoArea.h * 100}%` }} />
+                )}
+              </div>
+            )}
+            {linhaAtual && !marcandoArea && (
               <div className="pointer-events-none absolute inset-x-0 bottom-[14%] flex justify-center px-3">
                 <p className="max-w-[94%] text-center text-[13px] font-bold leading-snug bg-black/75 text-white px-2.5 py-1 rounded-md">
                   {linhaAtual.tokens.map((t) => (
@@ -923,7 +1073,7 @@ export default function CensorPage() {
                 </p>
               </div>
             )}
-            {!tocando && (
+            {!tocando && !marcandoArea && (
               <button onClick={alternarPlay} aria-label="Tocar"
                 className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/55 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 hover:scale-105 transition">
                 <Play className="w-7 h-7 ml-1" fill="currentColor" />
@@ -1132,17 +1282,73 @@ export default function CensorPage() {
             )}
           </Secao>
 
+          {/* Legenda queimada no vídeo */}
+          <Secao titulo="Legenda do vídeo" icone={<Droplets className="w-3.5 h-3.5" />}>
+            <div className="space-y-3">
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Marque onde a legenda aparece no vídeo. Na hora das palavras censuradas, essa área fica borrada.
+              </p>
+              <button onClick={() => { setMarcandoArea((m) => !m); videoRef.current?.pause() }}
+                className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea ? 'bg-amber-400 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
+                <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea ? 'Pronto' : areas.length ? `Editar áreas (${areas.length})` : 'Marcar área no vídeo'}
+              </button>
+              {marcandoArea && <p className="text-[11px] text-amber-300 leading-relaxed">Arraste no vídeo por cima da legenda. Pode marcar mais de uma área; o X apaga.</p>}
+              {areas.length > 0 && (
+                <>
+                  <Slider rotulo="Força do borrão" icone={<Droplets className="w-3.5 h-3.5" />} valor={borrao.forca} min={1} max={10} texto={String(borrao.forca)}
+                    onChange={(v) => mudarBorrao({ forca: v }, 'bforca')} />
+                  <Slider rotulo="Começa antes da palavra" icone={<RotateCcw className="w-3.5 h-3.5" />} valor={Math.round(borrao.antes * 10)} min={0} max={20} texto={`${borrao.antes.toFixed(1)}s`}
+                    onChange={(v) => mudarBorrao({ antes: v / 10 }, 'bantes')} />
+                  <Slider rotulo="Continua depois" icone={<RotateCw className="w-3.5 h-3.5" />} valor={Math.round(borrao.depois * 10)} min={0} max={20} texto={`${borrao.depois.toFixed(1)}s`}
+                    onChange={(v) => mudarBorrao({ depois: v / 10 }, 'bdepois')} />
+                  <p className="text-[11px] text-muted-foreground">{janelas.length} {janelas.length === 1 ? 'momento borrado' : 'momentos borrados'}. Dê play pra conferir.</p>
+                </>
+              )}
+            </div>
+          </Secao>
+
+          {/* Exportar */}
+          <Secao titulo="Exportar" icone={<Download className="w-3.5 h-3.5" />}>
+            <div className="space-y-2">
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Gera o vídeo final com o áudio editado ({segs.length} {segs.length === 1 ? 'trecho' : 'trechos'}){areas.length ? ' e a legenda borrada' : ''}.
+              </p>
+              <button onClick={exportar} disabled={!projId || exp?.fase === 'enviando' || exp?.fase === 'rodando'}
+                className="w-full h-9 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 inline-flex items-center justify-center gap-1.5 disabled:opacity-50">
+                {exp?.fase === 'enviando' || exp?.fase === 'rodando'
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Gerando o vídeo…</>
+                  : <><Film className="w-3.5 h-3.5" /> Exportar vídeo</>}
+              </button>
+              {exp?.fase === 'rodando' && <p className="text-[11px] text-muted-foreground">Leva de 1 a 5 minutos, dependendo do tamanho. Pode continuar editando.</p>}
+              {exp?.fase === 'pronto' && exp.url && (
+                <a href={exp.url} className="w-full h-9 rounded-lg text-xs font-bold bg-emerald-500 text-white hover:opacity-90 inline-flex items-center justify-center gap-1.5">
+                  <Download className="w-3.5 h-3.5" /> Baixar vídeo pronto
+                </a>
+              )}
+              {exp?.fase === 'erro' && <p className="text-[11px] text-rose-300 leading-relaxed">{exp.erro}</p>}
+            </div>
+          </Secao>
+
           {/* Áudio */}
           <Secao titulo="Áudio" icone={<Volume2 className="w-3.5 h-3.5" />}>
+            <input ref={somRef} type="file" accept="audio/*,.mp3,.wav" multiple className="hidden"
+              onChange={(e) => { enviarSons(e.target.files, sel); e.target.value = '' }} />
             {!edSel ? (
-              <Vazio>{sel.length ? '' : 'Selecione uma ou mais palavras pra escolher o que acontece no áudio.'}</Vazio>
+              <div className="space-y-2">
+                <Vazio>Selecione uma ou mais palavras pra escolher o que acontece no áudio.</Vazio>
+                <button onClick={() => somRef.current?.click()}
+                  className="h-8 px-3 rounded-lg text-[11px] font-semibold border border-dashed border-border text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
+                  <FileAudio className="w-3.5 h-3.5" /> Enviar efeitos pra biblioteca{sons.length ? ` (${sons.length})` : ''}
+                </button>
+              </div>
             ) : (
               <div className="space-y-4">
                 <div>
                   <p className="text-[11px] text-muted-foreground mb-1.5">Efeito sonoro</p>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {[...SFX_EMBUTIDOS.map((s) => ({ id: s.id as string, nome: s.nome as string })), ...sons.map((id) => ({ id, nome: id.slice(4) }))].map((s) => (
-                      <button key={s.id} onClick={() => editarAudio(sel, { sfx: s.id }, '')} title={s.nome}
+                    {[...SFX_EMBUTIDOS.map((s) => ({ id: s.id as string, nome: s.nome as string })), ...sons.map((id) => ({ id, nome: id.slice(4).replace(/\.[^.]+$/, '') }))].map((s) => (
+                      <button key={s.id} onClick={() => editarAudio(sel, { sfx: s.id }, '')} title={s.id.startsWith('arq:') ? `${s.nome} — botão direito apaga da biblioteca` : s.nome}
+                        onContextMenu={(e) => { if (s.id.startsWith('arq:')) { e.preventDefault(); apagarSom(s.id) } }}
                         className={`h-8 px-2 rounded-lg text-[11px] font-semibold truncate border transition ${edSel.sfx === s.id ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground hover:text-foreground hover:bg-white/5'}`}>
                         {s.nome}
                       </button>
@@ -1152,10 +1358,8 @@ export default function CensorPage() {
                       <FileAudio className="w-3.5 h-3.5" /> Enviar
                     </button>
                   </div>
-                  <input ref={somRef} type="file" accept="audio/*,.mp3,.wav" className="hidden"
-                    onChange={(e) => { enviarSom(e.target.files?.[0], sel); e.target.value = '' }} />
                   {edSel.sfx.startsWith('arq:') && !sons.includes(edSel.sfx) && (
-                    <p className="text-[11px] text-amber-300 mt-1.5">Som “{edSel.sfx.slice(4)}” não está carregado — envie de novo.</p>
+                    <p className="text-[11px] text-amber-300 mt-1.5">O som “{edSel.sfx.slice(4)}” não está na biblioteca: envie de novo.</p>
                   )}
                 </div>
 
