@@ -150,7 +150,15 @@ export async function POST() {
 
         const status = STATUS_MAP[purchase.status] ?? 'pending'
 
-        const tipo = classificarTipo(product?.name, mapeamentos)
+        // classificarTipo devolve front/upsell/outro (o "outro" é só pra exibição:
+        // donut "Outros"). A coluna vendas.tipo só aceita front/upsell
+        // (vendas_tipo_check) e UMA linha "outro" derrubava o lote inteiro do
+        // upsert — ex.: "Combo Blackfriday UGC", produto avulso, muitas vezes
+        // orgânico (sck stories/grupos-whatsapp). Grava "outro" como "front",
+        // igual ao webhook faz com produto não mapeado; NÃO como upsell, senão
+        // herdaria o criativo de outra compra pelo email. A leitura reclassifica.
+        const tipoClassificado = classificarTipo(product?.name, mapeamentos)
+        const tipo: 'front' | 'upsell' = tipoClassificado === 'upsell' ? 'upsell' : 'front'
 
         const sck = purchase.tracking?.source_sck ?? null
         const criativo = extrairCriativo(sck)
