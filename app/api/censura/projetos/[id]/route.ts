@@ -3,6 +3,7 @@ import { RAIZ_CENSURA, MetaProjeto, idValido, bucket, lerJsonStorage, gravarJson
 
 // GET    → projeto completo + URL assinada do vídeo
 // PUT    {trab, resumo} → salva (o front chama sozinho a cada mudança)
+// PATCH  {nome} → renomeia
 // DELETE → apaga vídeo e projeto
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -35,6 +36,23 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       palavras: Number(resumo?.palavras) || 0, censuradas: Number(resumo?.censuradas) || 0,
     })
     return NextResponse.json({ ok: true })
+  } catch (e) {
+    return NextResponse.json({ error: `${e}` }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest, { params }: Ctx) {
+  try {
+    const { id } = await params
+    if (!idValido(id)) return NextResponse.json({ error: 'id inválido' }, { status: 400 })
+    const meta = await lerJsonStorage<MetaProjeto>(`${RAIZ_CENSURA}/${id}/meta.json`)
+    if (!meta) return NextResponse.json({ error: 'Projeto não encontrado.' }, { status: 404 })
+    const { nome } = await req.json()
+    const limpo = String(nome || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+    if (!limpo) return NextResponse.json({ error: 'nome vazio' }, { status: 400 })
+    // O vídeo continua no mesmo caminho: só o nome de exibição muda.
+    await gravarJsonStorage(`${RAIZ_CENSURA}/${id}/meta.json`, { ...meta, nome: limpo })
+    return NextResponse.json({ ok: true, nome: limpo })
   } catch (e) {
     return NextResponse.json({ error: `${e}` }, { status: 500 })
   }

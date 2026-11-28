@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, MouseEvent, PointerE
 import {
   Loader2, Upload, Sparkles, Download, EyeOff, X, Check, Play, HelpCircle, Flag,
   ShieldOff, ShieldCheck, Undo2, Redo2, Trash2, Volume2, VolumeX, Music, FileAudio,
-  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, MessageSquarePlus, Pause, Maximize, RotateCcw, RotateCw, SquareDashed, Droplets,
+  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, MessageSquarePlus, Pause, Maximize, RotateCcw, RotateCw, SquareDashed, Droplets, Pencil,
 } from 'lucide-react'
 import {
   PalavraBruta, Token, Edicao, paraTokens, emLinhas, emParagrafos, tokenNoTempo, fmtTempo,
@@ -412,6 +412,17 @@ export default function CensorPage() {
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e)); urlComProjeto(null)
     } finally { setAbrindo(null) }
+  }
+
+  async function renomearProjeto(id: string, atual: string) {
+    const nome = prompt('Novo nome do projeto:', atual)?.trim()
+    if (!nome || nome === atual) return
+    const j = await fetch(`/api/censura/projetos/${id}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nome }),
+    }).then((r) => r.json()).catch(() => null)
+    if (!j?.ok) { alert(j?.error || 'Não consegui renomear.'); return }
+    setProjetos((l) => l?.map((x) => x.id === id ? { ...x, nome: j.nome } : x) ?? l)
+    if (id === projId) setInfo((i) => i ? { ...i, nome: j.nome } : i)
   }
 
   async function apagarProjeto(m: MetaProjeto) {
@@ -989,6 +1000,10 @@ export default function CensorPage() {
                       </p>
                     </div>
                   </button>
+                  <button onClick={() => renomearProjeto(m.id, m.nome)} title="Renomear projeto"
+                    className="w-8 h-8 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition">
+                    <Pencil className="w-4 h-4" />
+                  </button>
                   <button onClick={() => apagarProjeto(m)} title="Apagar projeto"
                     className="w-8 h-8 rounded-lg text-muted-foreground/60 hover:text-rose-300 hover:bg-rose-500/10 flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition">
                     <Trash2 className="w-4 h-4" />
@@ -1010,7 +1025,11 @@ export default function CensorPage() {
         <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0"><EyeOff className="w-4 h-4" /></div>
         <div className="min-w-0 mr-auto">
           <p className="text-sm font-bold text-foreground leading-tight">Editor de Censura</p>
-          <p className="text-[11px] text-muted-foreground truncate leading-tight" title={info?.nome}>{info?.nome} · {((info?.tamanho || 0) / 1048576).toFixed(1)} MB{aviso && <span className="text-emerald-400"> · {aviso}</span>}</p>
+          <p className="text-[11px] text-muted-foreground truncate leading-tight" title={info?.nome}>{projId ? (
+            <button onClick={() => renomearProjeto(projId, info?.nome || '')} title="Clique pra renomear" className="hover:text-foreground hover:underline decoration-dotted inline-flex items-center gap-1">
+              {info?.nome}<Pencil className="w-3 h-3 opacity-60" />
+            </button>
+          ) : info?.nome} · {((info?.tamanho || 0) / 1048576).toFixed(1)} MB{aviso && <span className="text-emerald-400"> · {aviso}</span>}</p>
         </div>
         <Selo projId={projId} estado={estadoSalvo} enviado={enviado} transcrevendo={rodando} />
         <BotaoIcone titulo="Desfazer (Ctrl+Z)" onClick={desfazer} disabled={!podeDesfazer}><Undo2 className="w-4 h-4" /></BotaoIcone>
@@ -1347,8 +1366,8 @@ export default function CensorPage() {
               <div className="space-y-4">
                 <div>
                   <p className="text-[11px] text-muted-foreground mb-1.5">Efeito sonoro</p>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[...SFX_EMBUTIDOS.map((s) => ({ id: s.id as string, nome: s.nome as string })), ...sons.map((id) => ({ id, nome: id.slice(4).replace(/\.[^.]+$/, '') }))].map((s) => (
+                  <div className="grid grid-cols-3 gap-1.5 max-h-72 overflow-y-auto pr-1">
+                    {[...SFX_EMBUTIDOS.map((s) => ({ id: s.id as string, nome: s.nome as string })), ...sons.map((id) => ({ id, nome: id.slice(4).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ') }))].map((s) => (
                       <button key={s.id} onClick={() => editarAudio(sel, { sfx: s.id }, '')} title={s.id.startsWith('arq:') ? `${s.nome} — botão direito apaga da biblioteca` : s.nome}
                         onContextMenu={(e) => { if (s.id.startsWith('arq:')) { e.preventDefault(); apagarSom(s.id) } }}
                         className={`h-8 px-2 rounded-lg text-[11px] font-semibold truncate border transition ${edSel.sfx === s.id ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground hover:text-foreground hover:bg-white/5'}`}>
