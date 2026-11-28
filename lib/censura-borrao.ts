@@ -17,7 +17,11 @@ export const RAIZ_SONS = 'censura-sfx'
  *  Sem ini/fim: borra na hora das palavras censuradas (legenda fixa).
  *  Com ini/fim: "borrão de momento" — borra só nesse intervalo, pra texto
  *  que o editor do vídeo colocou solto (ex.: "rendas extras" trocando de fonte). */
-export interface AreaBorrao { x: number; y: number; w: number; h: number; ini?: number; fim?: number }
+export interface AreaBorrao {
+  x: number; y: number; w: number; h: number; ini?: number; fim?: number
+  /** Giro em graus (−180 a 180) em volta do centro. x/y/w/h são do retângulo sem giro. */
+  rot?: number
+}
 
 export const ehMomento = (a: AreaBorrao) => typeof a.ini === 'number' && typeof a.fim === 'number'
 
@@ -71,6 +75,7 @@ export function intervalosValidos(v: unknown): [number, number][] {
 export function areaValida(a: unknown): a is AreaBorrao {
   const r = a as AreaBorrao
   if (!r || ![r.x, r.y, r.w, r.h].every((n) => typeof n === 'number' && n >= 0 && n <= 1) || r.w <= 0.01 || r.h <= 0.01) return false
+  if (r.rot != null && !(typeof r.rot === 'number' && Number.isFinite(r.rot) && Math.abs(r.rot) <= 180)) return false
   if (r.ini == null && r.fim == null) return true
   return typeof r.ini === 'number' && typeof r.fim === 'number' && Number.isFinite(r.ini) && Number.isFinite(r.fim) && r.ini >= 0 && r.fim > r.ini
 }

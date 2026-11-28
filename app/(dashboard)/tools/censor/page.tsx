@@ -411,11 +411,21 @@ export default function CensorPage() {
     desenho.current = pontoNaImagem(e)
     setRascunhoArea({ ...desenho.current, w: 0, h: 0 })
   }
+  function girarArea(i: number, rot: number) {
+    mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === i ? { ...a, rot: rot || undefined } : a)) }))
+  }
+  const ultimoGiro = useRef({ i: -1, t: 0 })
   function ajusteDown(e: PointerEvent<HTMLDivElement>, i: number, modo: string) {
     const camada = camadaRef.current
     const a0 = areas[i]
     if (!camada || !a0) return
     e.preventDefault(); e.stopPropagation()
+    if (modo === 'r') {
+      // Dois cliques na alça de girar: volta pro reto.
+      const agora = performance.now(), u = ultimoGiro.current
+      ultimoGiro.current = { i, t: agora }
+      if (u.i === i && agora - u.t < 350) { girarArea(i, 0); ultimoGiro.current = { i: -1, t: 0 }; return }
+    }
     camada.setPointerCapture(e.pointerId)
     const r = camada.getBoundingClientRect()
     ajuste.current = { i, modo, p0: { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }, a0 }
@@ -427,10 +437,40 @@ export default function CensorPage() {
       const p = pontoNaImagem(e)
       const dx = p.x - aj.p0.x, dy = p.y - aj.p0.y
       const { a0, modo } = aj
+      const rot = a0.rot || 0
+      const cr = camadaRef.current?.getBoundingClientRect()
+      const W = cr?.width || 1, H = cr?.height || 1
+      if (modo === 'r') {
+        // Girar: ângulo do ponteiro em volta do centro (em pixels, pra não distorcer).
+        const cx = (a0.x + a0.w / 2) * W, cy = (a0.y + a0.h / 2) * H
+        let g = (Math.atan2(p.y * H - cy, p.x * W - cx) * 180) / Math.PI + 90
+        if (g > 180) g -= 360
+        // Gruda no reto (0/90/180) quando chega perto; com Shift, de 15 em 15.
+        g = e.shiftKey ? Math.round(g / 15) * 15 : Math.abs(g - Math.round(g / 90) * 90) < 4 ? Math.round(g / 90) * 90 : g
+        if (g <= -180) g += 360
+        setEmAjuste({ i: aj.i, a: { ...a0, rot: Math.round(g * 10) / 10 } })
+        return
+      }
       let x1 = a0.x, y1 = a0.y, x2 = a0.x + a0.w, y2 = a0.y + a0.h
       if (modo === 'm') {
         const nx = Math.min(1 - a0.w, Math.max(0, a0.x + dx)), ny = Math.min(1 - a0.h, Math.max(0, a0.y + dy))
         x1 = nx; y1 = ny; x2 = nx + a0.w; y2 = ny + a0.h
+      } else if (rot) {
+        // Girado: estica nas bordas do próprio borrão (eixos girados), mantendo a borda oposta parada.
+        const t = (rot * Math.PI) / 180, c = Math.cos(t), sn = Math.sin(t)
+        const px = dx * W, py = dy * H
+        const lx = px * c + py * sn, ly = -px * sn + py * c
+        let l1 = -a0.w * W / 2, l2 = a0.w * W / 2, u1 = -a0.h * H / 2, u2 = a0.h * H / 2
+        if (modo.includes('w')) l1 = Math.min(l2 - 0.02 * W, l1 + lx)
+        if (modo.includes('e')) l2 = Math.max(l1 + 0.02 * W, l2 + lx)
+        if (modo.includes('n')) u1 = Math.min(u2 - 0.01 * H, u1 + ly)
+        if (modo.includes('s')) u2 = Math.max(u1 + 0.01 * H, u2 + ly)
+        const mx = (l1 + l2) / 2, my = (u1 + u2) / 2
+        const cx = (a0.x + a0.w / 2) * W + mx * c - my * sn, cy = (a0.y + a0.h / 2) * H + mx * sn + my * c
+        const w = Math.min(1, (l2 - l1) / W), h = Math.min(1, (u2 - u1) / H)
+        const x = Math.min(1 - w, Math.max(0, cx / W - w / 2)), y = Math.min(1 - h, Math.max(0, cy / H - h / 2))
+        setEmAjuste({ i: aj.i, a: { ...a0, x, y, w, h } })
+        return
       } else {
         if (modo.includes('w')) x1 = Math.min(x2 - 0.02, Math.max(0, a0.x + dx))
         if (modo.includes('e')) x2 = Math.max(x1 + 0.02, Math.min(1, a0.x + a0.w + dx))
@@ -451,7 +491,7 @@ export default function CensorPage() {
       ajuste.current = null; setEmAjuste(null)
       if (fim) {
         const r = (n: number) => +n.toFixed(4)
-        mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === fim.i ? { ...a, x: r(fim.a.x), y: r(fim.a.y), w: r(fim.a.w), h: r(fim.a.h) } : a)) }))
+        mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === fim.i ? { ...a, x: r(fim.a.x), y: r(fim.a.y), w: r(fim.a.w), h: r(fim.a.h), rot: fim.a.rot ? fim.a.rot : undefined } : a)) }))
       }
       return
     }
@@ -1373,6 +1413,7 @@ export default function CensorPage() {
                     onPointerDown={contorno ? (e) => ajusteDown(e, i, 'm') : undefined}
                     style={{
                       left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.w * 100}%`, height: `${a.h * 100}%`,
+                      transform: a.rot ? `rotate(${a.rot}deg)` : undefined,
                       backdropFilter: borra ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
                       WebkitBackdropFilter: borra ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
                     }}>
@@ -1381,6 +1422,20 @@ export default function CensorPage() {
                         className={`absolute w-3 h-3 rounded-sm bg-white border ${mom ? 'border-cyan-500' : 'border-amber-500'} shadow ${pos}`}
                         style={{ cursor }} />
                     ))}
+                    {contorno && (
+                      // Alça de girar: arraste em volta; dois cliques volta pro reto.
+                      <div className="absolute left-1/2 -top-8 -translate-x-1/2 flex flex-col items-center">
+                        <div onPointerDown={(e) => ajusteDown(e, i, 'r')}
+                          title="Arraste pra girar (Shift: de 15 em 15°). Dois cliques: volta pro reto."
+                          className={`w-4 h-4 rounded-full bg-white border-2 ${mom ? 'border-cyan-500' : 'border-amber-500'} shadow flex items-center justify-center cursor-grab active:cursor-grabbing`}>
+                          <RotateCw className="w-2.5 h-2.5 text-black/70" />
+                        </div>
+                        <div className={`w-px h-4 ${mom ? 'bg-cyan-300' : 'bg-amber-300'}`} />
+                        {emAjuste?.i === i && ajuste.current?.modo === 'r' && (
+                          <span className="absolute -top-6 text-[10px] font-bold bg-black/80 text-white px-1.5 py-0.5 rounded" style={{ transform: a.rot ? `rotate(${-a.rot}deg)` : undefined }}>{Math.round(a.rot || 0)}°</span>
+                        )}
+                      </div>
+                    )}
                     {contorno && (
                       <button onPointerDown={(e) => e.stopPropagation()} onClick={() => tirarArea(i)} aria-label="Apagar área"
                         className="absolute -top-7 right-0 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow">

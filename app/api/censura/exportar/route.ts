@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       // Cada área leva as próprias janelas: a da legenda segue as palavras
       // censuradas; a de momento, o intervalo que o usuário marcou.
       areas: areas
-        .map((a) => ({ x: a.x, y: a.y, w: a.w, h: a.h, janelas: janelasDaArea(a, dasPalavras) }))
+        .map((a) => ({ x: a.x, y: a.y, w: a.w, h: a.h, rot: a.rot || 0, janelas: janelasDaArea(a, dasPalavras) }))
         .filter((a) => a.janelas.length),
       // Raio = forca × 0,6% da largura do vídeo (o mesmo da prévia).
       raio_rel: cfg.forca * 0.006,

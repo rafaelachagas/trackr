@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import random
 import re
 import shutil
@@ -2924,6 +2925,44 @@ def _fonte_sfx(tipo, dur):
 AFMT = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
 
 
+def _dims_exibidas(path, tmp):
+    """Largura/altura do quadro como ele aparece (já girado, se for vídeo de celular)."""
+    q = os.path.join(tmp, "quadro.png")
+    try:
+        subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", path,
+                        "-frames:v", "1", q], capture_output=True, timeout=60)
+        w, h, _ = _ffprobe(q)
+        return (w, h)
+    except Exception:
+        return _ffprobe(path)[:2]
+
+
+def _borrao_girado(a, i, dims, raio_rel, atual, quando, prox):
+    """Borrão girado: recorta a caixa que envolve o retângulo girado, borra e
+    deixa transparente o que fica fora do retângulo (canal alfa via geq)."""
+    FW, FH = dims
+    rw, rh = max(4.0, _num(a["w"]) * FW), max(4.0, _num(a["h"]) * FH)
+    cx, cy = (_num(a["x"]) + _num(a["w"]) / 2) * FW, (_num(a["y"]) + _num(a["h"]) / 2) * FH
+    t = math.radians(max(-180.0, min(180.0, _num(a.get("rot")))))
+    c, s = math.cos(t), math.sin(t)
+    bw, bh = rw * abs(c) + rh * abs(s), rw * abs(s) + rh * abs(c)
+    x0, y0 = max(0, int(math.floor(cx - bw / 2))), max(0, int(math.floor(cy - bh / 2)))
+    x1, y1 = min(FW, int(math.ceil(cx + bw / 2))), min(FH, int(math.ceil(cy + bh / 2)))
+    x0 -= x0 % 2; y0 -= y0 % 2
+    cw, ch = max(2, (x1 - x0) // 2 * 2), max(2, (y1 - y0) // 2 * 2)
+    raio = max(1, min(int(raio_rel * FW), min(cw, ch) // 2 - 1))
+    # Ponto (X,Y) do recorte em coordenadas do retângulo (desfazendo o giro).
+    dx, dy = "(X+%d-%.2f)" % (x0, cx), "(Y+%d-%.2f)" % (y0, cy)
+    alfa = ("255*lte(abs(%s*%.6f+%s*%.6f),%.2f)*lte(abs(%s*%.6f-%s*%.6f),%.2f)"
+            % (dx, c, dy, s, rw / 2, dy, c, dx, s, rh / 2))
+    return [
+        "[c%d]crop=%d:%d:%d:%d,boxblur=luma_radius=%d:luma_power=2:chroma_radius=%d:chroma_power=2,"
+        "format=yuva420p,geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='%s'[b%d]"
+        % (i, cw, ch, x0, y0, raio, max(1, min(raio // 2, min(cw, ch) // 4 - 1)), alfa, i),
+        "%s[b%d]overlay=x=%d:y=%d:enable='%s'%s" % (atual, i, x0, y0, quando, prox),
+    ]
+
+
 def _censurar(body):
     bucket = body.get("bucket") or "criativos"
     inp, out = body.get("input_path"), body.get("output_path")
@@ -3021,7 +3060,13 @@ def _censurar(body):
             k = len(areas)
             partes.append("[0:v]split=%d[base]%s" % (k + 1, "".join("[c%d]" % i for i in range(k))))
             atual = "[base]"
+            dims = _dims_exibidas(ent, tmp) if any(abs(_num(a.get("rot"))) > 0.05 for a in areas) else None
             for i, a in enumerate(areas):
+                if dims and abs(_num(a.get("rot"))) > 0.05:
+                    prox = "[v%d]" % i
+                    partes.extend(_borrao_girado(a, i, dims, raio_rel, atual, _quando(a), prox))
+                    atual = prox
+                    continue
                 ax, ay = max(0.0, min(0.98, _num(a["x"]))), max(0.0, min(0.98, _num(a["y"])))
                 aw, ah = max(0.02, min(1.0 - ax, _num(a["w"]))), max(0.02, min(1.0 - ay, _num(a["h"])))
                 # Tudo em expressão do próprio quadro: funciona em vídeo girado
