@@ -55,6 +55,19 @@ export function janelasBorrao(segs: Segmento[], cfg: ConfigBorrao, duracao = Inf
   return out
 }
 
+/** Tira as janelas da legenda que o usuário soltou (viraram borrão de momento editável). */
+export function tirarJanelas(janelas: [number, number][], fora: [number, number][] | undefined): [number, number][] {
+  if (!fora?.length) return janelas
+  return janelas.filter(([a, z]) => !fora.some(([fa, fz]) => a < fz && fa < z))
+}
+
+/** Lista de intervalos [ini, fim] vinda do cliente, já validada. */
+export function intervalosValidos(v: unknown): [number, number][] {
+  return (Array.isArray(v) ? v : [])
+    .filter((x): x is [number, number] => Array.isArray(x) && x.length === 2 && x.every((n) => typeof n === 'number' && Number.isFinite(n)) && x[1] > x[0])
+    .slice(0, 500)
+}
+
 export function areaValida(a: unknown): a is AreaBorrao {
   const r = a as AreaBorrao
   if (!r || ![r.x, r.y, r.w, r.h].every((n) => typeof n === 'number' && n >= 0 && n <= 1) || r.w <= 0.01 || r.h <= 0.01) return false

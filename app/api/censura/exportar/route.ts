@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { RAIZ_CENSURA, MetaProjeto, idValido, bucket, lerJsonStorage } from '@/lib/censura-projetos'
 import { BUCKET_CRIATIVOS } from '@/lib/criativos'
 import { Edicao, Segmento, ganhoVoz, dbParaGanho } from '@/lib/censura'
-import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, RAIZ_SONS, areaValida, janelasBorrao, janelasDaArea, ehMomento } from '@/lib/censura-borrao'
+import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, RAIZ_SONS, areaValida, janelasBorrao, janelasDaArea, ehMomento, tirarJanelas, intervalosValidos } from '@/lib/censura-borrao'
 import { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } from '@/lib/transcritor'
 
 // Exportação do Editor de Censura. O ffmpeg roda na VPS (rota /censor_render
@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    const dasPalavras = areas.some((a) => !ehMomento(a)) ? janelasBorrao(segs, cfg) : []
+    // Janelas que o usuário soltou na linha do tempo viraram borrões de momento.
+    const dasPalavras = areas.some((a) => !ehMomento(a)) ? tirarJanelas(janelasBorrao(segs, cfg), intervalosValidos(b.legendaFora)) : []
     const corpo = {
       bucket: BUCKET_CRIATIVOS,
       input_path: meta.video,

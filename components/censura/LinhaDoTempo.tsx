@@ -31,6 +31,8 @@ interface Props {
   onAbrirBorrao: (i: number) => void
   onAbrirCensura: (s: Segmento) => void
   onAbrirLegenda: () => void
+  /** Clique num bloco amarelo: vira borrão de momento editável. */
+  onSoltarLegenda: (ini: number, fim: number) => void
   /** Aumenta/volta a altura da linha do tempo. */
   maximizada: boolean
   onMaximizar: () => void
@@ -260,9 +262,9 @@ export function LinhaDoTempo(p: Props) {
 
             {trilha('Legenda borrada', <Captions className="w-3 h-3" />, 'bg-amber-600', 30, <>
               {p.janelasLegenda.map(([a, z], k) => (
-                <div key={k} onPointerDown={(e) => { e.stopPropagation(); p.onSeek(a) }} onDoubleClick={p.onAbrirLegenda}
-                  title={`Legenda borrada ${fmtTempo(a)} → ${fmtTempo(z)} · segue as palavras censuradas · duplo clique edita a área`}
-                  className="absolute top-1.5 bottom-1.5 rounded-[3px] bg-amber-500/70 border border-amber-200/40 cursor-pointer"
+                <div key={k} onPointerDown={(e) => { e.stopPropagation(); videoRef.current?.pause(); p.onSoltarLegenda(a, z) }}
+                  title={`Borrão automático da legenda ${fmtTempo(a)} → ${fmtTempo(z)} · clique pra editar (vira um bloco azul que dá pra mover, esticar e apagar)`}
+                  className="absolute top-1.5 bottom-1.5 rounded-[3px] bg-amber-500/70 border border-amber-200/40 cursor-pointer hover:bg-amber-400 hover:border-white"
                   style={{ left: xDe(a), width: Math.max(3, xDe(z - a)) }} />
               ))}
             </>)}

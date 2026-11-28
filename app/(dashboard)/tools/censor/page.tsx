@@ -14,7 +14,7 @@ import {
 import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
 import { LeituraVideo, acharTexto, jaCoberto } from '@/lib/censura-ocr'
 import { LinhaDoTempo, ElementoTL } from '@/components/censura/LinhaDoTempo'
-import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, janelasBorrao, raioBorrao, ehMomento, janelasDaArea } from '@/lib/censura-borrao'
+import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, janelasBorrao, raioBorrao, ehMomento, janelasDaArea, tirarJanelas } from '@/lib/censura-borrao'
 import {
   Risco, Gravidade, GRAVIDADES, NOME_GRAVIDADE, BibliotecaExtra, aplicarExtra, censuraSozinho, autoCensura, riscosLocais, riscoPorPalavra,
 } from '@/lib/censura-riscos'
@@ -43,7 +43,7 @@ const chaveTrabalho = (f: File) => `censura:trabalho:${f.name}:${f.size}`
 
 /** riscos = o que a IA achou (a biblioteca e a lista são recalculadas na hora). */
 /** areas/borrao = onde está a legenda queimada no vídeo e como borrar (lib/censura-borrao.ts). */
-interface Trabalho { tokens: Token[]; marcas: number[]; ignoradas: number[]; edicoes: Record<number, Edicao>; riscos?: Risco[]; analisadoEm?: string; areas?: AreaBorrao[]; borrao?: ConfigBorrao }
+interface Trabalho { tokens: Token[]; marcas: number[]; ignoradas: number[]; edicoes: Record<number, Edicao>; riscos?: Risco[]; analisadoEm?: string; areas?: AreaBorrao[]; borrao?: ConfigBorrao; legendaFora?: [number, number][] }
 interface MetaProjeto { id: string; nome: string; tamanho: number; video: string; criado: string; atualizado: string; palavras: number; censuradas: number }
 type EstadoSalvo = 'salvo' | 'salvando' | 'erro' | null
 
@@ -242,7 +242,8 @@ export default function CensorPage() {
   const areas = useMemo(() => trab.areas ?? [], [trab.areas])
   const borrao = trab.borrao ?? BORRAO_PADRAO
   const areasLegenda = useMemo(() => areas.filter((a) => !ehMomento(a)).length, [areas])
-  const janelas = useMemo(() => (areasLegenda ? janelasBorrao(segs, borrao, duracao || Infinity) : []), [areasLegenda, segs, borrao, duracao])
+  const legendaFora = trab.legendaFora
+  const janelas = useMemo(() => (areasLegenda ? tirarJanelas(janelasBorrao(segs, borrao, duracao || Infinity), legendaFora) : []), [areasLegenda, segs, borrao, duracao, legendaFora])
   useEffect(() => { janelasRef.current = janelas }, [janelas])
   useEffect(() => { areasRef.current = areas }, [areas])
   useEffect(() => { previaRef.current = previa }, [previa])
@@ -579,6 +580,20 @@ export default function CensorPage() {
     setElTL(null)
   }
   const apagarElementoRef = useRef(apagarElemento); useEffect(() => { apagarElementoRef.current = apagarElemento })
+  /** Bloco amarelo (borrão automático da legenda) vira borrão de momento editável, no mesmo lugar. */
+  function soltarLegenda(ini: number, fim: number) {
+    const base = areas.filter((a) => !ehMomento(a))
+    if (!base.length) return
+    const novoIdx = areas.length
+    mudar((t) => ({
+      ...t,
+      areas: [...(t.areas ?? []), ...base.map((a) => ({ x: a.x, y: a.y, w: a.w, h: a.h, ini: +ini.toFixed(2), fim: +fim.toFixed(2) }))],
+      legendaFora: [...(t.legendaFora ?? []), [+ini.toFixed(2), +fim.toFixed(2)] as [number, number]],
+    }))
+    setElTL({ tipo: 'borrao', i: novoIdx })
+    seek((ini + fim) / 2)
+    setAviso('Esse borrão agora é editável: arraste, estique pelas pontas, duplo clique ajusta a área, Delete apaga.')
+  }
   function mudarMomentoTL(i: number, ini: number, fim: number) {
     mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === i && ehMomento(a) ? { ...a, ini, fim } : a)) }))
   }
@@ -1133,7 +1148,7 @@ export default function CensorPage() {
     try {
       const r = await fetch('/api/censura/exportar', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ projId, segs: segs.map((g) => ({ ini: g.ini, fim: g.fim, ed: g.ed })), areas, borrao, janelas }),
+        body: JSON.stringify({ projId, segs: segs.map((g) => ({ ini: g.ini, fim: g.fim, ed: g.ed })), areas, borrao, janelas, legendaFora: legendaFora ?? [] }),
       }).then((x) => x.json())
       if (!r?.job) throw new Error(r?.error || 'Não consegui começar a exportação.')
       setExp({ fase: 'rodando', desde: Date.now() })
@@ -1890,6 +1905,7 @@ export default function CensorPage() {
               onMudarMomento={mudarMomentoTL} onApagar={apagarElemento} onAbrirBorrao={abrirBorrao}
               onAbrirCensura={(sg) => selecionar(sg.ids, true)}
               onAbrirLegenda={() => { videoRef.current?.pause(); setMarcandoArea(true); setModoMomento(false) }}
+              onSoltarLegenda={soltarLegenda}
               maximizada={altMax != null}
               onMaximizar={() => {
                 if (altMax != null) { setAltTL(altMax); setAltMax(null) }
