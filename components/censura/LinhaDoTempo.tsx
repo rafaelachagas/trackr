@@ -79,6 +79,8 @@ export function LinhaDoTempo(p: Props) {
       if (v && cabecaRef.current) {
         const x = v.currentTime * pxSeg
         cabecaRef.current.style.transform = `translateX(${x}px)`
+        // Fora da parte visível (atrás dos nomes das trilhas): esconde, não desenha por cima.
+        if (el) cabecaRef.current.style.visibility = x < el.scrollLeft - 1 ? 'hidden' : 'visible'
         if (tempoRef.current) tempoRef.current.textContent = fmtTempo(v.currentTime)
         if (el && !v.paused && !raspando.current) {
           const vis0 = el.scrollLeft, vis1 = el.scrollLeft + el.clientWidth - LARG_ROTULO
@@ -127,18 +129,43 @@ export function LinhaDoTempo(p: Props) {
   }, [])
 
   // ---- raspar (clicar/arrastar na régua ou em área vazia move a cabeça) ----
+  // Arrastando a cabeça até a beirada, a linha do tempo rola sozinha pra trás/pra frente.
+  const ultimoX = useRef(0)
+  const rolarRaf = useRef(0)
+  function rolarNaBeirada() {
+    const el = rolagemRef.current
+    if (!raspando.current || !el) { rolarRaf.current = 0; return }
+    const r = el.getBoundingClientRect()
+    const esq = r.left + LARG_ROTULO, dir = r.right
+    const x = ultimoX.current
+    let v = 0
+    if (x < esq + 40) v = -Math.min(40, (esq + 40 - x) / 2)
+    else if (x > dir - 40) v = Math.min(40, (x - (dir - 40)) / 2)
+    if (v) {
+      el.scrollLeft = Math.max(0, el.scrollLeft + v)
+      p.onSeek(tempoDoPonteiro(x))
+    }
+    rolarRaf.current = requestAnimationFrame(rolarNaBeirada)
+  }
   function raspaDown(e: PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return
     e.currentTarget.setPointerCapture(e.pointerId)
     raspando.current = true
+    ultimoX.current = e.clientX
     videoRef.current?.pause()
     p.onSeek(tempoDoPonteiro(e.clientX))
     p.onSelecionar(null)
+    if (!rolarRaf.current) rolarRaf.current = requestAnimationFrame(rolarNaBeirada)
   }
   function raspaMove(e: PointerEvent<HTMLDivElement>) {
-    if (raspando.current) p.onSeek(tempoDoPonteiro(e.clientX))
+    if (!raspando.current) return
+    ultimoX.current = e.clientX
+    p.onSeek(tempoDoPonteiro(e.clientX))
   }
-  function raspaUp() { raspando.current = false }
+  function raspaUp() {
+    raspando.current = false
+    if (rolarRaf.current) { cancelAnimationFrame(rolarRaf.current); rolarRaf.current = 0 }
+  }
 
   // ---- blocos de borrão: mover / esticar ----
   function blocoDown(e: PointerEvent<HTMLDivElement>, i: number, modo: 'm' | 'ini' | 'fim') {
