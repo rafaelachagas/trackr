@@ -122,6 +122,12 @@ export default function CensorPage() {
   const arrasto = useRef<{ x: number; tocava: boolean; moveu: boolean } | null>(null)
   const adicionarRef = useRef<HTMLInputElement>(null)
   const [previa, setPrevia] = useState(true)
+  // Legenda do editor por cima do vídeo: dá pra ocultar pra ver a legenda que já vem queimada.
+  const [mostrarLegenda, setMostrarLegenda] = useState(true)
+  useEffect(() => { try { if (localStorage.getItem('censura-legenda') === '0') setMostrarLegenda(false) } catch { /* sem storage */ } }, [])
+  function alternarLegenda() {
+    setMostrarLegenda((v) => { try { localStorage.setItem('censura-legenda', v ? '0' : '1') } catch { /* sem storage */ } return !v })
+  }
   const [sons, setSons] = useState<string[]>([])
   // Borrão da legenda queimada: modo de desenhar a área, retângulo do vídeo
   // dentro do player (o <video> tem faixa preta dos lados) e se está borrando agora.
@@ -1085,7 +1091,7 @@ export default function CensorPage() {
                 )}
               </div>
             )}
-            {linhaAtual && !marcandoArea && (
+            {linhaAtual && !marcandoArea && mostrarLegenda && (
               <div className="pointer-events-none absolute inset-x-0 bottom-[14%] flex justify-center px-3">
                 <p className="max-w-[94%] text-center text-[13px] font-bold leading-snug bg-black/75 text-white px-2.5 py-1 rounded-md">
                   {linhaAtual.tokens.map((t) => (
@@ -1150,12 +1156,20 @@ export default function CensorPage() {
             {tokens.length > 0 && (
               <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-border">
                 <p className="text-[11px] text-muted-foreground">{segs.length} {segs.length === 1 ? 'trecho censurado' : 'trechos censurados'}</p>
+                <div className="flex items-center gap-4">
+                <button onClick={alternarLegenda} className="inline-flex items-center gap-2 text-[11px] font-semibold text-foreground/90">
+                  {mostrarLegenda ? 'Nossa legenda' : 'Legenda oculta'}
+                  <span className={`w-8 h-[18px] rounded-full relative transition ${mostrarLegenda ? 'bg-primary' : 'bg-white/15'}`}>
+                    <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${mostrarLegenda ? 'left-[16px]' : 'left-[2px]'}`} />
+                  </span>
+                </button>
                 <button onClick={() => setPrevia((p) => !p)} className="inline-flex items-center gap-2 text-[11px] font-semibold text-foreground/90">
                   {previa ? 'Ouvindo com edições' : 'Ouvindo o original'}
                   <span className={`w-8 h-[18px] rounded-full relative transition ${previa ? 'bg-primary' : 'bg-white/15'}`}>
                     <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${previa ? 'left-[16px]' : 'left-[2px]'}`} />
                   </span>
                 </button>
+                </div>
               </div>
             )}
           </div>
