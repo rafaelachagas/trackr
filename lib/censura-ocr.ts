@@ -46,7 +46,8 @@ export function acharTexto(leitura: LeituraVideo, texto: string, duracao: number
   const precisa = palavras.length === 1 ? 1 : Math.ceil(palavras.length * 0.5)
   const passo = 1 / (leitura.fps || 3)
 
-  const achados: { t: number; x1: number; y1: number; x2: number; y2: number }[] = []
+  type Caixa = { t: number; x1: number; y1: number; x2: number; y2: number }
+  const quadros: { t: number; cx: Caixa[] }[] = []
   for (const q of leitura.itens) {
     const dets = q.d.map((d) => ({ n: normTxt(d[0]), d }))
     const usadas = new Set<Deteccao>()
@@ -56,31 +57,41 @@ export function acharTexto(leitura: LeituraVideo, texto: string, duracao: number
       if (hit.length) { cobertas++; hit.forEach((x) => usadas.add(x.d)) }
     }
     if (cobertas < precisa || !usadas.size) continue
-    const us = [...usadas]
-    achados.push({
-      t: q.t,
-      x1: Math.min(...us.map((d) => d[1])), y1: Math.min(...us.map((d) => d[2])),
-      x2: Math.max(...us.map((d) => d[3])), y2: Math.max(...us.map((d) => d[4])),
-    })
+    quadros.push({ t: q.t, cx: [...usadas].map((d) => ({ t: q.t, x1: d[1], y1: d[2], x2: d[3], y2: d[4] })) })
   }
 
   // Quadros seguidos viram um trecho; um quadro perdido no meio não quebra.
-  const trechos: (typeof achados)[] = []
-  for (const a of achados) {
+  const trechos: (typeof quadros)[] = []
+  for (const q of quadros) {
     const ult = trechos[trechos.length - 1]
-    if (ult && a.t - ult[ult.length - 1].t <= passo * 2.5) ult.push(a)
-    else trechos.push([a])
+    if (ult && q.t - ult[ult.length - 1].t <= passo * 2.5) ult.push(q)
+    else trechos.push([q])
   }
+
+  // Dentro do trecho, cada LUGAR da tela onde o texto aparece vira um borrão
+  // (ex.: "natura" em vários pontos de um print de perfil) — nunca a tela toda.
+  const perto = (a: Caixa, b: Caixa) => a.x1 - 0.03 < b.x2 && b.x1 - 0.03 < a.x2 && a.y1 - 0.03 < b.y2 && b.y1 - 0.03 < a.y2
   const r2 = (n: number) => +n.toFixed(4)
-  return trechos.map((tr) => {
-    let x1 = Math.min(...tr.map((a) => a.x1)), y1 = Math.min(...tr.map((a) => a.y1))
-    let x2 = Math.max(...tr.map((a) => a.x2)), y2 = Math.max(...tr.map((a) => a.y2))
-    const fx = (x2 - x1) * 0.06 + 0.01, fy = (y2 - y1) * 0.15 + 0.008
-    x1 = Math.max(0, x1 - fx); y1 = Math.max(0, y1 - fy); x2 = Math.min(1, x2 + fx); y2 = Math.min(1, y2 + fy)
-    const ini = Math.max(0, tr[0].t - passo * 0.5 - 0.1)
-    const fim = Math.min(duracao || Infinity, tr[tr.length - 1].t + passo * 0.5 + 0.1)
-    return { x: r2(x1), y: r2(y1), w: r2(x2 - x1), h: r2(y2 - y1), ini: +ini.toFixed(2), fim: +fim.toFixed(2) }
-  })
+  const saida: AreaBorrao[] = []
+  for (const tr of trechos) {
+    const grupos: Caixa[][] = []
+    for (const c of tr.flatMap((q) => q.cx)) {
+      const juntos = grupos.filter((g) => g.some((o) => perto(o, c)))
+      const novo = [c, ...juntos.flat()]
+      for (const g of juntos) grupos.splice(grupos.indexOf(g), 1)
+      grupos.push(novo)
+    }
+    for (const g of grupos) {
+      let x1 = Math.min(...g.map((a) => a.x1)), y1 = Math.min(...g.map((a) => a.y1))
+      let x2 = Math.max(...g.map((a) => a.x2)), y2 = Math.max(...g.map((a) => a.y2))
+      const fx = (x2 - x1) * 0.06 + 0.01, fy = (y2 - y1) * 0.15 + 0.008
+      x1 = Math.max(0, x1 - fx); y1 = Math.max(0, y1 - fy); x2 = Math.min(1, x2 + fx); y2 = Math.min(1, y2 + fy)
+      const ini = Math.max(0, Math.min(...g.map((a) => a.t)) - passo * 0.5 - 0.1)
+      const fim = Math.min(duracao || Infinity, Math.max(...g.map((a) => a.t)) + passo * 0.5 + 0.1)
+      saida.push({ x: r2(x1), y: r2(y1), w: r2(x2 - x1), h: r2(y2 - y1), ini: +ini.toFixed(2), fim: +fim.toFixed(2) })
+    }
+  }
+  return saida.sort((a, b) => a.ini! - b.ini!)
 }
 
 /** Já existe um borrão de momento cobrindo praticamente o mesmo lugar e tempo? */
