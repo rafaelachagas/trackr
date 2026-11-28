@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, MouseEvent, PointerE
 import {
   Loader2, Upload, Sparkles, Download, EyeOff, X, Check, Play, HelpCircle, Flag,
   ShieldOff, ShieldCheck, Undo2, Redo2, Trash2, Volume2, VolumeX, Music, FileAudio,
-  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, MessageSquarePlus, Pause, Maximize, RotateCcw, RotateCw, SquareDashed, Droplets, Pencil,
+  Wand2, RefreshCw, Keyboard, FolderOpen, Cloud, CloudOff, Film, Plus, AlertTriangle, ChevronDown, MessageSquarePlus, Pause, Maximize, RotateCcw, RotateCw, SquareDashed, Droplets, Pencil, ScanSearch,
 } from 'lucide-react'
 import {
   PalavraBruta, Token, Edicao, paraTokens, emLinhas, emParagrafos, tokenNoTempo, fmtTempo,
@@ -126,6 +126,12 @@ export default function CensorPage() {
   const [hover, setHover] = useState<{ t: number; palavras: string } | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const tempoRef = useRef<HTMLSpanElement>(null)
+  const cabecaTrilhaRef = useRef<HTMLDivElement>(null)
+  const trilhaRef = useRef<HTMLDivElement>(null)
+  /** Arrastando um bloco de borrão na timeline: 'm' move, 'ini'/'fim' estica a ponta. */
+  const trilhaAj = useRef<{ i: number; modo: 'm' | 'ini' | 'fim'; x0: number; a0: AreaBorrao; mexeu: boolean } | null>(null)
+  const [emTrilha, setEmTrilha] = useState<{ i: number; ini: number; fim: number } | null>(null)
+  const [achando, setAchando] = useState(false)
   const progressoRef = useRef<HTMLDivElement>(null)
   const arrasto = useRef<{ x: number; tocava: boolean; moveu: boolean } | null>(null)
   const adicionarRef = useRef<HTMLInputElement>(null)
@@ -335,6 +341,7 @@ export default function CensorPage() {
           const pct = `${(v.currentTime / v.duration) * 100}%`
           if (cabecaRef.current) cabecaRef.current.style.left = pct
           if (progressoRef.current) progressoRef.current.style.width = pct
+          if (cabecaTrilhaRef.current) cabecaTrilhaRef.current.style.left = pct
         }
         if (tempoRef.current) tempoRef.current.textContent = fmtTempo(v.currentTime)
         if (motorRef.current?.video === v) motorRef.current.tick(segsRef.current, previaRef.current, sonsRef.current)
@@ -461,6 +468,92 @@ export default function CensorPage() {
       }),
     }))
   }
+  /** Lê o texto escrito no vídeo (OCR na VPS) perto de quando as palavras selecionadas são faladas. */
+  async function acharNoVideo() {
+    const ts = sel.map((id) => tokens.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t)
+      .sort((a, b) => a.start_time - b.start_time)
+    if (!ts.length || !projId || achando) return
+    const texto = ts.map((t) => t.word).join(' ')
+    setAchando(true); setAviso(`Procurando “${texto}” escrito no vídeo…`)
+    try {
+      const r = await fetch('/api/censura/achar', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projId, texto, ini: ts[0].start_time, fim: ts[ts.length - 1].end_time }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!j?.job) throw new Error(j?.error || `o site respondeu ${r.status}`)
+      let res: { achou: boolean; x: number; y: number; w: number; h: number; ini: number; fim: number } | null = null
+      for (let n = 0; n < 90 && !res; n++) {
+        await new Promise((ok) => setTimeout(ok, 2000))
+        const s = await fetch(`/api/censura/achar?job=${j.job}`).then((x) => x.json()).catch(() => null)
+        if (s?.status === 'pronto') res = s.resultado
+        else if (s?.status === 'erro') throw new Error(s.erro || 'falhou')
+      }
+      if (!res) throw new Error('demorou demais')
+      if (!res.achou) {
+        setAviso(`Não achei “${texto}” escrito na tela perto dessa fala. Marque na mão com “Borrar um momento”.`)
+        return
+      }
+      const nova: AreaBorrao = { x: res.x, y: res.y, w: res.w, h: res.h, ini: res.ini, fim: Math.min(duracao || res.fim, res.fim) }
+      mudar((t) => ({ ...t, areas: [...(t.areas ?? []), nova] }))
+      // Para no meio do trecho com a área em edição, pra conferir e ajustar.
+      const v = videoRef.current
+      if (v) { v.pause(); v.currentTime = (nova.ini! + nova.fim!) / 2 }
+      setMarcandoArea(true); setModoMomento(true)
+      setAviso(`Achei “${texto}” de ${fmtTempo(nova.ini!)} a ${fmtTempo(nova.fim!)}. Se ficou torto, ajuste pelos quadradinhos.`)
+    } catch (e) {
+      setAviso(`Não deu pra procurar no vídeo: ${e instanceof Error ? e.message : e}`)
+    } finally {
+      setAchando(false)
+    }
+  }
+
+  // ---- Timeline dos borrões (cada borrão de momento é um bloco, como no CapCut) ----
+  function tempoNaTrilha(clientX: number) {
+    const r = trilhaRef.current?.getBoundingClientRect()
+    if (!r || !duracao) return 0
+    return Math.min(duracao, Math.max(0, ((clientX - r.left) / r.width) * duracao))
+  }
+  function blocoDown(e: PointerEvent<HTMLDivElement>, i: number, modo: 'm' | 'ini' | 'fim') {
+    const a0 = areas[i]
+    if (!a0 || !ehMomento(a0) || !trilhaRef.current) return
+    e.preventDefault(); e.stopPropagation()
+    trilhaRef.current.setPointerCapture(e.pointerId)
+    trilhaAj.current = { i, modo, x0: tempoNaTrilha(e.clientX), a0, mexeu: false }
+    setEmTrilha({ i, ini: a0.ini!, fim: a0.fim! })
+    videoRef.current?.pause()
+  }
+  function trilhaMove(e: PointerEvent<HTMLDivElement>) {
+    const aj = trilhaAj.current
+    if (!aj) return
+    const dt = tempoNaTrilha(e.clientX) - aj.x0
+    if (Math.abs(dt) > 0.03) aj.mexeu = true
+    const { ini: i0, fim: f0 } = aj.a0 as { ini: number; fim: number }
+    let ini = i0, fim = f0
+    if (aj.modo === 'm') {
+      const d = Math.min(Math.max(dt, -i0), (duracao || f0) - f0)
+      ini = i0 + d; fim = f0 + d
+    } else if (aj.modo === 'ini') ini = Math.min(f0 - 0.1, Math.max(0, i0 + dt))
+    else fim = Math.max(i0 + 0.1, Math.min(duracao || Infinity, f0 + dt))
+    setEmTrilha({ i: aj.i, ini, fim })
+    const v = videoRef.current
+    if (v && aj.mexeu) v.currentTime = aj.modo === 'fim' ? fim : ini
+  }
+  function trilhaUp() {
+    const aj = trilhaAj.current
+    const fim = emTrilha
+    trilhaAj.current = null; setEmTrilha(null)
+    if (!aj) return
+    if (!aj.mexeu) {
+      // Clique: vai pro bloco e abre a área dele pra ajustar no vídeo.
+      const v = videoRef.current
+      if (v) { v.pause(); v.currentTime = (aj.a0.ini! + aj.a0.fim!) / 2 }
+      setMarcandoArea(true); setModoMomento(true)
+      return
+    }
+    if (fim) mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === fim.i ? { ...a, ini: +fim.ini.toFixed(2), fim: +fim.fim.toFixed(2) } : a)) }))
+  }
+
   function verMomento(a: AreaBorrao) {
     const v = videoRef.current
     if (!v || !ehMomento(a)) return
@@ -1254,6 +1347,34 @@ export default function CensorPage() {
               )}
             </div>
 
+            {duracao > 0 && areas.length > 0 && (
+              // Trilha dos borrões: blocos de momento arrastáveis; os da legenda (amarelos) seguem as palavras.
+              <div ref={trilhaRef} className="relative h-7 rounded-md bg-white/[0.03] border border-border/60 select-none touch-none"
+                onPointerMove={trilhaMove} onPointerUp={trilhaUp} onPointerCancel={trilhaUp}
+                onPointerDown={(e) => { const v = videoRef.current; if (v) v.currentTime = tempoNaTrilha(e.clientX) }}>
+                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-wide text-muted-foreground/70 pointer-events-none">Borrões</span>
+                {areasLegenda > 0 && janelas.map(([a, z], k) => (
+                  <div key={`j${k}`} className="absolute top-2.5 bottom-2.5 rounded-sm bg-amber-400/50 min-w-[2px] pointer-events-none"
+                    style={{ left: `${(a / duracao) * 100}%`, width: `${((z - a) / duracao) * 100}%` }} />
+                ))}
+                {areas.map((a0, i) => {
+                  if (!ehMomento(a0)) return null
+                  const ini = emTrilha?.i === i ? emTrilha.ini : a0.ini!
+                  const fim = emTrilha?.i === i ? emTrilha.fim : a0.fim!
+                  return (
+                    <div key={i} title={`Borrão ${fmtTempo(ini)} → ${fmtTempo(fim)} — arraste pra mover, puxe as pontas pra esticar`}
+                      onPointerDown={(e) => blocoDown(e, i, 'm')}
+                      className={`absolute top-1 bottom-1 rounded bg-cyan-400/80 border border-cyan-200 cursor-grab active:cursor-grabbing min-w-[10px] ${emTrilha?.i === i ? 'ring-2 ring-white' : ''}`}
+                      style={{ left: `${(ini / duracao) * 100}%`, width: `${((fim - ini) / duracao) * 100}%` }}>
+                      <div onPointerDown={(e) => blocoDown(e, i, 'ini')} className="absolute inset-y-0 -left-1 w-2.5 cursor-ew-resize rounded-l bg-white/70" />
+                      <div onPointerDown={(e) => blocoDown(e, i, 'fim')} className="absolute inset-y-0 -right-1 w-2.5 cursor-ew-resize rounded-r bg-white/70" />
+                    </div>
+                  )
+                })}
+                <div ref={cabecaTrilhaRef} className="absolute -top-0.5 -bottom-0.5 w-0.5 -ml-px bg-white/80 pointer-events-none" />
+              </div>
+            )}
+
             <div className="flex items-center gap-1">
               <BotaoIcone titulo="Voltar 2s (←)" onClick={() => pular(-2)}><RotateCcw className="w-4 h-4" /></BotaoIcone>
               <button onClick={alternarPlay} title={tocando ? 'Pausar (Espaço)' : 'Tocar (Espaço)'}
@@ -1455,6 +1576,12 @@ export default function CensorPage() {
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
                   <b className="text-foreground/90">Borrar um momento:</b> pra texto solto que o editor do vídeo colocou (ex.: palavra trocando de fonte). Selecione as palavras na transcrição (ex.: “rendas extras”), clique aqui e arraste por cima do texto no vídeo — o borrão some sozinho quando as palavras acabam.
                 </p>
+                <button onClick={acharNoVideo} disabled={!sel.length || achando || !projId}
+                  title={sel.length ? 'Procura o texto selecionado escrito no vídeo e já cria o borrão' : 'Selecione as palavras na transcrição primeiro'}
+                  className="w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-cyan-400/15 text-cyan-200 border border-cyan-400/40 hover:bg-cyan-400/25 disabled:opacity-40">
+                  {achando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
+                  {achando ? 'Procurando no vídeo…' : sel.length ? `Achar “${sel.length > 3 ? `${sel.length} palavras` : sel.map((id) => tokens.find((t) => t.id === id)?.word).join(' ')}” no vídeo` : 'Achar no vídeo (selecione as palavras)'}
+                </button>
                 <button onClick={() => { const fechar = marcandoArea && modoMomento; setMarcandoArea(!fechar); setModoMomento(!fechar); videoRef.current?.pause() }}
                   className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && modoMomento ? 'bg-cyan-300 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
                   <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && modoMomento ? 'Pronto' : 'Borrar um momento'}
