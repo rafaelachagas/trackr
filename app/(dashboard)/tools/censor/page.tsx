@@ -473,6 +473,10 @@ export default function CensorPage() {
     const ts = sel.map((id) => tokens.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t)
       .sort((a, b) => a.start_time - b.start_time)
     if (!ts.length || !projId || achando) return
+    if (ts[ts.length - 1].end_time - ts[0].start_time > 10) {
+      setAviso('Selecione só as palavras de UM texto da tela (ex.: “rendas extras”), não o vídeo todo — ele lê só os segundos perto dessa fala.')
+      return
+    }
     const texto = ts.map((t) => t.word).join(' ')
     setAchando(true); setAviso(`Procurando “${texto}” escrito no vídeo…`)
     try {

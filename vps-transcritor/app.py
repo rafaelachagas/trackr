@@ -3159,8 +3159,8 @@ def _achar_texto(body):
 
     # O texto na tela costuma entrar um pouco antes da fala e sair depois.
     de = max(0.0, ini - 1.5)
-    ate = fim + 2.5
-    fps = 5.0 if ate - de <= 12 else 3.0
+    ate = min(fim + 2.5, de + 15.0)   # texto na tela dura segundos: nunca lê o vídeo inteiro
+    fps = 5.0
     url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{urllib.parse.quote(path)}"
     tmp = tempfile.mkdtemp(prefix="achar-")
     try:
