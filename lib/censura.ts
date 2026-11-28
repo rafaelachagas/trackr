@@ -192,7 +192,16 @@ export function montarSegmentos(
     const ult = segs[segs.length - 1]
     if (ult && ult.ids[ult.ids.length - 1] === id - 1 && ini - ult.fim < 0.25 && JSON.stringify(ult.ed) === JSON.stringify(ed)) {
       ult.ids.push(id); ult.fim = Math.max(ult.fim, fim)
-    } else segs.push({ ids: [id], ini, fim, ed })
+    } else {
+      // Palavras coladas com edições diferentes ("rendas" mudo, "extras" com
+      // efeito): as folgas se sobrepõem — corta no meio entre as duas, senão
+      // a primeira engole o começo da segunda.
+      if (ult && ini < ult.fim) {
+        const corte = Math.max(ult.ini + 0.05, (tokens[ult.ids[ult.ids.length - 1]].end_time + t.start_time) / 2)
+        ult.fim = corte; ini = corte
+      }
+      segs.push({ ids: [id], ini, fim, ed })
+    }
   }
   return segs
 }

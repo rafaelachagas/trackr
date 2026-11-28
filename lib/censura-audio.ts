@@ -7,7 +7,7 @@
 
 import { Edicao, Segmento, dbParaGanho, ganhoVoz, EDICAO_PADRAO } from './censura'
 
-interface Tocando { stop: () => void }
+interface Tocando { stop: () => void; arquivo?: boolean }
 
 export class MotorPrevia {
   readonly video: HTMLVideoElement
@@ -16,6 +16,8 @@ export class MotorPrevia {
   private alvoVoz = 1
   private segAtual: string | null = null
   private sfx: Tocando | null = null
+  /** Efeitos de arquivo que seguem tocando depois que o trecho acabou. */
+  private soltos: Tocando[] = []
   private ruidoBranco: AudioBuffer
   private ruidoMarrom: AudioBuffer
 
@@ -37,7 +39,7 @@ export class MotorPrevia {
   tick(segs: Segmento[], ligada: boolean, custom: Map<string, AudioBuffer>) {
     const v = this.video
     if (v.paused || v.seeking) {
-      this.pararSfx(); this.segAtual = null; this.setVoz(1)
+      this.pararSfx(); this.soltos.forEach((x) => x.stop()); this.soltos = []; this.segAtual = null; this.setVoz(1)
       return
     }
     // 15ms à frente: compensa o atraso entre o quadro e a saída de som.
@@ -46,6 +48,9 @@ export class MotorPrevia {
     this.setVoz(seg ? ganhoVoz(seg.ed) : 1)
     const chave = seg ? `${seg.ini}|${seg.fim}|${JSON.stringify(seg.ed)}` : null
     if (chave !== this.segAtual) {
+      // Som de arquivo (aplauso, clique…) toca até o fim mesmo se o próximo
+      // trecho começar; os sintetizados (bip, chiado) acabam com o trecho.
+      if (this.sfx?.arquivo) { this.soltos = [...this.soltos.slice(-4), this.sfx]; this.sfx = null }
       this.pararSfx()
       this.segAtual = chave
       if (seg && seg.ed.sfx !== 'nenhum') this.sfx = this.tocar(seg.ed, seg.fim - v.currentTime, v.currentTime - seg.ini, custom)
@@ -128,6 +133,7 @@ export class MotorPrevia {
     if (f instanceof AudioBufferSourceNode && !f.loop) f.start(agora, offset); else f.start(agora)
     f.stop(fim + 0.02)
     return {
+      arquivo: !['bip', 'bip_grave', 'ruido', 'vento', 'radio'].includes(ed.sfx),
       stop: () => {
         try {
           const t = ctx.currentTime
