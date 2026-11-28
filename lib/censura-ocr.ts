@@ -28,10 +28,12 @@ const parecido = (a: string, b: string) => (a.length && b.length ? 1 - distancia
 /** A palavra (normalizada) aparece nessa detecção? Tolera erro de leitura em fonte estilizada. */
 function temPalavra(det: string, p: string) {
   if (det.includes(p)) return true
-  if (p.length >= 4 && parecido(det, p) >= 0.75) return true
+  // Palavra curta tolera menos erro ("todos" não pode virar "tododia").
+  const minimo = p.length >= 7 ? 0.75 : p.length >= 5 ? 0.8 : 1
+  if (p.length >= 4 && Math.abs(det.length - p.length) <= 2 && parecido(det, p) >= minimo) return true
   // Detecção com várias palavras juntas ("rendasextras"): compara pedaços do tamanho da palavra.
-  if (det.length > p.length && p.length >= 4) {
-    for (let i = 0; i + p.length <= det.length; i++) if (parecido(det.slice(i, i + p.length), p) >= 0.8) return true
+  if (det.length > p.length && p.length >= 6) {
+    for (let i = 0; i + p.length <= det.length; i++) if (parecido(det.slice(i, i + p.length), p) >= 0.85) return true
   }
   return false
 }
@@ -86,8 +88,9 @@ export function acharTexto(leitura: LeituraVideo, texto: string, duracao: number
       let x2 = Math.max(...g.map((a) => a.x2)), y2 = Math.max(...g.map((a) => a.y2))
       const fx = (x2 - x1) * 0.06 + 0.01, fy = (y2 - y1) * 0.15 + 0.008
       x1 = Math.max(0, x1 - fx); y1 = Math.max(0, y1 - fy); x2 = Math.min(1, x2 + fx); y2 = Math.min(1, y2 + fy)
-      const ini = Math.max(0, Math.min(...g.map((a) => a.t)) - passo * 0.5 - 0.1)
-      const fim = Math.min(duracao || Infinity, Math.max(...g.map((a) => a.t)) + passo * 0.5 + 0.1)
+      // Folga maior no fim: quando o texto sai com animação o leitor perde os últimos quadros.
+      const ini = Math.max(0, Math.min(...g.map((a) => a.t)) - passo * 0.5 - 0.15)
+      const fim = Math.min(duracao || Infinity, Math.max(...g.map((a) => a.t)) + passo * 1.5 + 0.2)
       saida.push({ x: r2(x1), y: r2(y1), w: r2(x2 - x1), h: r2(y2 - y1), ini: +ini.toFixed(2), fim: +fim.toFixed(2) })
     }
   }

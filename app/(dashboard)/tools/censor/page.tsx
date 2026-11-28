@@ -531,7 +531,17 @@ export default function CensorPage() {
         const r = acharTexto(l, g, duracao).filter((a) => !jaCoberto(a, [...areas, ...novas]))
         if (r.length) achados.push(`“${g}” (${r.length}×)`)
         novas.push(...r)
+        // Vídeo que mostra uma palavra por vez ("mais" → "fácil" → "todos"): busca cada uma também.
+        const soltas = g.split(/\s+/)
+        if (soltas.length > 1) {
+          for (const w of soltas) {
+            const rw = acharTexto(l, w, duracao).filter((a) => !jaCoberto(a, [...areas, ...novas]))
+            if (rw.length) achados.push(`“${w}” (${rw.length}×)`)
+            novas.push(...rw)
+          }
+        }
       }
+      novas.sort((a, b) => a.ini! - b.ini!)
       if (!novas.length) {
         setAviso(grupos.length === 1
           ? `Não achei “${grupos[0]}” escrito na tela em nenhum ponto do vídeo (ou já está borrado). Marque na mão com “Borrar um momento”.`
