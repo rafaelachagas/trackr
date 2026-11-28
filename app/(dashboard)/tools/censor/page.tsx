@@ -134,6 +134,8 @@ export default function CensorPage() {
   // Painéis redimensionáveis (lembra no navegador).
   const [largVideo, setLargVideo] = useState(340)
   const [altTL, setAltTL] = useState(260)
+  /** Altura de antes de maximizar a linha do tempo (null = não está maximizada). */
+  const [altMax, setAltMax] = useState<number | null>(null)
   useEffect(() => {
     try {
       const lv = Number(localStorage.getItem('censura-larg-video')); if (lv >= 220 && lv <= 900) setLargVideo(lv)
@@ -1887,7 +1889,12 @@ export default function CensorPage() {
               selecionado={elTL} onSelecionar={setElTL} onSeek={seek}
               onMudarMomento={mudarMomentoTL} onApagar={apagarElemento} onAbrirBorrao={abrirBorrao}
               onAbrirCensura={(sg) => selecionar(sg.ids, true)}
-              onAbrirLegenda={() => { videoRef.current?.pause(); setMarcandoArea(true); setModoMomento(false) }} />
+              onAbrirLegenda={() => { videoRef.current?.pause(); setMarcandoArea(true); setModoMomento(false) }}
+              maximizada={altMax != null}
+              onMaximizar={() => {
+                if (altMax != null) { setAltTL(altMax); setAltMax(null) }
+                else { setAltMax(altTL); setAltTL(Math.min(700, Math.round(window.innerHeight * 0.62))) }
+              }} />
           </div>
         </>
       )}

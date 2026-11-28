@@ -1,7 +1,7 @@
 'use client'
 
 import { PointerEvent, ReactNode, RefObject, WheelEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Film, AudioLines, Droplets, ShieldAlert, Trash2, ZoomIn, ZoomOut, Maximize2, Captions } from 'lucide-react'
+import { Film, AudioLines, Droplets, ShieldAlert, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, Captions, MoveHorizontal } from 'lucide-react'
 import type { AreaBorrao } from '@/lib/censura-borrao'
 import type { Segmento } from '@/lib/censura'
 import { fmtTempo } from '@/lib/censura'
@@ -31,6 +31,9 @@ interface Props {
   onAbrirBorrao: (i: number) => void
   onAbrirCensura: (s: Segmento) => void
   onAbrirLegenda: () => void
+  /** Aumenta/volta a altura da linha do tempo. */
+  maximizada: boolean
+  onMaximizar: () => void
 }
 
 const LARG_ROTULO = 116
@@ -209,8 +212,13 @@ export function LinhaDoTempo(p: Props) {
           <input type="range" min={0} max={100} value={Math.round((Math.log(zoom) / Math.log(60)) * 100)} aria-label="Zoom da linha do tempo"
             onChange={(e) => mudarZoom(Math.exp((Number(e.target.value) / 100) * Math.log(60)))} className="w-28 accent-sky-400" />
           <button onClick={() => mudarZoom(zoom * 1.4)} title="Aproximar" className="w-7 h-7 rounded-md text-white/70 hover:bg-white/10 flex items-center justify-center"><ZoomIn className="w-3.5 h-3.5" /></button>
-          <button onClick={() => { setZoom(1); if (rolagemRef.current) rolagemRef.current.scrollLeft = 0 }} title="Ver o vídeo inteiro"
-            className="w-7 h-7 rounded-md text-white/70 hover:bg-white/10 flex items-center justify-center"><Maximize2 className="w-3.5 h-3.5" /></button>
+          <button onClick={() => { setZoom(1); if (rolagemRef.current) rolagemRef.current.scrollLeft = 0 }} title="Ajustar: o vídeo inteiro cabe na largura"
+            className="h-7 px-2 rounded-md text-[11px] font-semibold text-white/80 hover:bg-white/10 inline-flex items-center gap-1"><MoveHorizontal className="w-3.5 h-3.5" /> Ajustar</button>
+          <span className="w-px h-4 bg-white/10" />
+          <button onClick={p.onMaximizar} title={p.maximizada ? 'Voltar a linha do tempo ao tamanho normal' : 'Aumentar a linha do tempo'}
+            className="w-7 h-7 rounded-md text-white/70 hover:bg-white/10 flex items-center justify-center">
+            {p.maximizada ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
         </div>
       </div>
 
