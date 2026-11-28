@@ -5,7 +5,7 @@
 // A exportação (ffmpeg na VPS) refaz o mesmo com os mesmos parâmetros — por
 // isso os efeitos embutidos são sintetizados, e não arquivos.
 
-import { Edicao, Segmento, dbParaGanho, ganhoVoz } from './censura'
+import { Edicao, Segmento, dbParaGanho, ganhoVoz, EDICAO_PADRAO } from './censura'
 
 interface Tocando { stop: () => void }
 
@@ -50,6 +50,14 @@ export class MotorPrevia {
       this.segAtual = chave
       if (seg && seg.ed.sfx !== 'nenhum') this.sfx = this.tocar(seg.ed, seg.fim - v.currentTime, v.currentTime - seg.ini, custom)
     }
+  }
+
+  private amostraAtual: Tocando | null = null
+  /** Toca só o efeito (pra ouvir antes de escolher), independente do vídeo. */
+  amostra(sfx: string, sfxDb: number, custom: Map<string, AudioBuffer>) {
+    this.retomar()
+    this.amostraAtual?.stop()
+    this.amostraAtual = sfx === 'nenhum' ? null : this.tocar({ ...EDICAO_PADRAO, sfx, sfxDb }, 1.2, 0, custom)
   }
 
   private setVoz(g: number) {

@@ -13,6 +13,7 @@ import {
 } from '@/lib/censura'
 import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
 import { LeituraVideo, acharTexto, jaCoberto } from '@/lib/censura-ocr'
+import { LinhaDoTempo, ElementoTL } from '@/components/censura/LinhaDoTempo'
 import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, janelasBorrao, raioBorrao, ehMomento, janelasDaArea } from '@/lib/censura-borrao'
 import {
   Risco, Gravidade, GRAVIDADES, NOME_GRAVIDADE, BibliotecaExtra, aplicarExtra, censuraSozinho, autoCensura, riscosLocais, riscoPorPalavra,
@@ -127,11 +128,18 @@ export default function CensorPage() {
   const [hover, setHover] = useState<{ t: number; palavras: string } | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const tempoRef = useRef<HTMLSpanElement>(null)
-  const cabecaTrilhaRef = useRef<HTMLDivElement>(null)
-  const trilhaRef = useRef<HTMLDivElement>(null)
-  /** Arrastando um bloco de borrão na timeline: 'm' move, 'ini'/'fim' estica a ponta. */
-  const trilhaAj = useRef<{ i: number; modo: 'm' | 'ini' | 'fim'; x0: number; a0: AreaBorrao; mexeu: boolean } | null>(null)
-  const [emTrilha, setEmTrilha] = useState<{ i: number; ini: number; fim: number } | null>(null)
+  /** Elemento selecionado na linha do tempo (borrão ou trecho de censura). */
+  const [elTL, setElTL] = useState<ElementoTL | null>(null)
+  const elTLRef = useRef(elTL); useEffect(() => { elTLRef.current = elTL }, [elTL])
+  // Painéis redimensionáveis (lembra no navegador).
+  const [largVideo, setLargVideo] = useState(340)
+  const [altTL, setAltTL] = useState(260)
+  useEffect(() => {
+    try {
+      const lv = Number(localStorage.getItem('censura-larg-video')); if (lv >= 220 && lv <= 900) setLargVideo(lv)
+      const at = Number(localStorage.getItem('censura-alt-tl')); if (at >= 140 && at <= 700) setAltTL(at)
+    } catch { /* sem storage */ }
+  }, [])
   const [achando, setAchando] = useState(false)
   /** Texto escrito no vídeo todo (OCR), lido uma vez e salvo no projeto. undefined = ainda não carregou. */
   const [leitura, setLeitura] = useState<LeituraVideo | null | undefined>(undefined)
@@ -352,7 +360,6 @@ export default function CensorPage() {
           const pct = `${(v.currentTime / v.duration) * 100}%`
           if (cabecaRef.current) cabecaRef.current.style.left = pct
           if (progressoRef.current) progressoRef.current.style.width = pct
-          if (cabecaTrilhaRef.current) cabecaTrilhaRef.current.style.left = pct
         }
         if (tempoRef.current) tempoRef.current.textContent = fmtTempo(v.currentTime)
         if (motorRef.current?.video === v) motorRef.current.tick(segsRef.current, previaRef.current, sonsRef.current)
@@ -560,50 +567,58 @@ export default function CensorPage() {
     }
   }
 
-  // ---- Timeline dos borrões (cada borrão de momento é um bloco, como no CapCut) ----
-  function tempoNaTrilha(clientX: number) {
-    const r = trilhaRef.current?.getBoundingClientRect()
-    if (!r || !duracao) return 0
-    return Math.min(duracao, Math.max(0, ((clientX - r.left) / r.width) * duracao))
-  }
-  function blocoDown(e: PointerEvent<HTMLDivElement>, i: number, modo: 'm' | 'ini' | 'fim') {
-    const a0 = areas[i]
-    if (!a0 || !ehMomento(a0) || !trilhaRef.current) return
-    e.preventDefault(); e.stopPropagation()
-    trilhaRef.current.setPointerCapture(e.pointerId)
-    trilhaAj.current = { i, modo, x0: tempoNaTrilha(e.clientX), a0, mexeu: false }
-    setEmTrilha({ i, ini: a0.ini!, fim: a0.fim! })
-    videoRef.current?.pause()
-  }
-  function trilhaMove(e: PointerEvent<HTMLDivElement>) {
-    const aj = trilhaAj.current
-    if (!aj) return
-    const dt = tempoNaTrilha(e.clientX) - aj.x0
-    if (Math.abs(dt) > 0.03) aj.mexeu = true
-    const { ini: i0, fim: f0 } = aj.a0 as { ini: number; fim: number }
-    let ini = i0, fim = f0
-    if (aj.modo === 'm') {
-      const d = Math.min(Math.max(dt, -i0), (duracao || f0) - f0)
-      ini = i0 + d; fim = f0 + d
-    } else if (aj.modo === 'ini') ini = Math.min(f0 - 0.1, Math.max(0, i0 + dt))
-    else fim = Math.max(i0 + 0.1, Math.min(duracao || Infinity, f0 + dt))
-    setEmTrilha({ i: aj.i, ini, fim })
-    const v = videoRef.current
-    if (v && aj.mexeu) v.currentTime = aj.modo === 'fim' ? fim : ini
-  }
-  function trilhaUp() {
-    const aj = trilhaAj.current
-    const fim = emTrilha
-    trilhaAj.current = null; setEmTrilha(null)
-    if (!aj) return
-    if (!aj.mexeu) {
-      // Clique: vai pro bloco e abre a área dele pra ajustar no vídeo.
-      const v = videoRef.current
-      if (v) { v.pause(); v.currentTime = (aj.a0.ini! + aj.a0.fim!) / 2 }
-      setMarcandoArea(true); setModoMomento(true)
-      return
+  // ---- Linha do tempo ----
+  function apagarElemento(e: ElementoTL) {
+    if (e.tipo === 'borrao') tirarArea(e.i)
+    else {
+      const sg = segs.find((x) => Math.abs(x.ini - e.ini) < 0.001)
+      if (sg) marcar(sg.ids, false)
     }
-    if (fim) mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === fim.i ? { ...a, ini: +fim.ini.toFixed(2), fim: +fim.fim.toFixed(2) } : a)) }))
+    setElTL(null)
+  }
+  const apagarElementoRef = useRef(apagarElemento); useEffect(() => { apagarElementoRef.current = apagarElemento })
+  function mudarMomentoTL(i: number, ini: number, fim: number) {
+    mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === i && ehMomento(a) ? { ...a, ini, fim } : a)) }))
+  }
+  function abrirBorrao(i: number) {
+    const a = areas[i]
+    const v = videoRef.current
+    if (!a || !ehMomento(a)) return
+    if (v) { v.pause(); seek((a.ini! + a.fim!) / 2) }
+    setMarcandoArea(true); setModoMomento(true)
+  }
+  function nomeSfx(id: string) {
+    if (id === 'nenhum') return ''
+    const emb = SFX_EMBUTIDOS.find((x) => x.id === id)
+    return emb ? emb.nome : id.slice(4).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ')
+  }
+  const rotuloSeg = (sg: { ids: number[]; ed: Edicao }) => {
+    const txt = sg.ids.map((id) => tokens[id]?.word).filter(Boolean).join(' ')
+    const fx = nomeSfx(sg.ed.sfx)
+    return fx ? `${txt} · ${fx}` : txt
+  }
+  const palavrasTL = useMemo(() => vivos.map((t) => ({ ini: t.start_time, fim: t.end_time })), [vivos])
+
+  /** Arrasta a divisória entre vídeo e transcrição, ou entre a tela e a linha do tempo. */
+  function puxarDivisoria(e: PointerEvent<HTMLDivElement>, qual: 'video' | 'tl') {
+    e.preventDefault()
+    const x0 = e.clientX, y0 = e.clientY, lv0 = largVideo, at0 = altTL
+    const mover = (ev: globalThis.PointerEvent) => {
+      if (qual === 'video') setLargVideo(Math.min(900, Math.max(220, lv0 + ev.clientX - x0)))
+      else setAltTL(Math.min(700, Math.max(140, at0 - (ev.clientY - y0))))
+    }
+    const soltar = () => {
+      window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar)
+      setLargVideo((v) => { try { localStorage.setItem('censura-larg-video', String(v)) } catch { /* */ } return v })
+      setAltTL((v) => { try { localStorage.setItem('censura-alt-tl', String(v)) } catch { /* */ } return v })
+    }
+    window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar)
+  }
+
+  /** Toca só o efeito sonoro, pra escolher antes de aplicar. */
+  function ouvirEfeito(id: string) {
+    aoTocar()
+    motorRef.current?.amostra(id, padrao.sfxDb, sonsRef.current)
   }
 
   function verMomento(a: AreaBorrao) {
@@ -858,6 +873,7 @@ export default function CensorPage() {
   }
 
   function clicarPalavra(t: Token, e: MouseEvent) {
+    setElTL(null)
     if (e.shiftKey && ancora != null) {
       const [a, b] = ancora < t.id ? [ancora, t.id] : [t.id, ancora]
       setSel(vivos.filter((x) => x.id >= a && x.id <= b).map((x) => x.id))
@@ -1183,8 +1199,9 @@ export default function CensorPage() {
       const k = e.key.toLowerCase()
       if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); desfazer() }
       else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); refazer() }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && elTLRef.current) { e.preventDefault(); apagarElementoRef.current(elTLRef.current) }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && selRef.current.length) { e.preventDefault(); removerRef.current(selRef.current) }
-      else if (e.key === 'Escape') setSel([])
+      else if (e.key === 'Escape') { setSel([]); setElTL(null) }
       else if (e.key === ' ' || e.key === 'k') { e.preventDefault(); if (alvo?.closest('button')) alvo.blur(); alternarPlayRef.current() }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); pularRef.current(e.shiftKey ? -5 : -2) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); pularRef.current(e.shiftKey ? 5 : 2) }
@@ -1276,9 +1293,9 @@ export default function CensorPage() {
 
   // ================= editor =================
   return (
-    <div className="max-w-[1680px] mx-auto py-1 space-y-3">
+    <div className="py-1 flex flex-col gap-2 lg:h-[calc(100vh-88px)]">
       {/* Barra de ferramentas */}
-      <div className="flex items-center gap-2 bg-card border border-border rounded-2xl px-3 py-2">
+      <div className="shrink-0 flex items-center gap-2 bg-card border border-border rounded-2xl px-3 py-2">
         <div className="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0"><EyeOff className="w-4 h-4" /></div>
         <div className="min-w-0 mr-auto">
           <p className="text-sm font-bold text-foreground leading-tight">Editor de Censura</p>
@@ -1306,15 +1323,15 @@ export default function CensorPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(300px,400px)_minmax(0,1fr)_340px] gap-3 items-start">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2">
         {/* ---------- Vídeo (player próprio) ---------- */}
-        <div className="lg:sticky lg:top-3 space-y-2">
-          <div ref={playerRef} className="relative bg-black rounded-2xl overflow-hidden border border-border [&:fullscreen]:rounded-none [&:fullscreen]:border-0 [&:fullscreen]:flex [&:fullscreen]:items-center [&:fullscreen_video]:max-h-none [&:fullscreen_video]:h-full">
+        <div className="shrink-0 flex flex-col gap-2 min-h-0 lg:w-[var(--lv)]" style={{ '--lv': `${largVideo}px` } as React.CSSProperties}>
+          <div ref={playerRef} className="relative flex-1 min-h-[45vh] lg:min-h-0 flex items-center justify-center bg-black rounded-2xl overflow-hidden border border-border [&:fullscreen]:rounded-none [&:fullscreen]:border-0 [&:fullscreen]:flex [&:fullscreen]:items-center [&:fullscreen_video]:max-h-none [&:fullscreen_video]:h-full">
             <video ref={videoRef} src={src} playsInline crossOrigin="anonymous"
               onClick={alternarPlay}
               onPlay={() => { aoTocar(); setTocando(true) }} onPause={() => setTocando(false)} onEnded={() => setTocando(false)}
               onLoadedMetadata={(e) => { setDuracao(e.currentTarget.duration || 0); e.currentTarget.playbackRate = velocidade; medirCaixa() }}
-              className="w-full max-h-[64vh] block mx-auto cursor-pointer" />
+              className="w-full h-full max-h-[70vh] lg:max-h-none object-contain block cursor-pointer" />
             {caixa && (areas.length > 0 || marcandoArea) && (
               // Camada do tamanho exato da imagem: as áreas da legenda queimada.
               <div ref={camadaRef} className={`absolute ${marcandoArea ? 'cursor-crosshair z-10' : 'pointer-events-none'}`}
@@ -1375,12 +1392,12 @@ export default function CensorPage() {
             )}
           </div>
 
-          <div className="bg-card border border-border rounded-2xl p-3 space-y-3">
+          <div className="shrink-0 bg-card border border-border rounded-2xl p-2.5 space-y-2.5">
             {/* Barra de reprodução: clique ou arraste em qualquer ponto. Os
                 trechos censurados ficam em vermelho; clique sem arrastar num
                 deles seleciona as palavras. */}
             <div
-              className="relative h-10 rounded-lg bg-white/[0.04] cursor-pointer select-none touch-none group/barra"
+              className="relative h-7 rounded-lg bg-white/[0.04] cursor-pointer select-none touch-none group/barra"
               onPointerDown={barraDown} onPointerMove={barraMove} onPointerUp={barraUp}
               onPointerLeave={() => { if (!arrasto.current) setHover(null) }}>
               <div ref={progressoRef} className="absolute inset-y-0 left-0 bg-primary/15 rounded-l-lg pointer-events-none" />
@@ -1398,34 +1415,6 @@ export default function CensorPage() {
                 </div>
               )}
             </div>
-
-            {duracao > 0 && areas.length > 0 && (
-              // Trilha dos borrões: blocos de momento arrastáveis; os da legenda (amarelos) seguem as palavras.
-              <div ref={trilhaRef} className="relative h-7 rounded-md bg-white/[0.03] border border-border/60 select-none touch-none"
-                onPointerMove={trilhaMove} onPointerUp={trilhaUp} onPointerCancel={trilhaUp}
-                onPointerDown={(e) => { const v = videoRef.current; if (v) v.currentTime = tempoNaTrilha(e.clientX) }}>
-                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-wide text-muted-foreground/70 pointer-events-none">Borrões</span>
-                {areasLegenda > 0 && janelas.map(([a, z], k) => (
-                  <div key={`j${k}`} className="absolute top-2.5 bottom-2.5 rounded-sm bg-amber-400/50 min-w-[2px] pointer-events-none"
-                    style={{ left: `${(a / duracao) * 100}%`, width: `${((z - a) / duracao) * 100}%` }} />
-                ))}
-                {areas.map((a0, i) => {
-                  if (!ehMomento(a0)) return null
-                  const ini = emTrilha?.i === i ? emTrilha.ini : a0.ini!
-                  const fim = emTrilha?.i === i ? emTrilha.fim : a0.fim!
-                  return (
-                    <div key={i} title={`Borrão ${fmtTempo(ini)} → ${fmtTempo(fim)} — arraste pra mover, puxe as pontas pra esticar`}
-                      onPointerDown={(e) => blocoDown(e, i, 'm')}
-                      className={`absolute top-1 bottom-1 rounded bg-cyan-400/80 border border-cyan-200 cursor-grab active:cursor-grabbing min-w-[10px] ${emTrilha?.i === i ? 'ring-2 ring-white' : ''}`}
-                      style={{ left: `${(ini / duracao) * 100}%`, width: `${((fim - ini) / duracao) * 100}%` }}>
-                      <div onPointerDown={(e) => blocoDown(e, i, 'ini')} className="absolute inset-y-0 -left-1 w-2.5 cursor-ew-resize rounded-l bg-white/70" />
-                      <div onPointerDown={(e) => blocoDown(e, i, 'fim')} className="absolute inset-y-0 -right-1 w-2.5 cursor-ew-resize rounded-r bg-white/70" />
-                    </div>
-                  )
-                })}
-                <div ref={cabecaTrilhaRef} className="absolute -top-0.5 -bottom-0.5 w-0.5 -ml-px bg-white/80 pointer-events-none" />
-              </div>
-            )}
 
             <div className="flex items-center gap-1">
               <BotaoIcone titulo="Voltar 2s (←)" onClick={() => pular(-2)}><RotateCcw className="w-4 h-4" /></BotaoIcone>
@@ -1469,8 +1458,10 @@ export default function CensorPage() {
             )}
           </div>
         </div>
+        <div onPointerDown={(e) => puxarDivisoria(e, 'video')} title="Arraste pra mudar o tamanho do vídeo"
+          className="hidden lg:block w-1.5 -mx-1 shrink-0 rounded-full cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors" />
         {/* ---------- Transcrição ---------- */}
-        <div className="bg-card border border-border rounded-2xl flex flex-col lg:h-[calc(100vh-150px)] min-w-0 overflow-hidden">
+        <div className="bg-card border border-border rounded-2xl flex flex-col flex-1 min-h-[60vh] lg:min-h-0 min-w-0 overflow-hidden">
           {!tokens.length ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-10 gap-4">
               <div className="w-12 h-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center">
@@ -1492,7 +1483,7 @@ export default function CensorPage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 px-5 py-3 border-b border-border flex-wrap">
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-border flex-wrap">
                 <p className="text-sm font-bold text-foreground mr-auto">Transcrição</p>
                 <Chip>{vivos.length} palavras</Chip>
                 <Chip tom="rose">{censuradas.size} censuradas</Chip>
@@ -1504,12 +1495,12 @@ export default function CensorPage() {
                 ) : <Chip tom="emerald"><Check className="w-3 h-3" /> sem dúvidas</Chip>}
               </div>
 
-              <div ref={painelRef} className="flex-1 overflow-y-auto px-6 py-5 space-y-5 select-none">
+              <div ref={painelRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3.5 select-none">
                 {paragrafos.map((p, i) => (
                   <div key={i} className="group">
                     <button onClick={() => selecionar([p.tokens[0].id])}
                       className="text-[10px] font-semibold tabular-nums text-muted-foreground/70 hover:text-primary mb-1 block">{fmtTempo(p.start)}</button>
-                    <p className="text-[16px] leading-[2.1] text-foreground/85">
+                    <p className="text-[14px] leading-[1.95] text-foreground/85">
                       {p.tokens.map((t) => {
                         const duvida = t.confidence < LIMIAR_DUVIDA && !t.corrigida
                         const cens = censuradas.has(t.id)
@@ -1563,7 +1554,7 @@ export default function CensorPage() {
         </div>
 
         {/* ---------- Propriedades ---------- */}
-        <div className="2xl:sticky 2xl:top-3 lg:col-span-2 2xl:col-span-1 2xl:max-h-[calc(100vh-150px)] 2xl:overflow-y-auto grid sm:grid-cols-2 2xl:grid-cols-1 gap-3 items-start">
+        <div className="lg:w-[300px] xl:w-[330px] shrink-0 min-h-0 lg:overflow-y-auto space-y-2 lg:pr-0.5">
           {/* Palavra */}
           <Secao titulo="Palavra" icone={<Wand2 className="w-3.5 h-3.5" />}>
             {riscoSel && <CartaoRisco r={riscoSel} tokens={tokens} />}
@@ -1705,31 +1696,44 @@ export default function CensorPage() {
           <Secao titulo="Áudio" icone={<Volume2 className="w-3.5 h-3.5" />}>
             <input ref={somRef} type="file" accept="audio/*,.mp3,.wav,.opus,.ogg,.m4a" multiple className="hidden"
               onChange={(e) => { enviarSons(e.target.files, sel); e.target.value = '' }} />
-            {!edSel ? (
-              <div className="space-y-2">
-                <Vazio>Selecione uma ou mais palavras pra escolher o que acontece no áudio.</Vazio>
-                <button onClick={() => somRef.current?.click()}
-                  className="h-8 px-3 rounded-lg text-[11px] font-semibold border border-dashed border-border text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
-                  <FileAudio className="w-3.5 h-3.5" /> Enviar efeitos pra biblioteca{sons.length ? ` (${sons.length})` : ''}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-[11px] text-muted-foreground mb-1.5">Efeito sonoro</p>
-                  <div className="grid grid-cols-3 gap-1.5 max-h-72 overflow-y-auto pr-1">
-                    {[...SFX_EMBUTIDOS.map((s) => ({ id: s.id as string, nome: s.nome as string })), ...sons.map((id) => ({ id, nome: id.slice(4).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ') }))].map((s) => (
-                      <button key={s.id} onClick={() => editarAudio(sel, { sfx: s.id }, '')} title={s.id.startsWith('arq:') ? `${s.nome} — botão direito apaga da biblioteca` : s.nome}
-                        onContextMenu={(e) => { if (s.id.startsWith('arq:')) { e.preventDefault(); apagarSom(s.id) } }}
-                        className={`h-8 px-2 rounded-lg text-[11px] font-semibold truncate border transition ${edSel.sfx === s.id ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground hover:text-foreground hover:bg-white/5'}`}>
-                        {s.nome}
-                      </button>
+            {(() => {
+              // Biblioteca sempre visível: o ▶ toca o efeito sozinho pra você ouvir antes de aplicar.
+              const lista = [...SFX_EMBUTIDOS.map((x) => ({ id: x.id as string, nome: x.nome as string })), ...sons.map((id) => ({ id, nome: nomeSfx(id) }))]
+              return (
+                <div className="mb-3">
+                  <p className="text-[11px] text-muted-foreground mb-1.5">
+                    Efeito sonoro {!edSel && <span className="opacity-70">— ▶ ouve; selecione palavras pra aplicar</span>}
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5 max-h-72 overflow-y-auto pr-1">
+                    {lista.map((x) => (
+                      <div key={x.id} onContextMenu={(e) => { if (x.id.startsWith('arq:')) { e.preventDefault(); apagarSom(x.id) } }}
+                        className={`h-8 flex items-center rounded-lg border transition overflow-hidden ${edSel?.sfx === x.id ? 'border-primary bg-primary/15' : 'border-border hover:bg-white/5'}`}>
+                        {x.id !== 'nenhum' && (
+                          <button onClick={() => ouvirEfeito(x.id)} title="Ouvir o efeito"
+                            className="w-7 h-full shrink-0 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-white/5">
+                            <Play className="w-3 h-3" fill="currentColor" />
+                          </button>
+                        )}
+                        <button onClick={() => { if (edSel) editarAudio(sel, { sfx: x.id }, ''); else ouvirEfeito(x.id) }}
+                          title={edSel ? `Aplicar “${x.nome}” nas palavras selecionadas${x.id.startsWith('arq:') ? ' · botão direito apaga da biblioteca' : ''}` : 'Selecione palavras pra aplicar'}
+                          className={`flex-1 min-w-0 h-full text-left px-2 text-[11px] font-semibold truncate ${edSel?.sfx === x.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                          {x.nome}
+                        </button>
+                      </div>
                     ))}
                     <button onClick={() => somRef.current?.click()}
                       className="h-8 px-2 rounded-lg text-[11px] font-semibold border border-dashed border-border text-muted-foreground hover:text-foreground inline-flex items-center justify-center gap-1">
                       <FileAudio className="w-3.5 h-3.5" /> Enviar
                     </button>
                   </div>
+                </div>
+              )
+            })()}
+            {!edSel ? (
+              <Vazio>Selecione uma ou mais palavras pra escolher o que acontece no áudio.</Vazio>
+            ) : (
+              <div className="space-y-4">
+                <div>
                   {edSel.sfx.startsWith('arq:') && !sons.includes(edSel.sfx) && (
                     <p className="text-[11px] text-amber-300 mt-1.5">O som “{edSel.sfx.slice(4)}” não está na biblioteca: envie de novo.</p>
                   )}
@@ -1869,6 +1873,24 @@ export default function CensorPage() {
           </Secao>
         </div>
       </div>
+
+      {/* ---------- Linha do tempo (embaixo, largura toda, como no Premiere) ---------- */}
+      {duracao > 0 && (
+        <>
+          <div onPointerDown={(e) => puxarDivisoria(e, 'tl')} title="Arraste pra mudar a altura da linha do tempo"
+            className="hidden lg:block h-1.5 -my-1 shrink-0 rounded-full cursor-row-resize hover:bg-primary/50 active:bg-primary transition-colors" />
+          <div className="shrink-0 h-[280px] lg:h-[var(--at)]" style={{ '--at': `${altTL}px` } as React.CSSProperties}>
+            <LinhaDoTempo
+              duracao={duracao} videoRef={videoRef} nomeVideo={info?.nome || 'Vídeo'}
+              palavras={palavrasTL} segs={segs} rotuloSeg={rotuloSeg}
+              janelasLegenda={areasLegenda ? janelas : []} areas={areas}
+              selecionado={elTL} onSelecionar={setElTL} onSeek={seek}
+              onMudarMomento={mudarMomentoTL} onApagar={apagarElemento} onAbrirBorrao={abrirBorrao}
+              onAbrirCensura={(sg) => selecionar(sg.ids, true)}
+              onAbrirLegenda={() => { videoRef.current?.pause(); setMarcandoArea(true); setModoMomento(false) }} />
+          </div>
+        </>
+      )}
 
       {menu && (() => {
         const ids = menu.ids.filter((id) => tokens[id] && !tokens[id].removida)
