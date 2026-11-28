@@ -172,6 +172,8 @@ export default function CensorPage() {
   const [ativas, setAtivas] = useState('')
   /** Desenhando um borrão de momento (texto solto num intervalo) em vez da área da legenda. */
   const [modoMomento, setModoMomento] = useState(false)
+  /** Borrão livre: qualquer coisa na tela (imagem, print, rosto), sem depender de palavra. */
+  const [livre, setLivre] = useState(false)
   const areasRef = useRef<AreaBorrao[]>([])
   /** Mexendo na força: borra todas as áreas por um instante pra ver o resultado parado. */
   const [verForca, setVerForca] = useState(false)
@@ -501,9 +503,10 @@ export default function CensorPage() {
     if (modoMomento) {
       // Com palavras selecionadas na transcrição, borra exatamente enquanto elas aparecem;
       // sem seleção, a partir do quadro parado por 1,5 s (ajusta no painel).
-      const pel = intervaloSel()
+      const pel = livre ? null : intervaloSel()
+      const durPadrao = livre ? 3 : 1.5
       const ini = pel ? pel[0] : +(videoRef.current?.currentTime ?? 0).toFixed(2)
-      const fim = pel ? pel[1] : +Math.min(duracao || ini + 1.5, ini + 1.5).toFixed(2)
+      const fim = pel ? pel[1] : +Math.min(duracao || ini + durPadrao, ini + durPadrao).toFixed(2)
       mudar((t) => ({ ...t, areas: [...(t.areas ?? []), { ...a, ini, fim: fim > ini ? fim : +(ini + 0.5).toFixed(2) }] }))
       return
     }
@@ -607,7 +610,7 @@ export default function CensorPage() {
       mudar((t) => ({ ...t, areas: [...(t.areas ?? []), ...entram] }))
       const v = videoRef.current
       if (v) { v.pause(); v.currentTime = (entram[0].ini! + entram[0].fim!) / 2 }
-      setMarcandoArea(true); setModoMomento(true)
+      setMarcandoArea(true); setModoMomento(true); setLivre(false)
       setAviso(`Criei ${entram.length} ${entram.length === 1 ? 'borrão' : 'borrões'}: ${achados.slice(0, 6).join(', ')}${achados.length > 6 ? '…' : ''}. Confira na trilha “Borrões”; se algum ficou torto, ajuste pelos quadradinhos.${entram.length < novas.length ? ' (Limite de 60 borrões atingido.)' : ''}`)
     } finally {
       setAchando(false)
@@ -685,7 +688,7 @@ export default function CensorPage() {
   function verMomento(a: AreaBorrao) {
     const v = videoRef.current
     if (!v || !ehMomento(a)) return
-    setMarcandoArea(false); setModoMomento(false)
+    setMarcandoArea(false); setModoMomento(false); setLivre(false)
     v.currentTime = Math.max(0, a.ini! - 0.5)
     pararEm.current = a.fim! + 0.5
     v.play().catch(() => {})
@@ -1685,7 +1688,7 @@ export default function CensorPage() {
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 Marque onde a legenda aparece no vídeo. Na hora das palavras censuradas, essa área fica borrada.
               </p>
-              <button onClick={() => { const fechar = marcandoArea && !modoMomento; setMarcandoArea(!fechar); setModoMomento(false); videoRef.current?.pause() }}
+              <button onClick={() => { const fechar = marcandoArea && !modoMomento; setMarcandoArea(!fechar); setModoMomento(false); setLivre(false); videoRef.current?.pause() }}
                 className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && !modoMomento ? 'bg-amber-400 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
                 <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && !modoMomento ? 'Pronto' : areasLegenda ? `Editar áreas da legenda (${areasLegenda})` : 'Marcar área da legenda'}
               </button>
@@ -1708,11 +1711,20 @@ export default function CensorPage() {
                   {leitura ? 'Texto do vídeo já lido: a busca é na hora, no vídeo inteiro.' : lendo ? 'Leva alguns minutos; só precisa fazer uma vez por vídeo.' : 'Na primeira vez ele lê o vídeo todo (alguns minutos); depois é na hora.'}
                   {leitura && !lendo && <button onClick={() => { lerVideoTodo() }} className="ml-1 underline hover:text-foreground">Ler de novo</button>}
                 </p>
-                <button onClick={() => { const fechar = marcandoArea && modoMomento; setMarcandoArea(!fechar); setModoMomento(!fechar); videoRef.current?.pause() }}
-                  className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && modoMomento ? 'bg-cyan-300 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
-                  <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && modoMomento ? 'Pronto' : 'Borrar um momento'}
+                <button onClick={() => { const fechar = marcandoArea && modoMomento && !livre; setMarcandoArea(!fechar); setModoMomento(!fechar); setLivre(false); videoRef.current?.pause() }}
+                  className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && modoMomento && !livre ? 'bg-cyan-300 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
+                  <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && modoMomento && !livre ? 'Pronto' : 'Borrar um momento (pelas palavras)'}
                 </button>
-                {marcandoArea && modoMomento && <p className="text-[11px] text-cyan-300 leading-relaxed">Arraste por cima do texto. Com palavras selecionadas, borra exatamente enquanto elas são faladas; sem seleção, 1,5 s a partir deste quadro. Dá pra mover e esticar pelos quadradinhos.</p>}
+                {marcandoArea && modoMomento && !livre && <p className="text-[11px] text-cyan-300 leading-relaxed">Arraste por cima do texto. Com palavras selecionadas, borra exatamente enquanto elas são faladas; sem seleção, 1,5 s a partir deste quadro. Dá pra mover e esticar pelos quadradinhos.</p>}
+
+                <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
+                  <b className="text-foreground/90">Borrar qualquer coisa:</b> imagem, print, logo, rosto, o que for. Não depende de palavra nem de texto.
+                </p>
+                <button onClick={() => { const fechar = marcandoArea && livre; setMarcandoArea(!fechar); setModoMomento(!fechar); setLivre(!fechar); videoRef.current?.pause() }}
+                  className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && livre ? 'bg-cyan-300 text-black' : 'bg-cyan-400/15 text-cyan-200 border border-cyan-400/40 hover:bg-cyan-400/25'}`}>
+                  <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && livre ? 'Pronto' : 'Borrar qualquer coisa na tela'}
+                </button>
+                {marcandoArea && livre && <p className="text-[11px] text-cyan-300 leading-relaxed">Pare o vídeo no quadro onde a coisa aparece e arraste por cima dela. O borrão começa nesse quadro e dura 3 s; estique o bloco na linha do tempo até onde precisar (ou use “Fim aqui”). Dá pra mover, esticar e girar.</p>}
                 {areas.some(ehMomento) && (
                   <div className="space-y-1.5">
                     {areas.map((a, i) => ehMomento(a) && (
