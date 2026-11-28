@@ -113,6 +113,9 @@ export class MotorPrevia {
         // Som enviado pelo usuário toca inteiro a partir da palavra (um
         // "cha-ching" cortado no fim da palavra perde a graça).
         const buf = custom.get(ed.sfx)
+        // O tick olha 15ms à frente: o trecho pode "começar" com offset
+        // levemente negativo, e start() com offset negativo lança erro.
+        offset = Math.max(0, offset)
         if (!buf || offset >= buf.duration) return null
         const s = ctx.createBufferSource(); s.buffer = buf
         fonte = s; entrada = s

@@ -355,6 +355,7 @@ export default function CensorPage() {
     if (!src) return
     let raf = 0
     const tick = () => {
+      raf = requestAnimationFrame(tick)
       const v = videoRef.current
       if (v) {
         if (pararEm.current != null && v.currentTime >= pararEm.current) { v.pause(); pararEm.current = null }
@@ -365,14 +366,17 @@ export default function CensorPage() {
           if (progressoRef.current) progressoRef.current.style.width = pct
         }
         if (tempoRef.current) tempoRef.current.textContent = fmtTempo(v.currentTime)
-        if (motorRef.current?.video === v) motorRef.current.tick(segsRef.current, previaRef.current, sonsRef.current)
+        // Erro no motor de áudio não pode matar este laço (senão o volume fica
+        // preso no da última palavra e nenhum efeito toca mais).
+        try {
+          if (motorRef.current?.video === v) motorRef.current.tick(segsRef.current, previaRef.current, sonsRef.current)
+        } catch (e) { console.error('prévia de áudio', e) }
         const t = v.currentTime
         const b = previaRef.current
           ? areasRef.current.map((a, i) => (janelasDaArea(a, janelasRef.current).some(([x, z]) => t >= x && t < z) ? i : -1)).filter((i) => i >= 0).join(',')
           : ''
         setAtivas((x) => (x === b ? x : b))
       }
-      raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
