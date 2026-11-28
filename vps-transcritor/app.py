@@ -2930,7 +2930,7 @@ def _censurar(body):
     if not inp or not out:
         return ({"error": "input_path/output_path ausente"}, 400)
     trechos = [t for t in (body.get("trechos") or []) if _num(t.get("fim")) > _num(t.get("ini"))][:2000]
-    areas = [a for a in (body.get("areas") or []) if all(k in a for k in ("x", "y", "w", "h"))][:8]
+    areas = [a for a in (body.get("areas") or []) if all(k in a for k in ("x", "y", "w", "h"))][:20]
     janelas = [j for j in (body.get("janelas") or []) if len(j) == 2 and _num(j[1]) > _num(j[0])][:2000]
     raio_rel = max(0.001, min(0.2, _num(body.get("raio_rel"), 0.036)))
 
@@ -3010,8 +3010,14 @@ def _censurar(body):
 
         # ---- vídeo: borrão na legenda queimada ----
         mapa_video = None
-        if areas and janelas:
-            quando = "+".join("between(t,%.3f,%.3f)" % (_num(a), _num(b)) for a, b in janelas)
+        # Cada área pode trazer as próprias janelas (borrão de momento);
+        # sem elas, vale a lista geral (palavras censuradas).
+        def _quando(a):
+            js = a.get("janelas")
+            js = [j for j in js if len(j) == 2 and _num(j[1]) > _num(j[0])][:2000] if isinstance(js, list) else janelas
+            return "+".join("between(t,%.3f,%.3f)" % (_num(x), _num(y)) for x, y in js)
+        areas = [a for a in areas if _quando(a)]
+        if areas:
             k = len(areas)
             partes.append("[0:v]split=%d[base]%s" % (k + 1, "".join("[c%d]" % i for i in range(k))))
             atual = "[base]"
@@ -3029,7 +3035,7 @@ def _censurar(body):
                     % (i, aw, ah, ax, ay, raio, raio, i))
                 prox = "[v%d]" % i
                 partes.append("%s[b%d]overlay=x='trunc(W*%.5f/2)*2':y='trunc(H*%.5f/2)*2':enable='%s'%s"
-                              % (atual, i, ax, ay, quando, prox))
+                              % (atual, i, ax, ay, _quando(a), prox))
                 atual = prox
             mapa_video = atual
 

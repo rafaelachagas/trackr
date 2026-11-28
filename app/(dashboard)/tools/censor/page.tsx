@@ -12,7 +12,7 @@ import {
   fmtDb, montarSegmentos, Segmento, inserirPalavras,
 } from '@/lib/censura'
 import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
-import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, janelasBorrao, raioBorrao } from '@/lib/censura-borrao'
+import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, janelasBorrao, raioBorrao, ehMomento, janelasDaArea } from '@/lib/censura-borrao'
 import {
   Risco, Gravidade, GRAVIDADES, NOME_GRAVIDADE, BibliotecaExtra, aplicarExtra, censuraSozinho, autoCensura, riscosLocais, riscoPorPalavra,
 } from '@/lib/censura-riscos'
@@ -133,7 +133,11 @@ export default function CensorPage() {
   // dentro do player (o <video> tem faixa preta dos lados) e se está borrando agora.
   const [marcandoArea, setMarcandoArea] = useState(false)
   const [caixa, setCaixa] = useState<{ l: number; t: number; w: number; h: number } | null>(null)
-  const [borrando, setBorrando] = useState(false)
+  /** Índices ("0,2") das áreas borradas neste instante — muda pouco, então não re-renderiza a cada quadro. */
+  const [ativas, setAtivas] = useState('')
+  /** Desenhando um borrão de momento (texto solto num intervalo) em vez da área da legenda. */
+  const [modoMomento, setModoMomento] = useState(false)
+  const areasRef = useRef<AreaBorrao[]>([])
   const [rascunhoArea, setRascunhoArea] = useState<AreaBorrao | null>(null)
   const desenho = useRef<{ x: number; y: number } | null>(null)
   /** Exportação na VPS (ffmpeg): enviando → rodando (consulta o status) → pronto com o link. */
@@ -195,8 +199,10 @@ export default function CensorPage() {
   useEffect(() => { segsRef.current = segs }, [segs])
   const areas = useMemo(() => trab.areas ?? [], [trab.areas])
   const borrao = trab.borrao ?? BORRAO_PADRAO
-  const janelas = useMemo(() => (areas.length ? janelasBorrao(segs, borrao, duracao || Infinity) : []), [areas.length, segs, borrao, duracao])
+  const areasLegenda = useMemo(() => areas.filter((a) => !ehMomento(a)).length, [areas])
+  const janelas = useMemo(() => (areasLegenda ? janelasBorrao(segs, borrao, duracao || Infinity) : []), [areasLegenda, segs, borrao, duracao])
   useEffect(() => { janelasRef.current = janelas }, [janelas])
+  useEffect(() => { areasRef.current = areas }, [areas])
   useEffect(() => { previaRef.current = previa }, [previa])
 
   useEffect(() => {
@@ -318,8 +324,10 @@ export default function CensorPage() {
         if (tempoRef.current) tempoRef.current.textContent = fmtTempo(v.currentTime)
         if (motorRef.current?.video === v) motorRef.current.tick(segsRef.current, previaRef.current, sonsRef.current)
         const t = v.currentTime
-        const b = previaRef.current && janelasRef.current.some(([a, z]) => t >= a && t < z)
-        setBorrando((x) => (x === b ? x : b))
+        const b = previaRef.current
+          ? areasRef.current.map((a, i) => (janelasDaArea(a, janelasRef.current).some(([x, z]) => t >= x && t < z) ? i : -1)).filter((i) => i >= 0).join(',')
+          : ''
+        setAtivas((x) => (x === b ? x : b))
       }
       raf = requestAnimationFrame(tick)
     }
@@ -366,7 +374,33 @@ export default function CensorPage() {
     const a = rascunhoArea
     desenho.current = null; setRascunhoArea(null)
     if (!a || a.w < 0.02 || a.h < 0.01) return
+    if (modoMomento) {
+      // Borra a partir do quadro parado, por 1,5 s; ajusta no painel.
+      const ini = +(videoRef.current?.currentTime ?? 0).toFixed(2)
+      const fim = +Math.min(duracao || ini + 1.5, ini + 1.5).toFixed(2)
+      mudar((t) => ({ ...t, areas: [...(t.areas ?? []), { ...a, ini, fim: fim > ini ? fim : +(ini + 0.5).toFixed(2) }] }))
+      return
+    }
     mudar((t) => ({ ...t, areas: [...(t.areas ?? []), a] }))
+  }
+  function mudarMomento(i: number, lado: 'ini' | 'fim') {
+    const agora = +(videoRef.current?.currentTime ?? 0).toFixed(2)
+    mudar((t) => ({
+      ...t,
+      areas: (t.areas ?? []).map((a, j) => {
+        if (j !== i || !ehMomento(a)) return a
+        if (lado === 'ini') return { ...a, ini: agora, fim: a.fim! > agora ? a.fim : +(agora + 1.5).toFixed(2) }
+        return { ...a, fim: agora > a.ini! ? agora : +(a.ini! + 0.3).toFixed(2) }
+      }),
+    }))
+  }
+  function verMomento(a: AreaBorrao) {
+    const v = videoRef.current
+    if (!v || !ehMomento(a)) return
+    setMarcandoArea(false); setModoMomento(false)
+    v.currentTime = Math.max(0, a.ini! - 0.5)
+    pararEm.current = a.fim! + 0.5
+    v.play().catch(() => {})
   }
   function tirarArea(i: number) { mudar((t) => ({ ...t, areas: (t.areas ?? []).filter((_, j) => j !== i) })) }
   function mudarBorrao(parcial: Partial<ConfigBorrao>, chave: string) {
@@ -1070,23 +1104,31 @@ export default function CensorPage() {
                 style={{ left: caixa.l, top: caixa.t, width: caixa.w, height: caixa.h }}
                 onPointerDown={areaDown} onPointerMove={areaMove} onPointerUp={areaUp}>
                 {marcandoArea && <div className="absolute inset-0 bg-black/25" />}
-                {areas.map((a, i) => (
-                  <div key={i} className={`absolute ${marcandoArea ? 'border-2 border-dashed border-amber-300' : ''}`}
+                {areas.map((a, i) => {
+                  const mom = ehMomento(a)
+                  const tAgora = videoRef.current?.currentTime ?? 0
+                  // Marcando: mostra as áreas do modo atual (as de momento só se o quadro estiver no intervalo).
+                  const contorno = marcandoArea && (modoMomento ? mom && tAgora >= a.ini! - 0.05 && tAgora <= a.fim! + 0.05 : !mom)
+                  const borra = ativas.split(',').includes(String(i))
+                  if (!contorno && !borra) return null
+                  return (
+                  <div key={i} className={`absolute ${contorno ? `border-2 border-dashed ${mom ? 'border-cyan-300' : 'border-amber-300'}` : ''}`}
                     style={{
                       left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.w * 100}%`, height: `${a.h * 100}%`,
-                      backdropFilter: borrando ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
-                      WebkitBackdropFilter: borrando ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
+                      backdropFilter: borra ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
+                      WebkitBackdropFilter: borra ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
                     }}>
-                    {marcandoArea && (
+                    {contorno && (
                       <button onPointerDown={(e) => e.stopPropagation()} onClick={() => tirarArea(i)} aria-label="Apagar área"
                         className="absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow">
                         <X className="w-3 h-3" />
                       </button>
                     )}
                   </div>
-                ))}
+                  )
+                })}
                 {rascunhoArea && (
-                  <div className="absolute border-2 border-amber-300 bg-amber-300/15"
+                  <div className={`absolute border-2 ${modoMomento ? 'border-cyan-300 bg-cyan-300/15' : 'border-amber-300 bg-amber-300/15'}`}
                     style={{ left: `${rascunhoArea.x * 100}%`, top: `${rascunhoArea.y * 100}%`, width: `${rascunhoArea.w * 100}%`, height: `${rascunhoArea.h * 100}%` }} />
                 )}
               </div>
@@ -1323,15 +1365,43 @@ export default function CensorPage() {
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 Marque onde a legenda aparece no vídeo. Na hora das palavras censuradas, essa área fica borrada.
               </p>
-              <button onClick={() => { setMarcandoArea((m) => !m); videoRef.current?.pause() }}
-                className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea ? 'bg-amber-400 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
-                <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea ? 'Pronto' : areas.length ? `Editar áreas (${areas.length})` : 'Marcar área no vídeo'}
+              <button onClick={() => { const fechar = marcandoArea && !modoMomento; setMarcandoArea(!fechar); setModoMomento(false); videoRef.current?.pause() }}
+                className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && !modoMomento ? 'bg-amber-400 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
+                <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && !modoMomento ? 'Pronto' : areasLegenda ? `Editar áreas da legenda (${areasLegenda})` : 'Marcar área da legenda'}
               </button>
-              {marcandoArea && <p className="text-[11px] text-amber-300 leading-relaxed">Arraste no vídeo por cima da legenda. Pode marcar mais de uma área; o X apaga.</p>}
+              {marcandoArea && !modoMomento && <p className="text-[11px] text-amber-300 leading-relaxed">Arraste no vídeo por cima da legenda. Pode marcar mais de uma área; o X apaga.</p>}
+
+              <div className="pt-1 space-y-2">
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <b className="text-foreground/90">Borrar um momento:</b> pra texto solto que o editor do vídeo colocou (ex.: palavra trocando de fonte). Pause no quadro, arraste por cima do texto e ajuste até quando borra.
+                </p>
+                <button onClick={() => { const fechar = marcandoArea && modoMomento; setMarcandoArea(!fechar); setModoMomento(!fechar); videoRef.current?.pause() }}
+                  className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && modoMomento ? 'bg-cyan-300 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
+                  <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && modoMomento ? 'Pronto' : 'Borrar um momento'}
+                </button>
+                {marcandoArea && modoMomento && <p className="text-[11px] text-cyan-300 leading-relaxed">Arraste por cima do texto neste quadro. Ele fica borrado por 1,5 s a partir daqui; ajuste o início e o fim na lista.</p>}
+                {areas.some(ehMomento) && (
+                  <div className="space-y-1.5">
+                    {areas.map((a, i) => ehMomento(a) && (
+                      <div key={i} className="flex items-center gap-1 text-[11px] bg-white/[0.03] border border-border rounded-lg px-2 py-1.5">
+                        <button onClick={() => verMomento(a)} title="Ver esse trecho" className="tabular-nums text-foreground/90 hover:text-primary mr-auto inline-flex items-center gap-1">
+                          <Play className="w-3 h-3" /> {fmtTempo(a.ini!)} → {fmtTempo(a.fim!)}
+                        </button>
+                        <button onClick={() => mudarMomento(i, 'ini')} title="Começa no ponto atual do vídeo" className="px-1.5 h-6 rounded border border-border hover:bg-white/5">Início aqui</button>
+                        <button onClick={() => mudarMomento(i, 'fim')} title="Termina no ponto atual do vídeo" className="px-1.5 h-6 rounded border border-border hover:bg-white/5">Fim aqui</button>
+                        <button onClick={() => tirarArea(i)} aria-label="Apagar" className="w-6 h-6 rounded text-muted-foreground hover:text-rose-300 flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {areas.length > 0 && (
+                <Slider rotulo="Força do borrão" icone={<Droplets className="w-3.5 h-3.5" />} valor={borrao.forca} min={1} max={10} texto={String(borrao.forca)}
+                  onChange={(v) => mudarBorrao({ forca: v }, 'bforca')} />
+              )}
+              {areasLegenda > 0 && (
                 <>
-                  <Slider rotulo="Força do borrão" icone={<Droplets className="w-3.5 h-3.5" />} valor={borrao.forca} min={1} max={10} texto={String(borrao.forca)}
-                    onChange={(v) => mudarBorrao({ forca: v }, 'bforca')} />
                   <Slider rotulo="Começa antes da palavra" icone={<RotateCcw className="w-3.5 h-3.5" />} valor={Math.round(borrao.antes * 10)} min={0} max={20} texto={`${borrao.antes.toFixed(1)}s`}
                     onChange={(v) => mudarBorrao({ antes: v / 10 }, 'bantes')} />
                   <Slider rotulo="Continua depois" icone={<RotateCw className="w-3.5 h-3.5" />} valor={Math.round(borrao.depois * 10)} min={0} max={20} texto={`${borrao.depois.toFixed(1)}s`}

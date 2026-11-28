@@ -13,8 +13,17 @@ import type { Segmento } from './censura'
  *  sfx 'arq:<nome>' usa o arquivo `${RAIZ_SONS}/<nome>`. */
 export const RAIZ_SONS = 'censura-sfx'
 
-/** Retângulo em fração do quadro (0–1), independente da resolução. */
-export interface AreaBorrao { x: number; y: number; w: number; h: number }
+/** Retângulo em fração do quadro (0–1), independente da resolução.
+ *  Sem ini/fim: borra na hora das palavras censuradas (legenda fixa).
+ *  Com ini/fim: "borrão de momento" — borra só nesse intervalo, pra texto
+ *  que o editor do vídeo colocou solto (ex.: "rendas extras" trocando de fonte). */
+export interface AreaBorrao { x: number; y: number; w: number; h: number; ini?: number; fim?: number }
+
+export const ehMomento = (a: AreaBorrao) => typeof a.ini === 'number' && typeof a.fim === 'number'
+
+/** Janelas de uma área: as dela, se for de momento, ou as das palavras censuradas. */
+export const janelasDaArea = (a: AreaBorrao, dasPalavras: [number, number][]): [number, number][] =>
+  ehMomento(a) ? (a.fim! > a.ini! ? [[a.ini!, a.fim!]] : []) : dasPalavras
 
 export interface ConfigBorrao {
   /** 1–10. Raio do borrão = forca × 0,6% da largura do vídeo. */
@@ -48,5 +57,7 @@ export function janelasBorrao(segs: Segmento[], cfg: ConfigBorrao, duracao = Inf
 
 export function areaValida(a: unknown): a is AreaBorrao {
   const r = a as AreaBorrao
-  return !!r && [r.x, r.y, r.w, r.h].every((n) => typeof n === 'number' && n >= 0 && n <= 1) && r.w > 0.01 && r.h > 0.01
+  if (!r || ![r.x, r.y, r.w, r.h].every((n) => typeof n === 'number' && n >= 0 && n <= 1) || r.w <= 0.01 || r.h <= 0.01) return false
+  if (r.ini == null && r.fim == null) return true
+  return typeof r.ini === 'number' && typeof r.fim === 'number' && Number.isFinite(r.ini) && Number.isFinite(r.fim) && r.ini >= 0 && r.fim > r.ini
 }

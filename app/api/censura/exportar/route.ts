@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { RAIZ_CENSURA, MetaProjeto, idValido, bucket, lerJsonStorage } from '@/lib/censura-projetos'
 import { BUCKET_CRIATIVOS } from '@/lib/criativos'
 import { Edicao, Segmento, ganhoVoz, dbParaGanho } from '@/lib/censura'
-import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, RAIZ_SONS, areaValida, janelasBorrao } from '@/lib/censura-borrao'
+import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, RAIZ_SONS, areaValida, janelasBorrao, janelasDaArea, ehMomento } from '@/lib/censura-borrao'
 import { TRANSCRITOR_URL, TRANSCRITOR_APIKEY } from '@/lib/transcritor'
 
 // Exportação do Editor de Censura. O ffmpeg roda na VPS (rota /censor_render
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       .filter((s: Segmento) => Number.isFinite(s?.ini) && Number.isFinite(s?.fim) && s.fim > s.ini && s.ed)
       .slice(0, 2000)
       .map((s: Segmento) => ({ ids: [], ini: s.ini, fim: s.fim, ed: s.ed as Edicao }))
-    const areas: AreaBorrao[] = (Array.isArray(b.areas) ? b.areas : []).filter(areaValida).slice(0, 8)
+    const areas: AreaBorrao[] = (Array.isArray(b.areas) ? b.areas : []).filter(areaValida).slice(0, 20)
     const cfg: ConfigBorrao = { ...BORRAO_PADRAO, ...(b.borrao || {}) }
 
     // O ganho e o efeito saem daqui já resolvidos: a VPS não precisa saber de dB.
@@ -44,15 +44,20 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    const dasPalavras = areas.some((a) => !ehMomento(a)) ? janelasBorrao(segs, cfg) : []
     const corpo = {
       bucket: BUCKET_CRIATIVOS,
       input_path: meta.video,
       output_path: saida(id),
       trechos,
-      areas,
+      // Cada área leva as próprias janelas: a da legenda segue as palavras
+      // censuradas; a de momento, o intervalo que o usuário marcou.
+      areas: areas
+        .map((a) => ({ x: a.x, y: a.y, w: a.w, h: a.h, janelas: janelasDaArea(a, dasPalavras) }))
+        .filter((a) => a.janelas.length),
       // Raio = forca × 0,6% da largura do vídeo (o mesmo da prévia).
       raio_rel: cfg.forca * 0.006,
-      janelas: areas.length ? janelasBorrao(segs, cfg) : [],
+      janelas: dasPalavras,
     }
     const r = await fetch(`${TRANSCRITOR_URL}/censor_render?key=${encodeURIComponent(TRANSCRITOR_APIKEY)}`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corpo), cache: 'no-store',
