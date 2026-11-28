@@ -427,13 +427,28 @@ export default function CensorPage() {
     desenho.current = null; setRascunhoArea(null)
     if (!a || a.w < 0.02 || a.h < 0.01) return
     if (modoMomento) {
-      // Borra a partir do quadro parado, por 1,5 s; ajusta no painel.
-      const ini = +(videoRef.current?.currentTime ?? 0).toFixed(2)
-      const fim = +Math.min(duracao || ini + 1.5, ini + 1.5).toFixed(2)
+      // Com palavras selecionadas na transcrição, borra exatamente enquanto elas aparecem;
+      // sem seleção, a partir do quadro parado por 1,5 s (ajusta no painel).
+      const pel = intervaloSel()
+      const ini = pel ? pel[0] : +(videoRef.current?.currentTime ?? 0).toFixed(2)
+      const fim = pel ? pel[1] : +Math.min(duracao || ini + 1.5, ini + 1.5).toFixed(2)
       mudar((t) => ({ ...t, areas: [...(t.areas ?? []), { ...a, ini, fim: fim > ini ? fim : +(ini + 0.5).toFixed(2) }] }))
       return
     }
     mudar((t) => ({ ...t, areas: [...(t.areas ?? []), a] }))
+  }
+  /** Do começo da primeira à fim da última palavra selecionada, com a folga de antes/depois do borrão. */
+  function intervaloSel(): [number, number] | null {
+    const ts = sel.map((id) => tokens.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t)
+    if (!ts.length) return null
+    const ini = Math.max(0, Math.min(...ts.map((t) => t.start_time)) - borrao.antes)
+    const fim = Math.min(duracao || Infinity, Math.max(...ts.map((t) => t.end_time)) + borrao.depois)
+    return fim > ini ? [+ini.toFixed(2), +fim.toFixed(2)] : null
+  }
+  function momentoPelasPalavras(i: number) {
+    const pel = intervaloSel()
+    if (!pel) return
+    mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === i && ehMomento(a) ? { ...a, ini: pel[0], fim: pel[1] } : a)) }))
   }
   function mudarMomento(i: number, lado: 'ini' | 'fim') {
     const agora = +(videoRef.current?.currentTime ?? 0).toFixed(2)
@@ -1167,8 +1182,8 @@ export default function CensorPage() {
                   const tAgora = videoRef.current?.currentTime ?? 0
                   // Marcando: mostra as áreas do modo atual (as de momento só se o quadro estiver no intervalo).
                   const contorno = marcandoArea && (modoMomento ? mom && tAgora >= a.ini! - 0.05 && tAgora <= a.fim! + 0.05 : !mom)
-                  // Prévia ao vivo: marcando, a área desenhada já aparece borrada; mexendo na força, todas.
-                  const borra = contorno || verForca || ativas.split(',').includes(String(i))
+                  // Borra só no tempo certo (palavras / intervalo do momento); arrastando ou mexendo na força, mostra na hora.
+                  const borra = verForca || emAjuste?.i === i || (contorno && mom) || ativas.split(',').includes(String(i))
                   if (!contorno && !borra) return null
                   return (
                   <div key={i} className={`absolute ${contorno ? `border-2 border-dashed cursor-move ${mom ? 'border-cyan-300' : 'border-amber-300'}` : ''}`}
@@ -1438,20 +1453,21 @@ export default function CensorPage() {
 
               <div className="pt-1 space-y-2">
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  <b className="text-foreground/90">Borrar um momento:</b> pra texto solto que o editor do vídeo colocou (ex.: palavra trocando de fonte). Pause no quadro, arraste por cima do texto e ajuste até quando borra.
+                  <b className="text-foreground/90">Borrar um momento:</b> pra texto solto que o editor do vídeo colocou (ex.: palavra trocando de fonte). Selecione as palavras na transcrição (ex.: “rendas extras”), clique aqui e arraste por cima do texto no vídeo — o borrão some sozinho quando as palavras acabam.
                 </p>
                 <button onClick={() => { const fechar = marcandoArea && modoMomento; setMarcandoArea(!fechar); setModoMomento(!fechar); videoRef.current?.pause() }}
                   className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && modoMomento ? 'bg-cyan-300 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
                   <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && modoMomento ? 'Pronto' : 'Borrar um momento'}
                 </button>
-                {marcandoArea && modoMomento && <p className="text-[11px] text-cyan-300 leading-relaxed">Arraste por cima do texto neste quadro. Ele fica borrado por 1,5 s a partir daqui; ajuste o início e o fim na lista.</p>}
+                {marcandoArea && modoMomento && <p className="text-[11px] text-cyan-300 leading-relaxed">Arraste por cima do texto. Com palavras selecionadas, borra exatamente enquanto elas são faladas; sem seleção, 1,5 s a partir deste quadro. Dá pra mover e esticar pelos quadradinhos.</p>}
                 {areas.some(ehMomento) && (
                   <div className="space-y-1.5">
                     {areas.map((a, i) => ehMomento(a) && (
-                      <div key={i} className="flex items-center gap-1 text-[11px] bg-white/[0.03] border border-border rounded-lg px-2 py-1.5">
+                      <div key={i} className="flex flex-wrap items-center gap-1 text-[11px] bg-white/[0.03] border border-border rounded-lg px-2 py-1.5">
                         <button onClick={() => verMomento(a)} title="Ver esse trecho" className="tabular-nums text-foreground/90 hover:text-primary mr-auto inline-flex items-center gap-1">
                           <Play className="w-3 h-3" /> {fmtTempo(a.ini!)} → {fmtTempo(a.fim!)}
                         </button>
+                        <button onClick={() => momentoPelasPalavras(i)} disabled={!sel.length} title="Usa o tempo das palavras selecionadas na transcrição" className="px-1.5 h-6 rounded border border-border hover:bg-white/5 disabled:opacity-40">Pelas palavras</button>
                         <button onClick={() => mudarMomento(i, 'ini')} title="Começa no ponto atual do vídeo" className="px-1.5 h-6 rounded border border-border hover:bg-white/5">Início aqui</button>
                         <button onClick={() => mudarMomento(i, 'fim')} title="Termina no ponto atual do vídeo" className="px-1.5 h-6 rounded border border-border hover:bg-white/5">Fim aqui</button>
                         <button onClick={() => tirarArea(i)} aria-label="Apagar" className="w-6 h-6 rounded text-muted-foreground hover:text-rose-300 flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
