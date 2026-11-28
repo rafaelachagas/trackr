@@ -211,6 +211,18 @@ export function LinhaDoTempo(p: Props) {
 
   const sel = p.selecionado
   const momentos = p.areas.map((a, i) => ({ a, i })).filter(({ a }) => ehMomento(a))
+  // Borrões que se sobrepõem no tempo vão pra camadas diferentes (uma linha cada),
+  // como no Premiere. A camada vem da posição salva, então não pula durante o arrasto.
+  const camadaDe = new Map<number, number>()
+  const fimCamada: number[] = []
+  for (const { a, i } of [...momentos].sort((x, y) => x.a.ini! - y.a.ini! || x.i - y.i)) {
+    let c = fimCamada.findIndex((f) => f <= a.ini! + 0.001)
+    if (c < 0) { c = fimCamada.length; fimCamada.push(0) }
+    fimCamada[c] = a.fim!
+    camadaDe.set(i, c)
+  }
+  const ALT_CAMADA = 30
+  const nCamadas = Math.max(1, fimCamada.length)
 
   const trilha = (nome: string, icone: ReactNode, cor: string, altura: number, children: ReactNode) => (
     <div className="flex border-b border-black/40" style={{ height: altura }}>
@@ -269,7 +281,10 @@ export function LinhaDoTempo(p: Props) {
 
           {/* Trilhas: o fundo vazio também raspa a cabeça */}
           <div onPointerDown={raspaDown}>
-            {trilha('Borrões', <Droplets className="w-3 h-3" />, 'bg-cyan-600', 42, <>
+            {trilha(nCamadas > 1 ? `Borrões (${nCamadas})` : 'Borrões', <Droplets className="w-3 h-3" />, 'bg-cyan-600', Math.max(42, nCamadas * ALT_CAMADA + 6), <>
+              {Array.from({ length: nCamadas - 1 }, (_, k) => (
+                <div key={`l${k}`} className="absolute inset-x-0 border-t border-white/[0.04] pointer-events-none" style={{ top: 3 + (k + 1) * ALT_CAMADA }} />
+              ))}
               {momentos.map(({ a, i }) => {
                 const ini = arrasto?.i === i ? arrasto.ini : a.ini!
                 const fim = arrasto?.i === i ? arrasto.fim : a.fim!
@@ -277,9 +292,11 @@ export function LinhaDoTempo(p: Props) {
                 return (
                   <div key={i} onPointerDown={(e) => blocoDown(e, i, 'm')} onDoubleClick={() => p.onAbrirBorrao(i)}
                     title={`Borrão ${fmtTempo(ini)} → ${fmtTempo(fim)} · duplo clique ajusta a área no vídeo`}
-                    className={`absolute top-1.5 bottom-1.5 rounded-[4px] bg-cyan-500/85 border cursor-grab active:cursor-grabbing overflow-hidden ${ativo ? 'border-white ring-2 ring-white/70 z-10' : 'border-cyan-200/60'}`}
-                    style={{ left: xDe(ini), width: Math.max(8, xDe(fim - ini)) }}>
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-white/95 whitespace-nowrap pointer-events-none">Borrão</span>
+                    className={`absolute rounded-[4px] bg-cyan-500/85 border cursor-grab active:cursor-grabbing overflow-hidden ${ativo ? 'border-white ring-2 ring-white/70 z-10' : 'border-cyan-200/60'}`}
+                    style={nCamadas > 1
+                      ? { left: xDe(ini), width: Math.max(8, xDe(fim - ini)), top: 4 + (camadaDe.get(i) ?? 0) * ALT_CAMADA, height: ALT_CAMADA - 4 }
+                      : { left: xDe(ini), width: Math.max(8, xDe(fim - ini)), top: 6, bottom: 6 }}>
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-white/95 whitespace-nowrap pointer-events-none">Borrão {momentos.findIndex((m) => m.i === i) + 1}</span>
                     <div onPointerDown={(e) => blocoDown(e, i, 'ini')} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-white/40 hover:bg-white/80" />
                     <div onPointerDown={(e) => blocoDown(e, i, 'fim')} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-white/40 hover:bg-white/80" />
                   </div>
