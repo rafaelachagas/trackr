@@ -2930,7 +2930,7 @@ def _censurar(body):
     if not inp or not out:
         return ({"error": "input_path/output_path ausente"}, 400)
     trechos = [t for t in (body.get("trechos") or []) if _num(t.get("fim")) > _num(t.get("ini"))][:2000]
-    areas = [a for a in (body.get("areas") or []) if all(k in a for k in ("x", "y", "w", "h"))][:20]
+    areas = [a for a in (body.get("areas") or []) if all(k in a for k in ("x", "y", "w", "h"))][:60]
     janelas = [j for j in (body.get("janelas") or []) if len(j) == 2 and _num(j[1]) > _num(j[0])][:2000]
     raio_rel = max(0.001, min(0.2, _num(body.get("raio_rel"), 0.036)))
 
@@ -3243,6 +3243,90 @@ def censor_achar():
             _cjob(jid, status="rodando")
             try:
                 payload, status = _achar_texto(body)
+            except Exception as e:
+                payload, status = {"error": "falha: %s" % e}, 500
+        if status == 200:
+            _cjob(jid, status="pronto", resultado=payload)
+        else:
+            _cjob(jid, status="erro", erro=payload.get("error") or "falhou")
+
+    threading.Thread(target=tarefa, daemon=True).start()
+    return jsonify(ok=True, job_id=jid), 202
+
+
+
+# Lê o texto escrito no vídeo INTEIRO uma vez (3 quadros/s) e salva no
+# Storage; o editor busca nesse resultado na hora, sem voltar aqui.
+# POST /censor_ocr {bucket, path, out_path} → {job_id}; status com progresso.
+def _ocr_video_todo(body, jid):
+    bucket = body.get("bucket") or ""
+    path = body.get("path") or ""
+    out = body.get("out_path") or ""
+    if not bucket or not path or not out:
+        return {"error": "faltou vídeo"}, 400
+    fps = 3.0
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{urllib.parse.quote(path)}"
+    tmp = tempfile.mkdtemp(prefix="ocr-")
+    try:
+        _cjob(jid, fase="extraindo quadros")
+        args = ["ffmpeg", "-y", "-v", "error",
+                "-headers", f"Authorization: Bearer {SUPABASE_SERVICE_KEY}\r\n",
+                "-i", url, "-vf", f"fps={fps},scale='min(720,iw)':-2", "-q:v", "3",
+                os.path.join(tmp, "q%05d.jpg")]
+        r = subprocess.run(args, capture_output=True, timeout=1200)
+        quadros = sorted(f for f in os.listdir(tmp) if f.endswith(".jpg"))
+        if not quadros:
+            return {"error": "não consegui ler os quadros do vídeo: " + _erro_ffmpeg(r)}, 500
+        from PIL import Image
+        eng = _ocr()
+        saida = []
+        total = len(quadros)
+        for n, f in enumerate(quadros):
+            fp = os.path.join(tmp, f)
+            with Image.open(fp) as im:
+                W, H = im.size
+            res, _ = eng(fp)
+            dets = []
+            for item in res or []:
+                box, det = item[0], item[1]
+                if not det or not _norm_txt(det):
+                    continue
+                xs = [p[0] for p in box]
+                ys = [p[1] for p in box]
+                dets.append([det, round(min(xs) / W, 4), round(min(ys) / H, 4), round(max(xs) / W, 4), round(max(ys) / H, 4)])
+            if dets:
+                saida.append({"t": round((n + 0.5) / fps, 2), "d": dets})
+            if n % 5 == 0:
+                _cjob(jid, fase="lendo", feito=n + 1, total=total)
+            try:
+                os.remove(fp)
+            except OSError:
+                pass
+        arq = os.path.join(tmp, "ocr.json")
+        with open(arq, "w", encoding="utf-8") as fh:
+            json.dump({"fps": fps, "quadros": total, "itens": saida}, fh, ensure_ascii=False)
+        _storage_subir(bucket, out, arq, content_type="application/json")
+        return {"ok": True, "quadros": total}, 200
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.route("/censor_ocr", methods=["POST"])
+def censor_ocr():
+    key = request.args.get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="storage não configurado no servidor"), 500
+    body = request.get_json(silent=True) or {}
+    jid = uuid.uuid4().hex
+    _cjob(jid, status="na_fila")
+
+    def tarefa():
+        with _OCR_TRAVA:
+            _cjob(jid, status="rodando")
+            try:
+                payload, status = _ocr_video_todo(body, jid)
             except Exception as e:
                 payload, status = {"error": "falha: %s" % e}, 500
         if status == 200:

@@ -12,6 +12,7 @@ import {
   fmtDb, montarSegmentos, Segmento, inserirPalavras,
 } from '@/lib/censura'
 import { MotorPrevia, decodificarSom } from '@/lib/censura-audio'
+import { LeituraVideo, acharTexto, jaCoberto } from '@/lib/censura-ocr'
 import { AreaBorrao, ConfigBorrao, BORRAO_PADRAO, janelasBorrao, raioBorrao, ehMomento, janelasDaArea } from '@/lib/censura-borrao'
 import {
   Risco, Gravidade, GRAVIDADES, NOME_GRAVIDADE, BibliotecaExtra, aplicarExtra, censuraSozinho, autoCensura, riscosLocais, riscoPorPalavra,
@@ -132,6 +133,16 @@ export default function CensorPage() {
   const trilhaAj = useRef<{ i: number; modo: 'm' | 'ini' | 'fim'; x0: number; a0: AreaBorrao; mexeu: boolean } | null>(null)
   const [emTrilha, setEmTrilha] = useState<{ i: number; ini: number; fim: number } | null>(null)
   const [achando, setAchando] = useState(false)
+  /** Texto escrito no vídeo todo (OCR), lido uma vez e salvo no projeto. undefined = ainda não carregou. */
+  const [leitura, setLeitura] = useState<LeituraVideo | null | undefined>(undefined)
+  const [lendo, setLendo] = useState<{ feito: number; total: number } | null>(null)
+  useEffect(() => {
+    setLeitura(undefined)
+    if (!projId) return
+    let vivo = true
+    fetch(`/api/censura/ocr?p=${projId}`).then((r) => r.json()).then((j) => { if (vivo) setLeitura(j?.leitura ?? null) }).catch(() => { if (vivo) setLeitura(null) })
+    return () => { vivo = false }
+  }, [projId])
   const progressoRef = useRef<HTMLDivElement>(null)
   const arrasto = useRef<{ x: number; tocava: boolean; moveu: boolean } | null>(null)
   const adicionarRef = useRef<HTMLInputElement>(null)
@@ -468,45 +479,72 @@ export default function CensorPage() {
       }),
     }))
   }
-  /** Lê o texto escrito no vídeo (OCR na VPS) perto de quando as palavras selecionadas são faladas. */
-  async function acharNoVideo() {
-    const ts = sel.map((id) => tokens.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t)
-      .sort((a, b) => a.start_time - b.start_time)
-    if (!ts.length || !projId || achando) return
-    if (ts[ts.length - 1].end_time - ts[0].start_time > 10) {
-      setAviso('Selecione só as palavras de UM texto da tela (ex.: “rendas extras”), não o vídeo todo — ele lê só os segundos perto dessa fala.')
-      return
-    }
-    const texto = ts.map((t) => t.word).join(' ')
-    setAchando(true); setAviso(`Procurando “${texto}” escrito no vídeo…`)
+  /** Lê o vídeo inteiro uma vez (OCR na VPS) e salva no projeto; mostra o progresso. */
+  async function lerVideoTodo(): Promise<LeituraVideo | null> {
+    if (!projId) return null
+    setLendo({ feito: 0, total: 0 })
     try {
-      const r = await fetch('/api/censura/achar', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ projId, texto, ini: ts[0].start_time, fim: ts[ts.length - 1].end_time }),
-      })
+      const r = await fetch('/api/censura/ocr', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projId }) })
       const j = await r.json().catch(() => null)
       if (!j?.job) throw new Error(j?.error || `o site respondeu ${r.status}`)
-      let res: { achou: boolean; x: number; y: number; w: number; h: number; ini: number; fim: number } | null = null
-      for (let n = 0; n < 90 && !res; n++) {
+      for (let n = 0; n < 900; n++) {
         await new Promise((ok) => setTimeout(ok, 2000))
-        const s = await fetch(`/api/censura/achar?job=${j.job}`).then((x) => x.json()).catch(() => null)
-        if (s?.status === 'pronto') res = s.resultado
-        else if (s?.status === 'erro') throw new Error(s.erro || 'falhou')
+        const st = await fetch(`/api/censura/ocr?p=${projId}&job=${j.job}`).then((x) => x.json()).catch(() => null)
+        if (st?.status === 'erro') throw new Error(st.erro || 'falhou')
+        if (st?.status === 'pronto') {
+          const l = await fetch(`/api/censura/ocr?p=${projId}`).then((x) => x.json()).catch(() => null)
+          if (!l?.leitura) throw new Error('a leitura terminou mas não achei o arquivo')
+          setLeitura(l.leitura)
+          return l.leitura
+        }
+        if (st?.total) setLendo({ feito: st.feito || 0, total: st.total })
       }
-      if (!res) throw new Error('demorou demais')
-      if (!res.achou) {
-        setAviso(`Não achei “${texto}” escrito na tela perto dessa fala. Marque na mão com “Borrar um momento”.`)
+      throw new Error('demorou demais')
+    } catch (e) {
+      setAviso(`Não deu pra ler o vídeo: ${e instanceof Error ? e.message : e}`)
+      return null
+    } finally {
+      setLendo(null)
+    }
+  }
+
+  /**
+   * Acha no vídeo INTEIRO onde o texto selecionado aparece escrito e cria os borrões.
+   * Cada grupo de palavras seguidas da seleção é buscado como um texto só.
+   */
+  async function acharNoVideo() {
+    const ts = sel.map((id) => tokens.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t)
+      .sort((a, b) => a.id - b.id)
+    if (!ts.length || !projId || achando || lendo) return
+    setAchando(true)
+    try {
+      const l = leitura ?? await lerVideoTodo()
+      if (!l) return
+      const grupos: string[] = []
+      ts.forEach((t, k) => {
+        if (k > 0 && t.id - ts[k - 1].id <= 1 && t.start_time - ts[k - 1].end_time < 1) grupos[grupos.length - 1] += ` ${t.word}`
+        else grupos.push(t.word)
+      })
+      const novas: AreaBorrao[] = []
+      const achados: string[] = []
+      for (const g of grupos) {
+        const r = acharTexto(l, g, duracao).filter((a) => !jaCoberto(a, [...areas, ...novas]))
+        if (r.length) achados.push(`“${g}” (${r.length}×)`)
+        novas.push(...r)
+      }
+      if (!novas.length) {
+        setAviso(grupos.length === 1
+          ? `Não achei “${grupos[0]}” escrito na tela em nenhum ponto do vídeo (ou já está borrado). Marque na mão com “Borrar um momento”.`
+          : `Não achei nenhuma dessas palavras escrita na tela (ou já estão borradas).`)
         return
       }
-      const nova: AreaBorrao = { x: res.x, y: res.y, w: res.w, h: res.h, ini: res.ini, fim: Math.min(duracao || res.fim, res.fim) }
-      mudar((t) => ({ ...t, areas: [...(t.areas ?? []), nova] }))
-      // Para no meio do trecho com a área em edição, pra conferir e ajustar.
+      const livre = Math.max(0, 60 - areas.length)
+      const entram = novas.slice(0, livre)
+      mudar((t) => ({ ...t, areas: [...(t.areas ?? []), ...entram] }))
       const v = videoRef.current
-      if (v) { v.pause(); v.currentTime = (nova.ini! + nova.fim!) / 2 }
+      if (v) { v.pause(); v.currentTime = (entram[0].ini! + entram[0].fim!) / 2 }
       setMarcandoArea(true); setModoMomento(true)
-      setAviso(`Achei “${texto}” de ${fmtTempo(nova.ini!)} a ${fmtTempo(nova.fim!)}. Se ficou torto, ajuste pelos quadradinhos.`)
-    } catch (e) {
-      setAviso(`Não deu pra procurar no vídeo: ${e instanceof Error ? e.message : e}`)
+      setAviso(`Criei ${entram.length} ${entram.length === 1 ? 'borrão' : 'borrões'}: ${achados.slice(0, 6).join(', ')}${achados.length > 6 ? '…' : ''}. Confira na trilha “Borrões”; se algum ficou torto, ajuste pelos quadradinhos.${entram.length < novas.length ? ' (Limite de 60 borrões atingido.)' : ''}`)
     } finally {
       setAchando(false)
     }
@@ -1580,12 +1618,19 @@ export default function CensorPage() {
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
                   <b className="text-foreground/90">Borrar um momento:</b> pra texto solto que o editor do vídeo colocou (ex.: palavra trocando de fonte). Selecione as palavras na transcrição (ex.: “rendas extras”), clique aqui e arraste por cima do texto no vídeo — o borrão some sozinho quando as palavras acabam.
                 </p>
-                <button onClick={acharNoVideo} disabled={!sel.length || achando || !projId}
-                  title={sel.length ? 'Procura o texto selecionado escrito no vídeo e já cria o borrão' : 'Selecione as palavras na transcrição primeiro'}
+                <button onClick={acharNoVideo} disabled={!sel.length || achando || !!lendo || !projId}
+                  title={sel.length ? 'Procura no vídeo inteiro onde o texto selecionado aparece escrito e já cria os borrões' : 'Selecione as palavras na transcrição primeiro'}
                   className="w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-cyan-400/15 text-cyan-200 border border-cyan-400/40 hover:bg-cyan-400/25 disabled:opacity-40">
-                  {achando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
-                  {achando ? 'Procurando no vídeo…' : sel.length ? `Achar “${sel.length > 3 ? `${sel.length} palavras` : sel.map((id) => tokens.find((t) => t.id === id)?.word).join(' ')}” no vídeo` : 'Achar no vídeo (selecione as palavras)'}
+                  {achando || lendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
+                  {lendo ? `Lendo o vídeo todo… ${lendo.total ? `${Math.round((lendo.feito / lendo.total) * 100)}%` : ''}` : achando ? 'Procurando no vídeo…' : sel.length ? `Achar “${sel.length > 3 ? `${sel.length} palavras` : sel.map((id) => tokens.find((t) => t.id === id)?.word).join(' ')}” no vídeo` : 'Achar no vídeo (selecione as palavras)'}
                 </button>
+                {lendo && lendo.total > 0 && (
+                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-cyan-400 transition-all" style={{ width: `${(lendo.feito / lendo.total) * 100}%` }} /></div>
+                )}
+                <p className="text-[10px] text-muted-foreground -mt-0.5">
+                  {leitura ? 'Texto do vídeo já lido: a busca é na hora, no vídeo inteiro.' : lendo ? 'Leva alguns minutos; só precisa fazer uma vez por vídeo.' : 'Na primeira vez ele lê o vídeo todo (alguns minutos); depois é na hora.'}
+                  {leitura && !lendo && <button onClick={() => { lerVideoTodo() }} className="ml-1 underline hover:text-foreground">Ler de novo</button>}
+                </p>
                 <button onClick={() => { const fechar = marcandoArea && modoMomento; setMarcandoArea(!fechar); setModoMomento(!fechar); videoRef.current?.pause() }}
                   className={`w-full h-9 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 ${marcandoArea && modoMomento ? 'bg-cyan-300 text-black' : 'border border-border text-foreground/90 hover:bg-white/5'}`}>
                   <SquareDashed className="w-3.5 h-3.5" /> {marcandoArea && modoMomento ? 'Pronto' : 'Borrar um momento'}

@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       .filter((s: Segmento) => Number.isFinite(s?.ini) && Number.isFinite(s?.fim) && s.fim > s.ini && s.ed)
       .slice(0, 2000)
       .map((s: Segmento) => ({ ids: [], ini: s.ini, fim: s.fim, ed: s.ed as Edicao }))
-    const areas: AreaBorrao[] = (Array.isArray(b.areas) ? b.areas : []).filter(areaValida).slice(0, 20)
+    const areas: AreaBorrao[] = (Array.isArray(b.areas) ? b.areas : []).filter(areaValida).slice(0, 60)
     const cfg: ConfigBorrao = { ...BORRAO_PADRAO, ...(b.borrao || {}) }
 
     // O ganho e o efeito saem daqui já resolvidos: a VPS não precisa saber de dB.
