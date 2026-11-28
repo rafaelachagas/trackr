@@ -67,6 +67,14 @@ function gravar(chave: string, valor: string) {
   try { localStorage.setItem(chave, valor) } catch { /* cheio ou bloqueado: segue sem salvar */ }
 }
 
+/** Puxadores das áreas: [bordas que estica, posição, cursor]. */
+const PUXADORES: [string, string, string][] = [
+  ['nw', '-top-1.5 -left-1.5', 'nwse-resize'], ['ne', '-top-1.5 -right-1.5', 'nesw-resize'],
+  ['sw', '-bottom-1.5 -left-1.5', 'nesw-resize'], ['se', '-bottom-1.5 -right-1.5', 'nwse-resize'],
+  ['n', '-top-1.5 left-1/2 -translate-x-1/2', 'ns-resize'], ['s', '-bottom-1.5 left-1/2 -translate-x-1/2', 'ns-resize'],
+  ['w', 'top-1/2 -left-1.5 -translate-y-1/2', 'ew-resize'], ['e', 'top-1/2 -right-1.5 -translate-y-1/2', 'ew-resize'],
+]
+
 export default function CensorPage() {
   const [arquivo, setArquivo] = useState<File | null>(null)
   // Projeto no servidor. `info` existe com ou sem o arquivo local (projeto
@@ -143,6 +151,10 @@ export default function CensorPage() {
   const verForcaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [rascunhoArea, setRascunhoArea] = useState<AreaBorrao | null>(null)
   const desenho = useRef<{ x: number; y: number } | null>(null)
+  /** Arrastando uma área já marcada: 'm' move; letras n/s/e/w dizem quais bordas o puxador estica. */
+  const ajuste = useRef<{ i: number; modo: string; p0: { x: number; y: number }; a0: AreaBorrao } | null>(null)
+  const [emAjuste, setEmAjuste] = useState<{ i: number; a: AreaBorrao } | null>(null)
+  const camadaRef = useRef<HTMLDivElement>(null)
   /** Exportação na VPS (ffmpeg): enviando → rodando (consulta o status) → pronto com o link. */
   const [exp, setExp] = useState<{ fase: 'enviando' | 'rodando' | 'pronto' | 'erro'; erro?: string; url?: string; desde: number } | null>(null)
   const janelasRef = useRef<[number, number][]>([])
@@ -367,13 +379,50 @@ export default function CensorPage() {
     desenho.current = pontoNaImagem(e)
     setRascunhoArea({ ...desenho.current, w: 0, h: 0 })
   }
+  function ajusteDown(e: PointerEvent<HTMLDivElement>, i: number, modo: string) {
+    const camada = camadaRef.current
+    const a0 = areas[i]
+    if (!camada || !a0) return
+    e.preventDefault(); e.stopPropagation()
+    camada.setPointerCapture(e.pointerId)
+    const r = camada.getBoundingClientRect()
+    ajuste.current = { i, modo, p0: { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }, a0 }
+    setEmAjuste({ i, a: a0 })
+  }
   function areaMove(e: PointerEvent<HTMLDivElement>) {
+    const aj = ajuste.current
+    if (aj) {
+      const p = pontoNaImagem(e)
+      const dx = p.x - aj.p0.x, dy = p.y - aj.p0.y
+      const { a0, modo } = aj
+      let x1 = a0.x, y1 = a0.y, x2 = a0.x + a0.w, y2 = a0.y + a0.h
+      if (modo === 'm') {
+        const nx = Math.min(1 - a0.w, Math.max(0, a0.x + dx)), ny = Math.min(1 - a0.h, Math.max(0, a0.y + dy))
+        x1 = nx; y1 = ny; x2 = nx + a0.w; y2 = ny + a0.h
+      } else {
+        if (modo.includes('w')) x1 = Math.min(x2 - 0.02, Math.max(0, a0.x + dx))
+        if (modo.includes('e')) x2 = Math.max(x1 + 0.02, Math.min(1, a0.x + a0.w + dx))
+        if (modo.includes('n')) y1 = Math.min(y2 - 0.01, Math.max(0, a0.y + dy))
+        if (modo.includes('s')) y2 = Math.max(y1 + 0.01, Math.min(1, a0.y + a0.h + dy))
+      }
+      setEmAjuste({ i: aj.i, a: { ...a0, x: x1, y: y1, w: x2 - x1, h: y2 - y1 } })
+      return
+    }
     const o = desenho.current
     if (!o) return
     const p = pontoNaImagem(e)
     setRascunhoArea({ x: Math.min(o.x, p.x), y: Math.min(o.y, p.y), w: Math.abs(p.x - o.x), h: Math.abs(p.y - o.y) })
   }
   function areaUp() {
+    if (ajuste.current) {
+      const fim = emAjuste
+      ajuste.current = null; setEmAjuste(null)
+      if (fim) {
+        const r = (n: number) => +n.toFixed(4)
+        mudar((t) => ({ ...t, areas: (t.areas ?? []).map((a, j) => (j === fim.i ? { ...a, x: r(fim.a.x), y: r(fim.a.y), w: r(fim.a.w), h: r(fim.a.h) } : a)) }))
+      }
+      return
+    }
     const a = rascunhoArea
     desenho.current = null; setRascunhoArea(null)
     if (!a || a.w < 0.02 || a.h < 0.01) return
@@ -1108,11 +1157,12 @@ export default function CensorPage() {
               className="w-full max-h-[64vh] block mx-auto cursor-pointer" />
             {caixa && (areas.length > 0 || marcandoArea) && (
               // Camada do tamanho exato da imagem: as áreas da legenda queimada.
-              <div className={`absolute ${marcandoArea ? 'cursor-crosshair z-10' : 'pointer-events-none'}`}
+              <div ref={camadaRef} className={`absolute ${marcandoArea ? 'cursor-crosshair z-10' : 'pointer-events-none'}`}
                 style={{ left: caixa.l, top: caixa.t, width: caixa.w, height: caixa.h }}
-                onPointerDown={areaDown} onPointerMove={areaMove} onPointerUp={areaUp}>
+                onPointerDown={areaDown} onPointerMove={areaMove} onPointerUp={areaUp} onPointerCancel={areaUp}>
                 {marcandoArea && <div className="absolute inset-0 bg-black/25" />}
-                {areas.map((a, i) => {
+                {areas.map((a0, i) => {
+                  const a = emAjuste?.i === i ? emAjuste.a : a0
                   const mom = ehMomento(a)
                   const tAgora = videoRef.current?.currentTime ?? 0
                   // Marcando: mostra as áreas do modo atual (as de momento só se o quadro estiver no intervalo).
@@ -1121,15 +1171,21 @@ export default function CensorPage() {
                   const borra = contorno || verForca || ativas.split(',').includes(String(i))
                   if (!contorno && !borra) return null
                   return (
-                  <div key={i} className={`absolute ${contorno ? `border-2 border-dashed ${mom ? 'border-cyan-300' : 'border-amber-300'}` : ''}`}
+                  <div key={i} className={`absolute ${contorno ? `border-2 border-dashed cursor-move ${mom ? 'border-cyan-300' : 'border-amber-300'}` : ''}`}
+                    onPointerDown={contorno ? (e) => ajusteDown(e, i, 'm') : undefined}
                     style={{
                       left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.w * 100}%`, height: `${a.h * 100}%`,
                       backdropFilter: borra ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
                       WebkitBackdropFilter: borra ? `blur(${raioBorrao(borrao.forca, caixa.w)}px)` : undefined,
                     }}>
+                    {contorno && PUXADORES.map(([modo, pos, cursor]) => (
+                      <div key={modo} onPointerDown={(e) => ajusteDown(e, i, modo)}
+                        className={`absolute w-3 h-3 rounded-sm bg-white border ${mom ? 'border-cyan-500' : 'border-amber-500'} shadow ${pos}`}
+                        style={{ cursor }} />
+                    ))}
                     {contorno && (
                       <button onPointerDown={(e) => e.stopPropagation()} onClick={() => tirarArea(i)} aria-label="Apagar área"
-                        className="absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow">
+                        className="absolute -top-7 right-0 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow">
                         <X className="w-3 h-3" />
                       </button>
                     )}
