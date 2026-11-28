@@ -138,6 +138,9 @@ export default function CensorPage() {
   /** Desenhando um borrão de momento (texto solto num intervalo) em vez da área da legenda. */
   const [modoMomento, setModoMomento] = useState(false)
   const areasRef = useRef<AreaBorrao[]>([])
+  /** Mexendo na força: borra todas as áreas por um instante pra ver o resultado parado. */
+  const [verForca, setVerForca] = useState(false)
+  const verForcaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [rascunhoArea, setRascunhoArea] = useState<AreaBorrao | null>(null)
   const desenho = useRef<{ x: number; y: number } | null>(null)
   /** Exportação na VPS (ffmpeg): enviando → rodando (consulta o status) → pronto com o link. */
@@ -405,6 +408,11 @@ export default function CensorPage() {
   function tirarArea(i: number) { mudar((t) => ({ ...t, areas: (t.areas ?? []).filter((_, j) => j !== i) })) }
   function mudarBorrao(parcial: Partial<ConfigBorrao>, chave: string) {
     mudar((t) => ({ ...t, borrao: { ...(t.borrao ?? BORRAO_PADRAO), ...parcial } }), chave)
+    if (parcial.forca != null) {
+      setVerForca(true)
+      if (verForcaTimer.current) clearTimeout(verForcaTimer.current)
+      verForcaTimer.current = setTimeout(() => setVerForca(false), 1500)
+    }
   }
 
   /** O motor só pode nascer depois de um gesto do usuário (regra do navegador
@@ -1109,7 +1117,8 @@ export default function CensorPage() {
                   const tAgora = videoRef.current?.currentTime ?? 0
                   // Marcando: mostra as áreas do modo atual (as de momento só se o quadro estiver no intervalo).
                   const contorno = marcandoArea && (modoMomento ? mom && tAgora >= a.ini! - 0.05 && tAgora <= a.fim! + 0.05 : !mom)
-                  const borra = ativas.split(',').includes(String(i))
+                  // Prévia ao vivo: marcando, a área desenhada já aparece borrada; mexendo na força, todas.
+                  const borra = contorno || verForca || ativas.split(',').includes(String(i))
                   if (!contorno && !borra) return null
                   return (
                   <div key={i} className={`absolute ${contorno ? `border-2 border-dashed ${mom ? 'border-cyan-300' : 'border-amber-300'}` : ''}`}
