@@ -3104,5 +3104,155 @@ def censor_status():
         return jsonify(error="job desconhecido"), 404
     return jsonify(ok=True, **j)
 
+
+# ---------------------------------------------------------------------------
+# Editor de Censura: "Achar no vídeo". Lê (OCR) os quadros perto de quando a
+# palavra é falada e devolve onde e quando o texto aparece ESCRITO na tela —
+# vira um borrão de momento já no lugar. O vídeo não é baixado inteiro: o
+# ffmpeg pula direto pro trecho no Storage (requisições com Range).
+# POST /censor_achar {bucket, path, ini, fim, texto} → {job_id}
+# GET  /censor_status?job=  → {status, resultado?}
+# ---------------------------------------------------------------------------
+_OCR = None
+_OCR_TRAVA = threading.Lock()
+
+
+def _ocr():
+    global _OCR
+    if _OCR is None:
+        from rapidocr_onnxruntime import RapidOCR
+        _OCR = RapidOCR()
+    return _OCR
+
+
+def _norm_txt(s):
+    s = unicodedata.normalize("NFKD", str(s or "").lower())
+    return "".join(c for c in s if c.isalnum())
+
+
+def _parece(det, alvo_palavras, alvo_junto):
+    """A detecção do OCR é (parte de) o texto procurado?"""
+    import difflib
+    d = _norm_txt(det)
+    if len(d) < 2:
+        return False
+    if alvo_junto and (alvo_junto in d or (len(d) >= 3 and d in alvo_junto)):
+        return True
+    for p in alvo_palavras:
+        if len(p) < 3:
+            continue
+        if p in d or difflib.SequenceMatcher(None, d, p).ratio() >= 0.7:
+            return True
+    return difflib.SequenceMatcher(None, d, alvo_junto).ratio() >= 0.6 if alvo_junto else False
+
+
+def _achar_texto(body):
+    bucket = body.get("bucket") or ""
+    path = body.get("path") or ""
+    texto = str(body.get("texto") or "")[:200]
+    ini = max(0.0, _num(body.get("ini")))
+    fim = max(ini + 0.1, _num(body.get("fim"), ini + 1))
+    if not bucket or not path or not _norm_txt(texto):
+        return {"error": "faltou vídeo ou texto"}, 400
+    palavras = [_norm_txt(p) for p in texto.split() if _norm_txt(p)]
+    junto = _norm_txt(texto)
+
+    # O texto na tela costuma entrar um pouco antes da fala e sair depois.
+    de = max(0.0, ini - 1.5)
+    ate = fim + 2.5
+    fps = 5.0 if ate - de <= 12 else 3.0
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{urllib.parse.quote(path)}"
+    tmp = tempfile.mkdtemp(prefix="achar-")
+    try:
+        args = ["ffmpeg", "-y", "-v", "error",
+                "-headers", f"Authorization: Bearer {SUPABASE_SERVICE_KEY}\r\n",
+                "-ss", f"{de:.3f}", "-i", url, "-t", f"{ate - de:.3f}",
+                "-vf", f"fps={fps},scale='min(720,iw)':-2", "-q:v", "3",
+                os.path.join(tmp, "q%04d.jpg")]
+        r = subprocess.run(args, capture_output=True, timeout=300)
+        quadros = sorted(f for f in os.listdir(tmp) if f.endswith(".jpg"))
+        if not quadros:
+            return {"error": "não consegui ler os quadros do vídeo: " + _erro_ffmpeg(r)}, 500
+
+        from PIL import Image
+        achados = []  # (t, x1, y1, x2, y2) normalizados
+        vistos = []
+        eng = _ocr()
+        for n, f in enumerate(quadros):
+            fp = os.path.join(tmp, f)
+            with Image.open(fp) as im:
+                W, H = im.size
+            res, _ = eng(fp)
+            t = de + n / fps
+            caixas = []
+            for item in res or []:
+                box, det = item[0], item[1]
+                if len(vistos) < 40 and det:
+                    vistos.append(det)
+                if _parece(det, palavras, junto):
+                    xs = [p[0] for p in box]
+                    ys = [p[1] for p in box]
+                    caixas.append((min(xs) / W, min(ys) / H, max(xs) / W, max(ys) / H))
+            if caixas:
+                achados.append((t, min(c[0] for c in caixas), min(c[1] for c in caixas),
+                                max(c[2] for c in caixas), max(c[3] for c in caixas)))
+        if not achados:
+            return {"achou": False, "lidos": vistos[:15]}, 200
+
+        # Junta quadros seguidos em trechos e fica com o que mais encosta na fala.
+        passo = 1.0 / fps
+        trechos = []
+        for a in achados:
+            if trechos and a[0] - trechos[-1][-1][0] <= passo * 2.5:
+                trechos[-1].append(a)
+            else:
+                trechos.append([a])
+
+        def nota(tr):
+            t0, t1 = tr[0][0], tr[-1][0] + passo
+            sobre = max(0.0, min(t1, fim) - max(t0, ini))
+            return (sobre, len(tr), -abs(t0 - ini))
+        melhor = max(trechos, key=nota)
+        x1 = min(a[1] for a in melhor); y1 = min(a[2] for a in melhor)
+        x2 = max(a[3] for a in melhor); y2 = max(a[4] for a in melhor)
+        # Folga: fonte que muda de tamanho entre quadros e borda do borrão.
+        fx, fy = (x2 - x1) * 0.06 + 0.01, (y2 - y1) * 0.15 + 0.008
+        x1, y1 = max(0.0, x1 - fx), max(0.0, y1 - fy)
+        x2, y2 = min(1.0, x2 + fx), min(1.0, y2 + fy)
+        t0 = max(0.0, melhor[0][0] - passo * 0.5)
+        t1 = melhor[-1][0] + passo * 1.5
+        return {"achou": True, "x": round(x1, 4), "y": round(y1, 4), "w": round(x2 - x1, 4), "h": round(y2 - y1, 4),
+                "ini": round(t0, 2), "fim": round(t1, 2), "quadros": len(melhor), "total": len(quadros)}, 200
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.route("/censor_achar", methods=["POST"])
+def censor_achar():
+    key = request.args.get("key")
+    if APIKEY and key != APIKEY:
+        return jsonify(error="nao autorizado"), 401
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return jsonify(error="storage não configurado no servidor"), 500
+    body = request.get_json(silent=True) or {}
+    jid = uuid.uuid4().hex
+    _cjob(jid, status="na_fila")
+
+    def tarefa():
+        with _OCR_TRAVA:
+            _cjob(jid, status="rodando")
+            try:
+                payload, status = _achar_texto(body)
+            except Exception as e:
+                payload, status = {"error": "falha: %s" % e}, 500
+        if status == 200:
+            _cjob(jid, status="pronto", resultado=payload)
+        else:
+            _cjob(jid, status="erro", erro=payload.get("error") or "falhou")
+
+    threading.Thread(target=tarefa, daemon=True).start()
+    return jsonify(ok=True, job_id=jid), 202
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8082")))
